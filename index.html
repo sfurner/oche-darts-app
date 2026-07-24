@@ -97,14 +97,15 @@ body{
 /* Laptop / desktop: persistent side navigation, genuinely wide usage of screen space */
 @media (min-width:1024px){
   .app-shell{ padding:32px; gap:0; }
-  .device{ width:min(1040px, calc(100vw - 280px)); height:calc(100vh - 64px); max-height:calc(100vh - 64px); min-height:0; border-radius:0 24px 24px 0; margin:0; }
-  .content{ max-width:620px; margin-left:auto; margin-right:auto; }
+  .device{ width:min(1200px, calc(100vw - 280px)); height:calc(100vh - 64px); max-height:calc(100vh - 64px); min-height:0; border-radius:0 24px 24px 0; margin:0; }
+  .content{ max-width:900px; margin-left:auto; margin-right:auto; }
   .content.content-grid{
-    max-width:none; display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr));
+    max-width:none; display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr));
     gap:14px; align-items:start;
   }
   .app-shell.fullscreen-mode{ padding:0; }
   .app-shell.fullscreen-mode .device{ width:100vw; height:100vh; max-height:100vh; min-height:0; border-radius:0; }
+  .app-shell.fullscreen-mode .content{ max-width:1100px; }
 }
 .fullscreen-toggle{
   display:none;
@@ -507,7 +508,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-24 19:09 UTC';
+const BUILD_STAMP = '2026-07-24 19:18 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
