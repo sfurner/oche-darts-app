@@ -496,6 +496,9 @@ function pickPlayerEmoji(){
   return pool[Math.floor(Math.random()*pool.length)];
 }
 
+// Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
+// at a glance whether what's live actually matches the latest build, without checking file sizes.
+const BUILD_STAMP = '2026-07-24 06:36 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -3694,6 +3697,7 @@ function renderSidenav(){
       <div class="sidenav-item ${['themeSettings','dartSettings','playerSettings','gameplaySettings'].includes(state.screen)?'active':''}" onclick="openContextualSettings()">
         <span class="navicon">&#9881;</span>Settings
       </div>
+      <div style="font-size:8px; color:var(--cream-dim); opacity:0.45; text-align:center; padding-top:8px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">Build ${BUILD_STAMP}</div>
     </div>`;
 }
 function bottomNav(){
