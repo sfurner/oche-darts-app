@@ -507,7 +507,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-24 18:51 UTC';
+const BUILD_STAMP = '2026-07-24 19:09 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -3323,6 +3323,9 @@ function callShotResolveAttempt(s, success){
       s.stage = 'follow';
       s.currentIdx = s.attemptOrder[0];
     } else {
+      const caller = s.participants[s.callerIdx];
+      caller.letters++;
+      if(caller.letters >= s.word.length){ caller.eliminated = true; }
       callShotNextRound(s);
     }
   } else if(s.stage==='follow'){
@@ -4265,11 +4268,11 @@ function renderGameOptions(){
     body = `
     <div>
       <span class="field-label">Challenge Style</span>
-      <div class="chip-wrap">${chip('Called Single Target','callShotMode','single')}${chip('Called Multi Target','callShotMode','multi')}${chip('Natural Call','callShotMode','natural')}</div>
+      <div class="chip-wrap">${chip('Single Call','callShotMode','single')}${chip('Multi Call','callShotMode','multi')}${chip('Follow the Leader','callShotMode','natural')}</div>
       <div class="option-legend">
-        <div class="leg-item ${o.callShotMode==='single'?'active-leg':''}"><b>Called Single Target</b> — the caller picks one exact spot on the board before throwing, then has their tries to hit it.</div>
-        <div class="leg-item ${o.callShotMode==='multi'?'active-leg':''}"><b>Called Multi Target</b> — the caller picks 2 or 3 spots before throwing and must hit all of them this turn. Tougher, for stronger players.</div>
-        <div class="leg-item ${o.callShotMode==='natural'?'active-leg':''}"><b>Natural Call</b> — no calling ahead of time. The caller just throws, and wherever it lands becomes the shot everyone else has to match. The easiest, most beginner-friendly version.</div>
+        <div class="leg-item ${o.callShotMode==='single'?'active-leg':''}"><b>Single Call</b> — the caller picks one exact spot on the board before throwing, then has their tries to hit it.</div>
+        <div class="leg-item ${o.callShotMode==='multi'?'active-leg':''}"><b>Multi Call</b> — the caller picks 2 or 3 spots before throwing and must hit all of them this turn. Tougher, for stronger players.</div>
+        <div class="leg-item ${o.callShotMode==='natural'?'active-leg':''}"><b>Follow the Leader</b> — no calling ahead of time. The caller just throws, and wherever it lands becomes the shot everyone else has to match. The easiest, most beginner-friendly version.</div>
       </div>
     </div>
     ${o.callShotMode==='multi' ? `
@@ -4286,14 +4289,14 @@ function renderGameOptions(){
     <div>
       <span class="field-label">${o.callShotMode==='natural' ? 'Tries to Match' : 'Tries Per Target'}</span>
       <div class="chip-wrap">${[1,2,3].map(v=>numChip(v+' dart'+(v!==1?'s':''),'callShotMaxDarts',v)).join('')}</div>
-      <p class="info-note">${o.callShotMode==='natural' ? "Everyone else gets this many darts to match wherever the caller's dart landed." : "Everyone gets this many darts per target to hit whatever's been called — the caller included."}</p>
+      <p class="info-note">${o.callShotMode==='natural' ? "Everyone else gets this many darts to match wherever the caller's dart landed." : "Everyone gets this many darts per target to hit whatever's been called — the caller included. Whether it's one target or several, missing means one letter, not one per target."}</p>
     </div>
     <div>
       <span class="field-label">Word to Spell</span>
       <input class="input" id="callShotWordInput" placeholder="HORSE" value="${o.callShotWord||''}" oninput="state.gameOptions.callShotWord=this.value.toUpperCase()">
       <p class="info-note">Spell this whole word in missed letters and you're eliminated. Leave it blank for the classic HORSE.</p>
     </div>
-    <p class="info-note">One player calls a target (or, in Natural Call, just throws) and gets their tries to hit it. Miss it completely, and it passes to the next player with no penalty. Hit it, and everyone else takes a turn trying to match it; anyone who fails picks up a letter. Then the call passes to the next player and it starts again — last one standing wins.</p>`;
+    <p class="info-note">One player calls a target (or, in Follow the Leader, just throws) and gets their tries to hit it. Miss it completely, and the caller takes a letter, just like anyone else would. Hit it, and everyone else takes a turn trying to match it; anyone who fails picks up a letter (only one letter per turn, even in Multi Call with several targets to hit). Then the call passes to the next player and it starts again — last one standing wins.</p>`;
   }
   return `<div class="topbar">
     <div class="iconbtn" onclick="state.screen='playerSetup'; render();">&#8592;</div>
