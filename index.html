@@ -508,7 +508,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-24 19:18 UTC';
+const BUILD_STAMP = '2026-07-24 19:42 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -614,7 +614,7 @@ let state = {
     guidanceLevel: 'beginner', // none|basic|beginner|standard
     autoEndTurn: true,
     boardConfirm: false,
-    theme: 'emerald',
+    theme: 'cobalt',
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -2077,6 +2077,8 @@ function handleBoardClick(evt){
 function commitBoardThrow(c){
   state.pendingBoard = null;
   if(state.session && c.point) state.session.lastHitPoint = c.point;
+  if(state.practiceSession && c.point) state.practiceSession.lastHitPoint = c.point;
+  if(state.checkoutPractice && c.point) state.checkoutPractice.lastHitPoint = c.point;
   let num, mult;
   if(c.seg==='bullinner'){ num='B'; mult='bull'; }
   else if(c.seg==='bullouter'){ num='B'; mult='single'; }
@@ -5090,7 +5092,7 @@ function renderPracticeGrid(ps){
 function renderPracticeBoard(ps){
   const target = practiceCurrentTarget(ps);
   const highlight = target!==undefined ? {num:target, seg: ps.def.requiredMultiplier || 'any'} : null;
-  return `<div class="board-wrap"><button class="board-miss-btn" onclick="practiceSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight)}</div>
+  return `<div class="board-wrap"><button class="board-miss-btn" onclick="practiceSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || ps.lastHitPoint)}</div>
   ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
@@ -5163,7 +5165,7 @@ function renderCheckoutPracticeBoard(cp){
   const dartsLeft = 3 - cp.dartsThisAttempt.length;
   const route = findCheckout(cp.currentScore, dartsLeft, 'double');
   const highlight = route && route.length ? parseThrowLabel(route[0]) : null;
-  return `<div class="board-wrap"><button class="board-miss-btn" onclick="checkoutPracticeSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight)}</div>
+  return `<div class="board-wrap"><button class="board-miss-btn" onclick="checkoutPracticeSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || cp.lastHitPoint)}</div>
   ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
