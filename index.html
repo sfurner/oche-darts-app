@@ -86,7 +86,7 @@ body{
 /* Phone: full-bleed, no floating card */
 @media (max-width:640px){
   .app-shell{ padding:0; align-items:stretch;}
-  .device{ width:auto; max-width:100%; min-height:100vh; border-radius:0; border:none; box-shadow:none; margin:0;}
+  .device{ width:auto; max-width:100%; height:100vh; max-height:100vh; min-height:0; border-radius:0; border:none; box-shadow:none; margin:0;}
   .sidenav{ min-height:100vh; border-radius:0; }
 }
 /* Tablet: roomier card */
@@ -508,7 +508,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-24 20:18 UTC';
+const BUILD_STAMP = '2026-07-24 20:49 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2473,6 +2473,7 @@ function removeDartFromCurrentTurn(index){
     if(d.segType==='miss' || d.num===null) recordMiss();
     else dispatchThrow(d.num, d.segType);
   });
+  if(s.turnHitPoints) s.turnHitPoints = s.turnHitPoints.slice(0, s.currentTurnDarts.length);
   render();
 }
 /* ========================= DART FIELD SCHEMA (pulldown taxonomy) ========================= */
@@ -2984,6 +2985,7 @@ function doUndo(){
   if(s.kind==='x01') x01Undo(s);
   else if(s.kind==='cricket') cricketUndo(s);
   else if(ENGINE_HOOKS[s.kind]) ENGINE_HOOKS[s.kind].undo(s);
+  if(s.turnHitPoints) s.turnHitPoints = s.turnHitPoints.slice(0, s.currentTurnDarts.length);
   state.screen = 'active';
   render();
 }
@@ -2998,6 +3000,7 @@ function doClearTurn(){
   } else if(ENGINE_HOOKS[s.kind]){
     while(s.currentTurnDarts.length>0){ ENGINE_HOOKS[s.kind].undo(s); }
   }
+  s.turnHitPoints = [];
   render();
 }
 function doEndTurnManually(){
