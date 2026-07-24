@@ -614,6 +614,47 @@ let state = {
 let uid = 1;
 function nextId(){ return 'id' + (uid++); }
 
+/* ========================= PERSISTENCE =========================
+   Everything the app should remember between reloads AND between deployed
+   versions lives here. Today this reads/writes localStorage (per-device,
+   per-browser). If this ever needs to sync across devices, only the guts
+   of persistState()/hydrateState() need to change to call a real backend
+   (e.g. Supabase) — nothing else in the app touches storage directly. */
+const STORAGE_KEY = 'oche-darts-data-v1';
+const PERSISTENT_STATE_KEYS = [
+  'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance',
+  'savedGames', 'customPractices', 'customGames', 'history',
+  'sectionSessions', 'precisionSessions', 'settings', 'playerSettings',
+];
+function persistState(){
+  try{
+    const payload = { uid };
+    PERSISTENT_STATE_KEYS.forEach(k=>{ payload[k] = state[k]; });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch(e){
+    console.warn('Oche: could not save data locally', e);
+  }
+}
+function hydrateState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const payload = JSON.parse(raw);
+    PERSISTENT_STATE_KEYS.forEach(k=>{
+      if(payload[k]!==undefined){
+        if(k==='settings' || k==='playerSettings'){
+          state[k] = Object.assign({}, state[k], payload[k]);
+        } else {
+          state[k] = payload[k];
+        }
+      }
+    });
+    if(typeof payload.uid==='number' && payload.uid>uid) uid = payload.uid;
+  } catch(e){
+    console.warn('Oche: could not load saved data', e);
+  }
+}
+
 /* ========================= HELPERS ========================= */
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
 function playerColor(p, idx){ return p.color || AVATAR_COLORS[idx % AVATAR_COLORS.length]; }
@@ -1608,6 +1649,7 @@ function sectionScoreForThrow(targetId, landedId){
 }
 function sectionZoneLabel(id){
   if(id==='totalmiss') return 'Total Miss';
+  if(id && id.endsWith('-single')) return 'Single '+id.slice(0, id.lastIndexOf('-'));
   const z = sectionZoneById(id);
   if(z.type==='bull') return SECTION_BAND_LABELS[z.band];
   return SECTION_BAND_LABELS[z.band]+' '+z.number;
@@ -2842,7 +2884,27 @@ function startCallShotSession(playerIds, opts){
     calledTargets:[], hitTargets:[], targetIndex:0, dartsUsedThisAttempt:0,
     attemptOrder:[], attemptPos:0, round:1,
     currentTurnDarts:[], turnHistory:[], complete:false, winnerId:null,
+    history:[],
   };
+}
+// Outside of Practice, an "inner single" and "outer single" are the same shot — both just Single N.
+// This collapses the two distance-based single zones into one canonical id so calling/matching treats them as equal.
+function callShotCanonicalZone(zoneId){
+  if(!zoneId || zoneId==='totalmiss' || zoneId==='bull-outer' || zoneId==='bull-inner') return zoneId;
+  if(zoneId.endsWith('-inner') || zoneId.endsWith('-outer')){
+    return zoneId.slice(0, zoneId.lastIndexOf('-'))+'-single';
+  }
+  return zoneId;
+}
+function callShotSnapshot(s){
+  const clone = JSON.parse(JSON.stringify(s));
+  delete clone.history;
+  return clone;
+}
+function callShotPushHistory(s){
+  if(!s.history) s.history = [];
+  s.history.push(callShotSnapshot(s));
+  if(s.history.length>100) s.history.shift();
 }
 function callShotBoardClickForCall(evt){
   const t = evt.target;
@@ -2850,12 +2912,13 @@ function callShotBoardClickForCall(evt){
   const zoneId = t.getAttribute('data-zone');
   const zone = sectionZoneById(zoneId);
   if(!zone || !zone.isTarget) return;
-  callShotSelectTarget(zoneId);
+  callShotSelectTarget(callShotCanonicalZone(zoneId));
 }
 function callShotSelectTarget(zoneId){
   const s = state.session;
   if(!s || s.kind!=='callshot') return;
   if(s.calledTargets.includes(zoneId)) return;
+  callShotPushHistory(s);
   s.calledTargets.push(zoneId);
   if(s.calledTargets.length >= s.numTargets){
     s.stage = 'callattempt';
@@ -2873,26 +2936,28 @@ function callShotBoardClickForAttempt(evt){
 function callShotRegisterDart(hitZoneId){
   const s = state.session;
   if(!s || s.kind!=='callshot') return;
+  callShotPushHistory(s);
   // Natural Call mode: the caller's single establishing dart defines the target on the spot.
   if(s.mode==='natural' && s.stage==='callattempt' && s.calledTargets.length===0){
     const zone = hitZoneId ? sectionZoneById(hitZoneId) : null;
     if(zone && zone.isTarget){
-      s.calledTargets = [hitZoneId];
+      s.calledTargets = [callShotCanonicalZone(hitZoneId)];
       callShotResolveAttempt(s, true);
     } else {
       callShotResolveAttempt(s, false);
     }
     return;
   }
+  const canonicalHit = callShotCanonicalZone(hitZoneId);
   const sequential = s.orderMatters || s.calledTargets.length<=1;
   const hit = sequential
-    ? (hitZoneId === s.calledTargets[s.targetIndex])
-    : s.calledTargets.some((tid,i)=> tid===hitZoneId && !s.hitTargets.includes(i));
+    ? (canonicalHit === s.calledTargets[s.targetIndex])
+    : s.calledTargets.some((tid,i)=> tid===canonicalHit && !s.hitTargets.includes(i));
   s.dartsUsedThisAttempt++;
   s.currentTurnDarts.push({label: hit?'Hit':'Miss'});
   if(hit){
     if(sequential){ s.targetIndex++; }
-    else { const idx = s.calledTargets.findIndex((tid,i)=>tid===hitZoneId && !s.hitTargets.includes(i)); s.hitTargets.push(idx); }
+    else { const idx = s.calledTargets.findIndex((tid,i)=>tid===canonicalHit && !s.hitTargets.includes(i)); s.hitTargets.push(idx); }
     const allDone = sequential ? s.targetIndex>=s.calledTargets.length : s.hitTargets.length>=s.calledTargets.length;
     if(allDone){ callShotResolveAttempt(s, true); return; }
     s.dartsUsedThisAttempt = 0;
@@ -2978,8 +3043,12 @@ function callShotCheckWin(s){
 function callShotUndo(){
   const s = state.session;
   if(!s || s.kind!=='callshot') return;
-  s.currentTurnDarts = [];
-  s.dartsUsedThisAttempt = 0;
+  if(!s.history || s.history.length===0) return;
+  const history = s.history;
+  const prev = history.pop();
+  Object.keys(s).forEach(k=>{ if(k!=='history') delete s[k]; });
+  Object.assign(s, prev);
+  s.history = history;
   render();
 }
 function finishCallShotGame(s){
@@ -3448,6 +3517,7 @@ function render(){
   if(state.emojiPickerPlayerId) html += renderEmojiPickerModal(state.emojiPickerPlayerId);
   app.innerHTML = html;
   if(state.screen==='precisionZoom') setupPrecisionZoomDrag();
+  persistState();
 }
 function renderSidenav(){
   const tabs = [
@@ -4176,7 +4246,7 @@ function renderCallShotActiveShell(s){
   return `${body}
   <div class="score-strip">${scoreCards}</div>
   <div class="bottom-controls">
-    <button onclick="callShotUndo()">Restart Attempt</button>
+    <button onclick="callShotUndo()">Undo</button>
     <button class="warn" onclick="openGameMenu()">Menu</button>
   </div>
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
@@ -4690,6 +4760,8 @@ function annulusPath(cx,cy,rIn,rOut){
 function renderSectionBoardSVG(targetZoneId, clickHandler){
   clickHandler = clickHandler || 'handleSectionBoardClick';
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
+  // A merged single target (e.g. "20-single") should light up both the inner and outer single bands for that number.
+  const singleTargetNum = (targetZoneId && targetZoneId.endsWith('-single')) ? targetZoneId.slice(0, targetZoneId.lastIndexOf('-')) : null;
   let wedges = '';
   let labels = '';
   let highlight = '';
@@ -4711,8 +4783,9 @@ function renderSectionBoardSVG(targetZoneId, clickHandler){
       const zoneId = num+'-'+b.band;
       const d = wedgePath(cx,cy,b.rIn,b.rOut,aStart,aEnd);
       wedges += `<path d="${d}" fill="${b.fill}" stroke="var(--ink)" stroke-width="1" class="section-zone" data-zone="${zoneId}" style="cursor:pointer;"/>`;
-      if(zoneId===targetZoneId){
-        highlight = `<path d="${d}" fill="#FFD23F" fill-opacity="0.6" stroke="#FFD23F" stroke-width="5" style="pointer-events:none;">
+      const bandMatchesMergedSingle = singleTargetNum!==null && String(num)===String(singleTargetNum) && (b.band==='inner'||b.band==='outer');
+      if(zoneId===targetZoneId || bandMatchesMergedSingle){
+        highlight += `<path d="${d}" fill="#FFD23F" fill-opacity="0.6" stroke="#FFD23F" stroke-width="5" style="pointer-events:none;">
           <animate attributeName="fill-opacity" values="0.35;0.75;0.35" dur="1s" repeatCount="indefinite"/>
         </path>`;
       }
@@ -5459,6 +5532,7 @@ function renderPlayerDetail(){
 }
 
 /* ========================= INIT ========================= */
+hydrateState();
 initDartFieldOptions();
 render();
 </script>
