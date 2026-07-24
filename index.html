@@ -508,7 +508,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-24 19:42 UTC';
+const BUILD_STAMP = '2026-07-24 20:18 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2046,7 +2046,8 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint){
     if(seg==='any'||seg==='single'){ addHighlight(annulusPath(cx,cy,rBullInner,rBullOuter)); }
     if(seg==='any'||seg==='bull'){ highlightOverlay += `<circle cx="${cx}" cy="${cy}" r="${rBullInner}" fill="#FFD23F" fill-opacity="0.32" stroke="#FFD23F" stroke-width="4" style="pointer-events:none;"><animate attributeName="fill-opacity" values="0.18;0.48;0.18" dur="1.1s" repeatCount="indefinite"/></circle>`; }
   }
-  const hitMarker = hitPoint ? `<circle cx="${hitPoint.x}" cy="${hitPoint.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${hitPoint.x}" cy="${hitPoint.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>` : '';
+  const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
+  const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
     ${wedges}${labels}${highlightOverlay}${hitMarker}
@@ -2076,7 +2077,7 @@ function handleBoardClick(evt){
 }
 function commitBoardThrow(c){
   state.pendingBoard = null;
-  if(state.session && c.point) state.session.lastHitPoint = c.point;
+  state.pendingHitPoint = c.point || null;
   if(state.practiceSession && c.point) state.practiceSession.lastHitPoint = c.point;
   if(state.checkoutPractice && c.point) state.checkoutPractice.lastHitPoint = c.point;
   let num, mult;
@@ -2100,6 +2101,10 @@ function commitBoardThrow(c){
 function dispatchThrow(num, segType){
   const s = state.session;
   if(!s) return;
+  if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
+  const thisPoint = state.pendingHitPoint || null;
+  state.pendingHitPoint = null;
+  if(thisPoint) s.turnHitPoints.push(thisPoint);
   if(s.kind==='x01'){
     let throwObj;
     if(num==='B' && segType==='bull') throwObj = {label:'DB',value:50,type:'bull'};
@@ -2160,6 +2165,10 @@ function dispatchThrow(num, segType){
 }
 function recordMiss(){
   const s = state.session;
+  if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
+  const thisMissPoint = state.pendingHitPoint || null;
+  state.pendingHitPoint = null;
+  if(thisMissPoint) s.turnHitPoints.push(thisMissPoint);
   if(s.kind==='x01'){
     if(s.currentTurnDarts.length===0) s.scoreBeforeTurn = x01Current(s).score;
     s.currentTurnDarts.push({label:'Miss', value:0});
@@ -2283,13 +2292,31 @@ function botChooseX01Target(s){
   if(route && route.length) return parseThrowLabel(route[0]);
   return {num:20, seg:'triple'};
 }
+// Picks a target for any bot-playable game kind except Call Your Shot (which has its own engine
+// below, since its target system is fundamentally different — zones, not num+multiplier).
+function botChooseGenericTarget(s){
+  if(s.kind==='x01') return botChooseX01Target(s);
+  const highlighted = getCurrentGameTargetHighlight(s);
+  if(highlighted) return highlighted;
+  if(s.kind==='killer'){
+    // Already a killer with no single obvious target (getCurrentGameTargetHighlight only
+    // suggests a target before becoming a killer) — go hunt a random living rival.
+    const me = killerCurrent(s);
+    const rivals = s.participants.filter(p=>p!==me && !p.eliminated);
+    if(rivals.length){
+      const victim = rivals[Math.floor(Math.random()*rivals.length)];
+      return {num: victim.number, seg:'single'}; // any multiplier removes a life in this game, so aim for the reliable single band
+    }
+  }
+  return {num:20, seg:'triple'}; // sensible generic fallback (e.g. custom games with no single fixed target)
+}
 function isBotPlayerId(playerId){
   const p = state.players.find(x=>x.id===playerId);
   return !!(p && p.isBot);
 }
 function maybeRunBotTurn(){
   const s = state.session;
-  if(!s || s.kind!=='x01' || s.complete || s.botTurnScheduled) return;
+  if(!s || s.kind==='callshot' || s.complete || s.botTurnScheduled) return;
   const pid = s.participants[s.currentIdx].playerId;
   if(!isBotPlayerId(pid)) return;
   s.botTurnScheduled = true;
@@ -2299,15 +2326,15 @@ function scheduleBotDart(isFirstDart){
   const delay = isFirstDart ? randomDelayMs(...BOT_TIMING.lineUp) : randomDelayMs(...BOT_TIMING.betweenDarts);
   setTimeout(()=>{
     const s = state.session;
-    if(!s || s.kind!=='x01' || s.complete){ if(s) s.botTurnScheduled=false; return; }
+    if(!s || s.kind==='callshot' || s.complete){ if(s) s.botTurnScheduled=false; return; }
     const pid = s.participants[s.currentIdx].playerId;
     if(!isBotPlayerId(pid)){ s.botTurnScheduled = false; render(); return; }
     const beforeIdx = s.currentIdx;
     const beforeDarts = s.currentTurnDarts.length;
     const player = state.players.find(x=>x.id===pid);
-    const target = botChooseX01Target(s);
+    const target = botChooseGenericTarget(s);
     const result = simulateBotDart(target.num, target.seg, player ? player.botRating : 5);
-    s.lastHitPoint = {x: result.x, y: result.y};
+    state.pendingHitPoint = {x: result.x, y: result.y};
     resolveBotDartResult(result);
     const s2 = state.session;
     if(!s2 || s2.complete){ if(s2) s2.botTurnScheduled=false; return; }
@@ -2415,7 +2442,7 @@ function scheduleCallShotBotAction(isFirstAction){
       targetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
     }
     const throwResult = simulateCallShotDart(targetId, rating);
-    s.lastHitPoint = {x: throwResult.x, y: throwResult.y};
+    state.pendingHitPoint = {x: throwResult.x, y: throwResult.y};
     callShotRegisterDart(throwResult.zoneId);
 
     const s2 = state.session;
@@ -3261,13 +3288,17 @@ function callShotBoardClickForAttempt(evt){
   const t = evt.target;
   const hitZoneId = (t.classList && t.classList.contains('section-zone')) ? t.getAttribute('data-zone') : null;
   const point = svgPointFromEvent(evt);
-  if(state.session && point) state.session.lastHitPoint = point;
+  state.pendingHitPoint = point || null;
   callShotRegisterDart(hitZoneId);
 }
 function callShotRegisterDart(hitZoneId){
   const s = state.session;
   if(!s || s.kind!=='callshot') return;
   callShotPushHistory(s);
+  if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
+  const thisPoint = state.pendingHitPoint || null;
+  state.pendingHitPoint = null;
+  if(thisPoint) s.turnHitPoints.push(thisPoint);
   // Natural Call mode: the caller's single establishing dart defines the target on the spot.
   if(s.mode==='natural' && s.stage==='callattempt' && s.calledTargets.length===0){
     const zone = hitZoneId ? sectionZoneById(hitZoneId) : null;
@@ -4541,7 +4572,10 @@ function renderActiveShell(){
     ${objective}
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}
-  ${renderScoreStrip(s)}
+  <div style="display:flex; align-items:center; gap:14px; padding:0 4px;">
+    ${renderScoreStrip(s)}
+    <div style="flex:1; font-size:19px; font-weight:600; color:var(--cream); min-width:140px;">${renderTurnHint(s)}</div>
+  </div>
   ${renderTurnArea(s)}
   ${renderBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
@@ -4569,7 +4603,7 @@ function renderCallShotActiveShell(s){
       <div class="objective-banner"><div class="small">Sit back — the bot's got this turn.</div></div>
       ${targetChipRow()}
     </div>
-    <div class="board-wrap" style="pointer-events:none; opacity:0.85;">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))), undefined, s.lastHitPoint)}</div>
+    <div class="board-wrap" style="pointer-events:none; opacity:0.85;">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))), undefined, s.turnHitPoints)}</div>
     <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is acting — no input needed</div>`;
   } else if(s.stage==='callselect'){
     const remaining = s.numTargets - s.calledTargets.length;
@@ -4593,7 +4627,7 @@ function renderCallShotActiveShell(s){
       <h2>${callerName} throws — no calling ahead</h2>
       <div class="objective-banner"><div class="small">${callerName}, just throw one dart — no calling ahead of time. Wherever it lands becomes this round's shot, and everyone else needs to match that exact spot or take a letter. You don't need to hit it again yourself.</div></div>
     </div>
-    <div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.lastHitPoint)}</div>
+    <div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   } else {
     const isCaller = s.stage==='callattempt';
@@ -4607,7 +4641,7 @@ function renderCallShotActiveShell(s){
       </div>
       ${targetChipRow()}
     </div>
-    <div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.lastHitPoint)}</div>
+    <div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   }
   const scoreCards = s.participants.map((p,i)=>{
@@ -4619,7 +4653,10 @@ function renderCallShotActiveShell(s){
     </div>`;
   }).join('');
   return `${body}${FOOTER_MARKER}
-  <div class="score-strip">${scoreCards}</div>
+  <div style="display:flex; align-items:center; gap:14px; padding:0 4px;">
+    <div class="score-strip">${scoreCards}</div>
+    <div style="flex:1; font-size:19px; font-weight:600; color:var(--cream); min-width:140px;">${renderTurnHint(s)}</div>
+  </div>
   <div class="bottom-controls">
     <button onclick="callShotUndo()">Undo</button>
     <button class="warn" onclick="openGameMenu()">Menu</button>
@@ -4654,6 +4691,38 @@ function renderCricketBoard(s){
       </tr>
     </tbody>
   </table></div>`;
+}
+function turnHintTargetLabel(t){
+  if(!t) return null;
+  if(t.num==='B') return t.seg==='bull' ? 'the Bullseye' : t.seg==='any' ? 'the Bull' : 'Outer Bull';
+  const segWord = t.seg==='triple' ? 'Triple ' : t.seg==='double' ? 'Double ' : t.seg==='any' ? '' : 'Single ';
+  return segWord + t.num;
+}
+function renderTurnHint(s){
+  const actor = s.participants[s.currentIdx];
+  const name = playerName(actor.playerId);
+  if(s.kind==='callshot'){
+    if(s.stage==='callselect') return `${name} is calling a shot&hellip;`;
+    const isCaller = s.stage==='callattempt';
+    const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
+    const darts = s.currentTurnDarts;
+    if(darts.length===0){
+      if(s.mode==='natural' && s.calledTargets.length===0) return `${name} is throwing to set the shot&hellip;`;
+      const label = currentTargetId ? sectionZoneLabel(currentTargetId) : 'the target';
+      return isCaller ? `${name} is throwing for ${label}.` : `${name} is trying to match ${label}.`;
+    }
+    const last = darts[darts.length-1];
+    return (!last || last.label==='Miss') ? `${name} missed!` : `${name} hit ${last.label}!`;
+  }
+  const darts = s.currentTurnDarts;
+  if(darts.length===0){
+    const t = s.kind==='x01' ? botChooseX01Target(s) : getCurrentGameTargetHighlight(s);
+    const label = turnHintTargetLabel(t);
+    return label ? `${name} is throwing for ${label}.` : `${name} is up.`;
+  }
+  const last = darts[darts.length-1];
+  if(!last || last.label==='Miss' || last.label==='No Score') return `${name} missed.`;
+  return `${name} hit ${last.label}!`;
 }
 function renderScoreStrip(s){
   if(s.kind==='x01'){
@@ -4805,7 +4874,7 @@ function renderEntryArea(s){
   if(state.settings.entryMethod==='grid'){
     entryHtml = renderNumberGrid(s);
   } else {
-    entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) || s.lastHitPoint)}</div>
+    entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints)}</div>
     ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
     ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
   }
@@ -5240,7 +5309,8 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint){
       <animate attributeName="fill-opacity" values="0.45;0.85;0.45" dur="1s" repeatCount="indefinite"/>
     </circle>`;
   }
-  const hitMarker = hitPoint ? `<circle cx="${hitPoint.x}" cy="${hitPoint.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${hitPoint.x}" cy="${hitPoint.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>` : '';
+  const hitPointsArr2 = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
+  const hitMarker = hitPointsArr2.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
     <circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+12}" fill="var(--ink)"/>
