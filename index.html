@@ -30,12 +30,14 @@ body{
   font-family:'Inter',sans-serif;
   color:var(--cream);
   min-height:100vh;
+  min-height:100dvh;
   margin:0;
   padding:0;
 }
 .app-shell{
   display:flex;
   min-height:100vh;
+  min-height:100dvh;
   align-items:stretch;
   justify-content:center;
 }
@@ -86,25 +88,25 @@ body{
 /* Phone: full-bleed, no floating card */
 @media (max-width:640px){
   .app-shell{ padding:0; align-items:stretch;}
-  .device{ width:auto; max-width:100%; height:100vh; max-height:100vh; min-height:0; border-radius:0; border:none; box-shadow:none; margin:0;}
-  .sidenav{ min-height:100vh; border-radius:0; }
+  .device{ width:auto; max-width:100%; height:100vh; height:100dvh; max-height:100vh; max-height:100dvh; min-height:0; border-radius:0; border:none; box-shadow:none; margin:0;}
+  .sidenav{ min-height:100vh; min-height:100dvh; border-radius:0; }
 }
 /* Tablet: roomier card */
 @media (min-width:641px) and (max-width:1023px){
   .app-shell{ padding:32px 16px;}
-  .device{ width:520px; height:calc(100vh - 64px); max-height:calc(100vh - 64px); min-height:0;}
+  .device{ width:520px; height:calc(100vh - 64px); height:calc(100dvh - 64px); max-height:calc(100vh - 64px); max-height:calc(100dvh - 64px); min-height:0;}
 }
 /* Laptop / desktop: persistent side navigation, genuinely wide usage of screen space */
 @media (min-width:1024px){
   .app-shell{ padding:32px; gap:0; }
-  .device{ width:min(1200px, calc(100vw - 280px)); height:calc(100vh - 64px); max-height:calc(100vh - 64px); min-height:0; border-radius:0 24px 24px 0; margin:0; }
+  .device{ width:min(1200px, calc(100vw - 280px)); height:calc(100vh - 64px); height:calc(100dvh - 64px); max-height:calc(100vh - 64px); max-height:calc(100dvh - 64px); min-height:0; border-radius:0 24px 24px 0; margin:0; }
   .content{ max-width:900px; margin-left:auto; margin-right:auto; }
   .content.content-grid{
     max-width:none; display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr));
     gap:14px; align-items:start;
   }
   .app-shell.fullscreen-mode{ padding:0; }
-  .app-shell.fullscreen-mode .device{ width:100vw; height:100vh; max-height:100vh; min-height:0; border-radius:0; }
+  .app-shell.fullscreen-mode .device{ width:100vw; height:100vh; height:100dvh; max-height:100vh; max-height:100dvh; min-height:0; border-radius:0; }
   .app-shell.fullscreen-mode .content{ max-width:1100px; }
 }
 .fullscreen-toggle{
@@ -508,7 +510,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-24 20:49 UTC';
+const BUILD_STAMP = '2026-07-24 20:55 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -588,6 +590,7 @@ let state = {
   addingBot: false,
   newBotRating: 5,
   dartSettingsAddingFor: null,
+  confirmDeleteCustomGameId: null,
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
   settingsReturnTo: null,
@@ -4041,11 +4044,26 @@ function renderCustomTab(){
     </div>
     ${state.customGames.length? `<div class="section-label" style="padding-left:0;">Your games</div>
       ${state.customGames.map(g=>`<div class="card"><h3 style="font-size:16px;">${g.name}</h3><p class="desc">${g.desc}</p>
+      ${state.confirmDeleteCustomGameId===g.id ? `
+        <p style="color:var(--red); font-size:13px;">Delete "${g.name}"? This can't be undone.</p>
+        <div class="btn-row">
+          <button class="btn btn-danger" onclick="confirmDeleteCustomGame('${g.id}')">Delete</button>
+          <button class="btn btn-secondary" onclick="state.confirmDeleteCustomGameId=null; render();">Cancel</button>
+        </div>
+      ` : `
       <div class="btn-row">
         <button class="btn btn-primary" onclick="startCustomGameFlow('${g.id}')">Play</button>
         <button class="btn btn-secondary" onclick="openCustomGameBuilder('${g.id}')">Edit</button>
-      </div></div>`).join('')}` : ''}
+      </div>
+      <button class="btn btn-danger btn-full" style="margin-top:6px;" onclick="state.confirmDeleteCustomGameId='${g.id}'; render();">Delete</button>
+      `}
+      </div>`).join('')}` : ''}
   </div>`;
+}
+function confirmDeleteCustomGame(id){
+  state.customGames = state.customGames.filter(g=>g.id!==id);
+  state.confirmDeleteCustomGameId = null;
+  render();
 }
 function isHistoryEntryVisible(h){
   if(!h.participantIds) return true; // legacy entries without tracking, always show
