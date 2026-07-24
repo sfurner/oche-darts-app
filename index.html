@@ -498,7 +498,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-24 07:04 UTC';
+const BUILD_STAMP = '2026-07-24 16:50 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5141,6 +5141,10 @@ function renderSectionBoardSVG(targetZoneId, clickHandler){
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
     const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
+    const even = i%2===0;
+    const singleFill = even? '#E8E1D0' : '#232D28';
+    const dtFill = even? '#4A8A66' : '#A84545';
+    const overFill = '#2A2A26';
     const bandDefs = [
       {band:'inner', rIn:R_BULL_OUTER, rOut:R_TRIPLE_IN, fill:singleFill},
       {band:'triple', rIn:R_TRIPLE_IN, rOut:R_TRIPLE_OUT, fill:dtFill},
