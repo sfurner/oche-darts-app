@@ -498,7 +498,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-24 06:36 UTC';
+const BUILD_STAMP = '2026-07-24 07:04 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1531,6 +1531,10 @@ function checkoutPracticeApplyDart(cp, num, mult){
 
 /* ========================= DARTBOARD SVG ========================= */
 const BOARD_ORDER = [1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5,20];
+// BOARD_ORDER[0] (currently "1") is drawn one wedge past the top by default. This adds 18° (one
+// wedge width) to every drawing/detection calculation so the sequence keeps its correct pairing
+// with the alternating colors but visually starts with 20 at 12 o'clock, matching a real board.
+const WEDGE_ROTATION = 18;
 const BOARD_CX=235, BOARD_CY=235, BOARD_CANVAS=470;
 const R_BULL_INNER=11, R_BULL_OUTER=24, R_TRIPLE_IN=106, R_TRIPLE_OUT=122, R_DOUBLE_IN=178;
 const R_DOUBLE_OUT = R_DOUBLE_IN + (R_TRIPLE_OUT-R_TRIPLE_IN); // double ring width == triple ring width
@@ -1566,7 +1570,7 @@ function boardPointToPolar(px, py){
   return { radius, angleDeg };
 }
 function numberForAngle(angleDeg){
-  let a = angleDeg + 9; // shift so wedge 0 spans 0-18
+  let a = angleDeg + 9 - WEDGE_ROTATION; // shift so wedge 0 spans 0-18, then undo the visual rotation
   a = ((a % 360) + 360) % 360;
   const idx = Math.floor(a/18) % 20;
   return BOARD_ORDER[idx];
@@ -1613,7 +1617,7 @@ function buildSectionZones(){
   const zones = [];
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
-    const aMid = (-9 + i*18) + 9;
+    const aMid = (-9 + i*18) + 9 + WEDGE_ROTATION;
     const bands = [
       {band:'inner', rIn:R_BULL_OUTER, rOut:R_TRIPLE_IN, isTarget:true},
       {band:'triple', rIn:R_TRIPLE_IN, rOut:R_TRIPLE_OUT, isTarget:true},
@@ -1852,11 +1856,7 @@ function renderZoomBoardWedges(){
   let wedges = '';
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
-    const aStart = -9+i*18, aEnd = aStart+18;
-    const even = i%2===0;
-    const singleFill = even? '#E8E1D0' : '#232D28';
-    const dtFill = even? '#4A8A66' : '#A84545';
-    wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_TRIPLE_OUT,R_DOUBLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
+    const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
     wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
     wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
     wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
@@ -1991,33 +1991,46 @@ function sectionUndoThrow(ps){
 function sectionOverallAvg(ps){
   return ps.allThrows.length ? Math.round(ps.allThrows.reduce((a,b)=>a+b,0)/ps.allThrows.length) : 0;
 }
-function renderDartboardSVG(pending){
+function renderDartboardSVG(pending, targetHighlight){
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
   const rDoubleOut=R_DOUBLE_OUT, rDoubleIn=R_DOUBLE_IN, rTripleOut=R_TRIPLE_OUT, rTripleIn=R_TRIPLE_IN, rBullOuter=R_BULL_OUTER, rBullInner=R_BULL_INNER;
   const rBezel = R_BEZEL, rLabel = R_NUMBER_LABEL;
   let wedges = '';
   let labels = '';
+  let highlightOverlay = '';
+  const addHighlight = (d)=>{
+    highlightOverlay += `<path d="${d}" fill="#FFD23F" fill-opacity="0.32" stroke="#FFD23F" stroke-width="4" style="pointer-events:none;">
+      <animate attributeName="fill-opacity" values="0.18;0.48;0.18" dur="1.1s" repeatCount="indefinite"/>
+    </path>`;
+  };
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
-    const aStart = -9 + i*18, aEnd = aStart+18;
-    const even = i%2===0;
-    const singleFill = even? '#E8E1D0' : '#232D28';
-    const dtFill = even? '#4A8A66' : '#A84545';
-    const isSel = (seg)=> pending && String(pending.num)===String(num) && pending.seg===seg;
+    const aStart = -9 + i*18 + WEDGE_ROTATION, aEnd = aStart+18;
     wedges += `<path d="${wedgePath(cx,cy,rTripleOut,rDoubleIn,aStart,aEnd)}" fill="${singleFill}" stroke="var(--ink)" stroke-width="1" class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;${isSel('single')?'filter:brightness(1.4);':''}"/>`;
     wedges += `<path d="${wedgePath(cx,cy,rDoubleIn,rDoubleOut,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="1" class="board-seg" data-num="${num}" data-seg="double" style="cursor:pointer;${isSel('double')?'filter:brightness(1.5);':''}"/>`;
     wedges += `<path d="${wedgePath(cx,cy,rBullOuter,rTripleIn,aStart,aEnd)}" fill="${singleFill}" stroke="var(--ink)" stroke-width="1" class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;${isSel('single')?'filter:brightness(1.4);':''}"/>`;
     wedges += `<path d="${wedgePath(cx,cy,rTripleIn,rTripleOut,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="1" class="board-seg" data-num="${num}" data-seg="triple" style="cursor:pointer;${isSel('triple')?'filter:brightness(1.5);':''}"/>`;
     const lp = polar(cx,cy,rLabel,(aStart+aEnd)/2);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
+    if(targetHighlight && targetHighlight.num!=='B' && String(targetHighlight.num)===String(num)){
+      const seg = targetHighlight.seg;
+      if(seg==='any'||seg==='single'){ addHighlight(wedgePath(cx,cy,rTripleOut,rDoubleIn,aStart,aEnd)); addHighlight(wedgePath(cx,cy,rBullOuter,rTripleIn,aStart,aEnd)); }
+      if(seg==='any'||seg==='double'){ addHighlight(wedgePath(cx,cy,rDoubleIn,rDoubleOut,aStart,aEnd)); }
+      if(seg==='any'||seg==='triple'){ addHighlight(wedgePath(cx,cy,rTripleIn,rTripleOut,aStart,aEnd)); }
+    }
   }
   const bullOuterSel = pending && pending.seg==='bullouter';
   const bullInnerSel = pending && pending.seg==='bullinner';
   wedges += `<circle cx="${cx}" cy="${cy}" r="${rBullOuter}" fill="#4A8A66" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;${bullOuterSel?'filter:brightness(1.4);':''}"/>`;
   wedges += `<circle cx="${cx}" cy="${cy}" r="${rBullInner}" fill="#A84545" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;${bullInnerSel?'filter:brightness(1.4);':''}"/>`;
+  if(targetHighlight && targetHighlight.num==='B'){
+    const seg = targetHighlight.seg;
+    if(seg==='any'||seg==='single'){ addHighlight(annulusPath(cx,cy,rBullInner,rBullOuter)); }
+    if(seg==='any'||seg==='bull'){ highlightOverlay += `<circle cx="${cx}" cy="${cy}" r="${rBullInner}" fill="#FFD23F" fill-opacity="0.32" stroke="#FFD23F" stroke-width="4" style="pointer-events:none;"><animate attributeName="fill-opacity" values="0.18;0.48;0.18" dur="1.1s" repeatCount="indefinite"/></circle>`; }
+  }
   return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
-    ${wedges}${labels}
+    ${wedges}${labels}${highlightOverlay}
   </svg>`;
 }
 function handleBoardClick(evt){
@@ -2181,7 +2194,7 @@ function boardPointForTarget(num, segType){
     return {x:BOARD_CX, y:BOARD_CY - r};
   }
   const idx = BOARD_ORDER.indexOf(num);
-  const angle = idx*18;
+  const angle = idx*18 + WEDGE_ROTATION;
   let r;
   if(segType==='triple') r = (R_TRIPLE_IN+R_TRIPLE_OUT)/2;
   else if(segType==='double') r = (R_DOUBLE_IN+R_DOUBLE_OUT)/2;
@@ -2259,6 +2272,111 @@ function scheduleBotDart(){
     }
   }, 800);
 }
+
+/* ========================= BOT OPPONENT ENGINE (CALL YOUR SHOT) =========================
+   Different target system than X01 (zone ids like "20-triple" or "bull-inner" instead of
+   num+multiplier), so this gets its own aim/landing logic, but reuses the same underlying
+   throw-simulation physics (botStddevPx, gaussianRandom) and feeds results through the exact
+   same callShotSelectTarget()/callShotRegisterDart() functions a human's board taps use. */
+function callShotZoneIdForPoint(px, py){
+  const {radius, angleDeg} = boardPointToPolar(px, py);
+  const ring = ringForRadius(radius);
+  if(ring==='bullInner') return 'bull-inner';
+  if(ring==='bullOuter') return 'bull-outer';
+  if(ring==='over' || ring==='totalMiss') return null;
+  const number = numberForAngle(angleDeg);
+  return number+'-'+ring; // ring here is 'inner'|'triple'|'outer'|'double'
+}
+function callShotAimPointForZone(zoneId){
+  if(zoneId.endsWith('-single')){
+    const num = zoneId.slice(0, zoneId.lastIndexOf('-'));
+    const z = sectionZoneById(num+'-outer') || sectionZoneById(num+'-inner');
+    return {x:z.x, y:z.y};
+  }
+  const z = sectionZoneById(zoneId);
+  return {x:z.x, y:z.y};
+}
+function simulateCallShotDart(targetZoneId, rating){
+  const point = callShotAimPointForZone(targetZoneId);
+  const stddev = botStddevPx(rating);
+  const actualX = point.x + gaussianRandom()*stddev;
+  const actualY = point.y + gaussianRandom()*stddev;
+  return callShotZoneIdForPoint(actualX, actualY); // a real zone id, or null for a total miss
+}
+function botPickCallShotCallTargets(s, rating){
+  let pool;
+  if(rating<=3) pool = SECTION_TARGET_ZONES.filter(z=> z.band==='inner'||z.band==='outer'||z.band==='bull-outer');
+  else if(rating<=7) pool = SECTION_TARGET_ZONES.filter(z=> z.band!=='triple' && z.band!=='bull-inner');
+  else pool = SECTION_TARGET_ZONES;
+  if(!pool.length) pool = SECTION_TARGET_ZONES;
+  const chosen = [];
+  let guard = 0;
+  while(chosen.length < s.numTargets && guard < 50){
+    guard++;
+    const z = pool[Math.floor(Math.random()*pool.length)];
+    const canonical = callShotCanonicalZone(z.id);
+    if(!chosen.includes(canonical) && !s.calledTargets.includes(canonical)) chosen.push(canonical);
+  }
+  return chosen;
+}
+function maybeRunCallShotBotTurn(){
+  const s = state.session;
+  if(!s || s.kind!=='callshot' || s.complete || s.botTurnScheduled) return;
+  const pid = s.participants[s.currentIdx].playerId;
+  if(!isBotPlayerId(pid)) return;
+  s.botTurnScheduled = true;
+  scheduleCallShotBotAction();
+}
+function scheduleCallShotBotAction(){
+  setTimeout(()=>{
+    const s = state.session;
+    if(!s || s.kind!=='callshot' || s.complete){ if(s) s.botTurnScheduled=false; return; }
+    const pid = s.participants[s.currentIdx].playerId;
+    if(!isBotPlayerId(pid)){ s.botTurnScheduled=false; render(); return; }
+    const player = state.players.find(x=>x.id===pid);
+    const rating = player ? player.botRating : 5;
+
+    if(s.stage==='callselect'){
+      const targets = botPickCallShotCallTargets(s, rating);
+      let i = 0;
+      const callNext = ()=>{
+        const s2 = state.session;
+        if(!s2 || s2.kind!=='callshot' || s2.complete || s2.stage!=='callselect'){
+          if(s2) s2.botTurnScheduled=false;
+          render(); maybeRunCallShotBotTurn();
+          return;
+        }
+        if(i>=targets.length){ s2.botTurnScheduled=false; render(); maybeRunCallShotBotTurn(); return; }
+        callShotSelectTarget(targets[i]);
+        i++;
+        setTimeout(callNext, 500);
+      };
+      callNext();
+      return;
+    }
+
+    const beforeIdx = s.currentIdx, beforeStage = s.stage, beforeRound = s.round;
+    let targetId;
+    if(s.mode==='natural' && s.calledTargets.length===0){
+      targetId = '20-triple'; // nothing called yet — bot just throws at its go-to spot to establish the shot
+    } else {
+      targetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
+    }
+    const hitZoneId = simulateCallShotDart(targetId, rating);
+    callShotRegisterDart(hitZoneId);
+
+    const s2 = state.session;
+    if(!s2 || s2.complete){ if(s2) s2.botTurnScheduled=false; return; }
+    const stillSameActor = (s2.currentIdx===beforeIdx && s2.stage===beforeStage && s2.round===beforeRound);
+    if(stillSameActor){
+      scheduleCallShotBotAction();
+    } else {
+      s2.botTurnScheduled = false;
+      maybeRunCallShotBotTurn();
+    }
+  }, 800);
+}
+
 function removeDartFromCurrentTurn(index){
   const s = state.session;
   if(!s || index<0 || index>=s.currentTurnDarts.length) return;
@@ -3675,6 +3793,7 @@ function render(){
   if(state.screen==='precisionZoom') setupPrecisionZoomDrag();
   persistState();
   maybeRunBotTurn();
+  maybeRunCallShotBotTurn();
 }
 function renderSidenav(){
   const tabs = [
@@ -4198,6 +4317,15 @@ function renderGameplaySettings(){
   return `${settingsTopbar('Gameplay Settings')}
   <div class="content">
     <div>
+      <span class="field-label">Board Color</span>
+      <div class="theme-row">
+        ${THEMES.map(t=>`<div class="theme-swatch ${s.theme===t.id?'selected':''}" onclick="setSetting('theme','${t.id}')">
+          <div class="circle" style="background:${t.swatch};"></div>
+          <div class="tlabel">${t.name}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div>
       <span class="field-label">Entry Method</span>
       <div class="chip-wrap">${chip('Number Grid','entryMethod','grid')}${chip('Interactive Dartboard','entryMethod','board')}</div>
     </div>
@@ -4359,6 +4487,7 @@ function renderCallShotActiveShell(s){
   const word = s.word;
   const callerName = playerName(s.participants[s.callerIdx].playerId);
   const currentName = playerName(s.participants[s.currentIdx].playerId);
+  const actorIsBot = isBotPlayerId(s.participants[s.currentIdx].playerId);
   const targetChipRow = ()=>{
     if(s.calledTargets.length<=1) return '';
     const sequential = s.orderMatters;
@@ -4369,7 +4498,17 @@ function renderCallShotActiveShell(s){
     }).join('')}</div>`;
   };
   let body = '';
-  if(s.stage==='callselect'){
+  if(actorIsBot){
+    const doingWhat = s.stage==='callselect' ? 'is picking a shot to call' : (s.mode==='natural' && s.calledTargets.length===0) ? 'is throwing to set the shot' : 'is throwing';
+    body = `<div class="active-top">
+      <div class="game-title">Call Your Shot &middot; Round ${s.round}</div>
+      <h2>&#129302; ${currentName} ${doingWhat}&hellip;</h2>
+      <div class="objective-banner"><div class="small">Sit back — the bot's got this turn.</div></div>
+      ${targetChipRow()}
+    </div>
+    <div class="board-wrap" style="pointer-events:none; opacity:0.85;">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))))}</div>
+    <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is acting — no input needed</div>`;
+  } else if(s.stage==='callselect'){
     const remaining = s.numTargets - s.calledTargets.length;
     let instruction;
     if(s.numTargets>1){
@@ -4542,6 +4681,59 @@ function splitBullBtn(recommended){
     </div>
   </div>`;
 }
+function getCurrentGameTargetHighlight(s){
+  if(s.kind==='x01'){
+    if(s.guidance==='none') return null;
+    const p = x01Current(s);
+    const dartsLeft = 3 - s.currentTurnDarts.length;
+    const route = findCheckout(p.score, dartsLeft, s.outRule);
+    if(route && route.length) return parseThrowLabel(route[0]);
+    return {num:20, seg:'triple'};
+  }
+  if(s.kind==='cricket'){
+    const p = cricketCurrent(s);
+    const open = CRICKET_NUMS.filter(n=>!cricketNumClosed(p,n));
+    const next = open[0];
+    if(next===undefined) return null;
+    return next==='B' ? {num:'B', seg:'any'} : {num:next, seg:'any'};
+  }
+  if(s.kind==='atc'){
+    const p = atcCurrent(s);
+    const target = s.sequence[p.idx];
+    if(target===undefined) return null;
+    return target==='B' ? {num:'B', seg:'any'} : {num:target, seg:'any'};
+  }
+  if(s.kind==='shanghai'){
+    if(!s.round || s.round<1 || s.round>20) return null;
+    return {num:s.round, seg:'any'};
+  }
+  if(s.kind==='baseball'){
+    if(!s.round || s.round<1 || s.round>20) return null;
+    return {num:s.round, seg:'any'};
+  }
+  if(s.kind==='halveit'){
+    const target = s.sequence[s.round-1];
+    if(target===undefined) return null;
+    return target==='B' ? {num:'B', seg:'any'} : {num:target, seg:'any'};
+  }
+  if(s.kind==='killer'){
+    const p = killerCurrent(s);
+    if(!p.isKiller) return {num:p.number, seg:'double'};
+    return null; // once a killer, target is a free choice among open rivals — no single spot to highlight
+  }
+  if(s.kind==='custom'){
+    const cfg = s.cfg;
+    if(cfg.winCondition==='allTargets'){
+      const p = customCurrent(s);
+      const remaining = cfg.targets.filter(t=>(p.hits[t]||0) < (cfg.requiredHitsPerTarget||1));
+      if(!remaining.length) return null;
+      const t = remaining[0];
+      return t==='B' ? {num:'B', seg:'any'} : {num:t, seg:'any'};
+    }
+    return null;
+  }
+  return null;
+}
 function renderEntryArea(s){
   if(s.kind==='x01' && isBotPlayerId(x01Current(s).playerId)){
     return `<div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is throwing — no input needed</div>`;
@@ -4550,7 +4742,7 @@ function renderEntryArea(s){
   if(state.settings.entryMethod==='grid'){
     entryHtml = renderNumberGrid(s);
   } else {
-    entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard)}</div>
+    entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s))}</div>
     ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
     ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
   }
@@ -4835,7 +5027,9 @@ function renderPracticeGrid(ps){
   </div>`;
 }
 function renderPracticeBoard(ps){
-  return `<div class="board-wrap"><button class="board-miss-btn" onclick="practiceSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard)}</div>
+  const target = practiceCurrentTarget(ps);
+  const highlight = target!==undefined ? {num:target, seg: ps.def.requiredMultiplier || 'any'} : null;
+  return `<div class="board-wrap"><button class="board-miss-btn" onclick="practiceSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight)}</div>
   ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
@@ -4905,7 +5099,10 @@ function renderCheckoutPracticeGrid(cp){
   </div>`;
 }
 function renderCheckoutPracticeBoard(cp){
-  return `<div class="board-wrap"><button class="board-miss-btn" onclick="checkoutPracticeSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard)}</div>
+  const dartsLeft = 3 - cp.dartsThisAttempt.length;
+  const route = findCheckout(cp.currentScore, dartsLeft, 'double');
+  const highlight = route && route.length ? parseThrowLabel(route[0]) : null;
+  return `<div class="board-wrap"><button class="board-miss-btn" onclick="checkoutPracticeSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight)}</div>
   ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
@@ -4943,11 +5140,7 @@ function renderSectionBoardSVG(targetZoneId, clickHandler){
   let highlight = '';
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
-    const aStart = -9+i*18, aEnd = aStart+18;
-    const even = i%2===0;
-    const singleFill = even? '#E8E1D0' : '#232D28';
-    const dtFill = even? '#4A8A66' : '#A84545';
-    const overFill = '#2A2A26';
+    const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
     const bandDefs = [
       {band:'inner', rIn:R_BULL_OUTER, rOut:R_TRIPLE_IN, fill:singleFill},
       {band:'triple', rIn:R_TRIPLE_IN, rOut:R_TRIPLE_OUT, fill:dtFill},
