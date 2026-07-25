@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Oche — Darts Companion</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --felt-dark:#122019;
@@ -290,6 +290,21 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .mini-dart-chip.editable:hover::after{ opacity:1; }
 .turn-total{margin-left:auto; font-family:'JetBrains Mono',monospace; color:var(--cream-dim); font-size:13px;}
 
+.chalkboard-wrap{ display:flex; flex-direction:column; gap:14px; padding:0 18px 10px 18px; }
+@media (min-width:641px){ .chalkboard-wrap{ flex-direction:row-reverse; align-items:stretch; } }
+.entry-side{ flex:1 1 60%; min-width:0; }
+.chalkboard-panel{
+  flex:none; width:100%; background:#0b0b0b; border-radius:8px; padding:12px 10px; display:flex; flex-direction:column;
+  box-shadow:inset 0 0 24px rgba(0,0,0,0.45);
+}
+@media (min-width:641px){ .chalkboard-panel{ flex:0 0 36%; width:auto; max-width:280px; } }
+.chalkboard-panel .cb-vs{ text-align:center; color:#8f8f8a; font-size:9px; letter-spacing:0.2em; margin-bottom:2px; font-family:'Inter',sans-serif; }
+.chalkboard-panel .cb-title{ text-align:center; color:#f2f2ee; font-size:14px; letter-spacing:0.1em; margin-bottom:8px; font-family:'Kalam',cursive; font-weight:700; }
+.chalkboard-panel .cb-header-row, .chalkboard-panel .cb-row{ display:grid; align-items:center; gap:2px; }
+.chalkboard-panel .cb-name{ text-align:center; color:#fff; font-family:'Kalam',cursive; font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:4px; }
+.chalkboard-panel .cb-rows{ flex:1; display:flex; flex-direction:column; justify-content:space-between; }
+.chalkboard-panel .cb-num{ color:#f2f2ee; font-family:'Kalam',cursive; font-weight:700; font-size:19px; }
+.chalkboard-panel .cb-mark{ display:flex; align-items:center; justify-content:center; }
 .entry-toggle{display:flex; gap:22px; padding:0 18px 14px 18px; justify-content:center;}
 .entry-toggle button{ flex:none; background:none; border:none; padding:0 0 5px 0; font-size:13px; color:var(--cream-dim); cursor:pointer; border-bottom:2px solid transparent; font-family:'Inter',sans-serif; font-weight:500; }
 .entry-toggle button.tab-active{ color:var(--brass); border-bottom-color:var(--brass); font-weight:600; }
@@ -538,7 +553,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 04:45 UTC';
+const BUILD_STAMP = '2026-07-25 05:03 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4670,7 +4685,9 @@ function renderActiveShell(){
     <div class="game-title-center">${gname}</div>
     <div></div>
   </div>
-  ${renderEntryArea(s)}${FOOTER_MARKER}
+  ${s.kind==='cricket'
+    ? `<div class="chalkboard-wrap">${renderChalkboard(s)}<div class="entry-side">${renderEntryArea(s)}</div></div>`
+    : renderEntryArea(s)}${FOOTER_MARKER}
   <div class="instruction-line">${renderTurnHint(s)}</div>
   ${renderPlayerBoxes(s)}
   ${renderBottomControls(s)}
@@ -4728,12 +4745,30 @@ function renderCallShotActiveShell(s){
   </div>
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
-function cricketMarkSVG(n){
+function cricketMarkSVG(n, color){
   if(n<=0) return '<span class="mark-empty">&middot;</span>';
   let inner = `<line x1="5" y1="19" x2="19" y2="5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`;
   if(n>=2) inner += `<line x1="5" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`;
   if(n>=3) inner += `<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.5"/>`;
-  return `<svg viewBox="0 0 24 24" width="26" height="26" style="color:var(--cream);">${inner}</svg>`;
+  return `<svg viewBox="0 0 24 24" width="26" height="26" style="color:${color||'var(--cream)'};">${inner}</svg>`;
+}
+function renderChalkboard(s){
+  const n = s.participants.length;
+  const cols = `20px repeat(${n},1fr)`;
+  return `<div class="chalkboard-panel">
+    <div class="cb-vs">&mdash; VS &mdash;</div>
+    <div class="cb-title">CRICKET</div>
+    <div class="cb-header-row" style="grid-template-columns:${cols};">
+      <div></div>
+      ${s.participants.map(p=>`<div class="cb-name">${playerName(p.playerId)}</div>`).join('')}
+    </div>
+    <div class="cb-rows">
+      ${CRICKET_NUMS.map(num=>`<div class="cb-row" style="grid-template-columns:${cols};">
+        <div class="cb-num">${num==='B'?'B':num}</div>
+        ${s.participants.map(p=>`<div class="cb-mark">${cricketMarkSVG(p.marks[num], '#f2f2ee')}</div>`).join('')}
+      </div>`).join('')}
+    </div>
+  </div>`;
 }
 function renderCricketBoard(s){
   return `<div class="score-strip">${s.participants.map((p,i)=>{
