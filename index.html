@@ -521,7 +521,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 03:36 UTC';
+const BUILD_STAMP = '2026-07-25 03:47 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4703,26 +4703,17 @@ function cricketMarkSVG(n){
   return `<svg viewBox="0 0 24 24" width="26" height="26" style="color:var(--cream);">${inner}</svg>`;
 }
 function renderCricketBoard(s){
-  return `<div class="cricket-board"><table>
-    <thead><tr>
-      <th class="num-col"></th>
-      ${s.participants.map((p,i)=>`<th class="player-col ${i===s.currentIdx?'active':''}">${i===s.currentIdx?'<span class="capicon">&#9679;</span>':''}${playerName(p.playerId)}</th>`).join('')}
-    </tr></thead>
-    <tbody>
-      ${CRICKET_NUMS.map(n=>`<tr>
-        <td class="num-col">${n==='B'?'BULL':n}</td>
-        ${s.participants.map(p=>`<td class="mark-cell ${cricketNumClosed(p,n)?'closed-cell':''}">${cricketMarkSVG(p.marks[n])}</td>`).join('')}
-      </tr>`).join('')}
-      <tr class="points-row">
-        <td class="pts-label">PTS</td>
-        ${s.participants.map(p=>`<td class="pts-cell">${p.points}</td>`).join('')}
-      </tr>
-      <tr>
-        <td class="pts-label"></td>
-        ${s.participants.map((p,i)=>`<td>${miniDartChips(participantDisplayDarts(s,i), true, i===s.currentIdx)}</td>`).join('')}
-      </tr>
-    </tbody>
-  </table></div>`;
+  return `<div class="score-strip">${s.participants.map((p,i)=>{
+    const closedCount = CRICKET_NUMS.filter(n=>cricketNumClosed(p,n)).length;
+    return `
+      <div class="score-card ${i===s.currentIdx?'active':''}">
+        <div class="pname">${i===s.currentIdx?'<span class="dartpip">&#9679;</span>':''} ${playerName(p.playerId)}</div>
+        <div class="pscore">${p.points}</div>
+        <div class="pmarks">${closedCount}/7 closed</div>
+        ${miniDartChips(participantDisplayDarts(s,i), false, i===s.currentIdx)}
+      </div>
+    `;
+  }).join('')}</div>`;
 }
 function turnHintTargetLabel(t){
   if(!t) return null;
