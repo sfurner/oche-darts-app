@@ -570,7 +570,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 21:34 UTC';
+const BUILD_STAMP = '2026-07-25 21:51 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1411,7 +1411,12 @@ function halveItApplyDart(s, num, mult){
 }
 function halveItEndTurn(s){
   const p = halveItCurrent(s);
+  const name = playerName(p.playerId);
+  const before = p.score;
   if(!p.hitThisRound){ p.score = Math.floor(p.score/2); }
+  s.lastTurnSummary = p.hitThisRound
+    ? `${name} hit the target and is sitting at ${p.score} points.`
+    : `${name} missed the target all 3 darts — score halved from ${before} to ${p.score}.`;
   p.lastTurnDarts = s.currentTurnDarts.map(d=>d.label);
   s.turnHistory.push({participantIdx:s.currentIdx, darts:s.currentTurnDarts, snapshot:JSON.parse(JSON.stringify(p)), roundAtEnd:s.round});
   s.currentTurnDarts=[];
@@ -1457,6 +1462,7 @@ function killerCurrent(s){ return s.participants[s.currentIdx]; }
 function killerMutateForDart(s, num, mult){
   const p = killerCurrent(s);
   let label='Miss';
+  let victimId=null, livesAfter=null;
   if(num===p.number){
     if(!p.isKiller){
       if(mult==='double'||mult==='bull'){ p.isKiller=true; label='D'+num+' — Killer!'; }
@@ -1465,6 +1471,7 @@ function killerMutateForDart(s, num, mult){
       p.lives = Math.max(0,p.lives-1);
       if(p.lives<=0) p.eliminated=true;
       label=(mult==='double'?'D':mult==='triple'?'T':'S')+num+' (self hit)';
+      victimId = p.playerId; livesAfter = p.lives;
     }
   } else if(typeof num==='number' && num>=1 && num<=20){
     if(p.isKiller){
@@ -1473,6 +1480,7 @@ function killerMutateForDart(s, num, mult){
         victim.lives = Math.max(0, victim.lives-1);
         if(victim.lives<=0) victim.eliminated=true;
         label=(mult==='double'?'D':mult==='triple'?'T':'S')+num+' — hit!';
+        victimId = victim.playerId; livesAfter = victim.lives;
       } else {
         label=(mult==='double'?'D':mult==='triple'?'T':'S')+num;
       }
@@ -1480,7 +1488,7 @@ function killerMutateForDart(s, num, mult){
       label=(mult==='double'?'D':mult==='triple'?'T':'S')+num;
     }
   }
-  return {label, num, mult};
+  return {label, num, mult, victimId, livesAfter};
 }
 function killerCheckWin(s){
   const alive = s.participants.filter(p=>!p.eliminated);
@@ -1498,7 +1506,19 @@ function killerApplyDart(s, num, mult){
   return {turnOver};
 }
 function killerEndTurn(s){
-  killerCurrent(s).lastTurnDarts = s.currentTurnDarts.map(d=>d.label);
+  const p = killerCurrent(s);
+  const name = playerName(p.playerId);
+  const effects = [];
+  s.currentTurnDarts.forEach(d=>{
+    if(d.label.includes('Killer!')) effects.push('became a Killer');
+    else if(d.label.includes('(self hit)')) effects.push(`hit their own number — down to ${d.livesAfter} lives`);
+    else if(d.label.includes('— hit!')){
+      const victim = s.participants.find(o=>o.playerId===d.victimId);
+      effects.push(victim ? `hit ${playerName(victim.playerId)}'s number — down to ${d.livesAfter} lives` : 'hit a number with no owner');
+    }
+  });
+  s.lastTurnSummary = effects.length ? `${name} ${effects.join(', and ')} this turn.` : `${name} didn't land anything that mattered this turn.`;
+  p.lastTurnDarts = s.currentTurnDarts.map(d=>d.label);
   s.turnHistory.push({currentIdx:s.currentIdx, darts:s.currentTurnDarts, fullSnapshot:JSON.parse(JSON.stringify(s.participants)), roundAtEnd:s.round});
   s.currentTurnDarts=[];
   if(s.complete) return;
@@ -2155,8 +2175,12 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels){
     if(ownerLabels && ownerLabels.length){
       const owner = ownerLabels.find(o=>String(o.num)===String(num));
       if(owner){
-        const lp2 = polar(cx,cy,(rTripleOut+rDoubleIn)/2,(aStart+aEnd)/2);
-        ownerOverlay += `<text x="${lp2[0]}" y="${lp2[1]}" fill="${owner.color}" font-family="'JetBrains Mono',monospace" font-size="12" font-weight="700" text-anchor="middle" dominant-baseline="middle" stroke="rgba(0,0,0,0.55)" stroke-width="2.5" paint-order="stroke" style="pointer-events:none;">${owner.text}</text>`;
+        const midAngle = (aStart+aEnd)/2;
+        const lineInner = polar(cx,cy,rDoubleOut+3,midAngle);
+        const lineOuter = polar(cx,cy,rBezel-7,midAngle);
+        const textPos = polar(cx,cy,rBezel-6,midAngle);
+        ownerOverlay += `<line x1="${lineInner[0]}" y1="${lineInner[1]}" x2="${lineOuter[0]}" y2="${lineOuter[1]}" stroke="${owner.color}" stroke-width="1.5" opacity="0.75" style="pointer-events:none;"/>`;
+        ownerOverlay += `<text x="${textPos[0]}" y="${textPos[1]}" fill="${owner.color}" font-family="'JetBrains Mono',monospace" font-size="10.5" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${owner.text}</text>`;
       }
     }
   }
@@ -4761,7 +4785,7 @@ function renderActiveShell(){
   return `<div class="game-header-row">
     ${renderRoundInfo(s)}
     <div class="game-title-center">${gname}</div>
-    <div></div>
+    <div style="text-align:right;">${s.kind==='killer' ? '<div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:11px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div>' : ''}</div>
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}
   ${renderBoardConfirmLine(s)}
@@ -4906,6 +4930,7 @@ function renderTurnHint(s){
   }
   const darts = s.currentTurnDarts;
   if(darts.length===0){
+    if((s.kind==='killer' || s.kind==='halveit') && s.lastTurnSummary) return s.lastTurnSummary;
     const t = s.kind==='x01' ? botChooseX01Target(s) : getCurrentGameTargetHighlight(s);
     const label = turnHintTargetLabel(t);
     return label ? `${name} is throwing for ${label}.` : `${name} is up.`;
