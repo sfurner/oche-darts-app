@@ -290,8 +290,24 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .mini-dart-chip.editable:hover::after{ opacity:1; }
 .turn-total{margin-left:auto; font-family:'JetBrains Mono',monospace; color:var(--cream-dim); font-size:13px;}
 
-.entry-toggle{display:flex; gap:6px; padding:0 18px 10px 18px;}
-.entry-toggle button{flex:1;}
+.entry-toggle{display:flex; gap:22px; padding:0 18px 14px 18px; justify-content:center;}
+.entry-toggle button{ flex:none; background:none; border:none; padding:0 0 5px 0; font-size:13px; color:var(--cream-dim); cursor:pointer; border-bottom:2px solid transparent; font-family:'Inter',sans-serif; font-weight:500; }
+.entry-toggle button.tab-active{ color:var(--brass); border-bottom-color:var(--brass); font-weight:600; }
+.game-header-row{ display:grid; grid-template-columns:1fr auto 1fr; align-items:start; padding:16px 18px 10px 18px; }
+.round-label{ font-size:11px; color:var(--cream-dim); letter-spacing:0.05em; }
+.round-value{ font-size:15px; color:var(--cream); font-weight:600; margin-top:1px; }
+.game-title-center{ font-size:33px; font-weight:700; color:var(--cream); text-align:center; letter-spacing:0.01em; }
+.instruction-line{ padding:2px 18px 14px 18px; font-size:18px; font-weight:600; color:var(--cream); }
+.player-box-row{ display:flex; gap:12px; padding:0 18px 16px 18px; flex-wrap:wrap; }
+.player-box{ width:110px; height:110px; background:var(--felt); border:1px solid var(--felt-lighter); border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; flex:none; text-align:center; }
+.player-box.active{ border-color:var(--brass); }
+.player-box .pb-name{ font-size:12px; color:var(--cream-dim); font-weight:600; }
+.player-box.active .pb-name{ color:var(--brass); }
+.player-box .pb-stat{ font-size:26px; color:var(--cream); font-weight:700; line-height:1.1; }
+.player-box .pb-sub{ font-size:10px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; }
+.bottom-action-row{ display:flex; gap:26px; justify-content:center; padding:14px 18px; border-top:1px solid var(--felt-lighter); margin-top:auto; flex-wrap:wrap; }
+.bottom-action-row .action-link{ font-size:12px; color:var(--cream-dim); letter-spacing:0.03em; cursor:pointer; background:none; border:none; font-family:'JetBrains Mono',monospace; text-transform:uppercase; padding:4px; }
+.bottom-action-row .action-link.warn{ color:color-mix(in srgb, var(--red) 75%, white); }
 
 .quicktargets{padding:0 18px 8px 18px;}
 .quicktargets .qlabel{font-size:11px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; text-transform:uppercase; margin-bottom:6px;}
@@ -521,7 +537,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 03:47 UTC';
+const BUILD_STAMP = '2026-07-25 04:20 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4494,6 +4510,40 @@ const CURRENT_FNS = {
 function currentParticipant(s){
   return CURRENT_FNS[s.kind](s);
 }
+function playerBoxData(s, p){
+  if(s.kind==='x01') return {stat: p.score, dim:false};
+  if(s.kind==='cricket') return {stat: p.points, dim:false};
+  if(s.kind==='custom'){
+    const cfg = s.cfg;
+    const scoreVal = cfg.mode==='teams' ? customTeamScore(s,p.team) : p.score;
+    return {stat: scoreVal, dim: !!p.eliminated};
+  }
+  if(s.kind==='atc') return {stat: s.sequence[p.idx]===undefined ? '\u{1F3C6}' : (s.sequence[p.idx]==='B'?'Bull':s.sequence[p.idx]), dim:false};
+  if(s.kind==='shanghai' || s.kind==='baseball' || s.kind==='halveit') return {stat: p.score, dim:false};
+  if(s.kind==='killer') return {stat: p.eliminated ? '\u{1F480}' : p.lives, dim: !!p.eliminated};
+  return {stat:'', dim:false};
+}
+function renderPlayerBoxes(s){
+  return `<div class="player-box-row">${s.participants.map((p,i)=>{
+    const d = playerBoxData(s,p);
+    const darts = participantDisplayDarts(s,i);
+    const dartsLabel = [0,1,2].map(j=>darts[j]||'&mdash;').join(' &middot; ');
+    return `<div class="player-box ${i===s.currentIdx?'active':''}" style="${d.dim?'opacity:0.45;':''}">
+      <div class="pb-name">${i===s.currentIdx?'<span class="dartpip">&#9679;</span> ':''}${playerName(p.playerId)}</div>
+      <div class="pb-stat">${d.stat}</div>
+      <div class="pb-sub">${dartsLabel}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+function renderRoundInfo(s){
+  let total = null;
+  if(s.kind==='shanghai') total = s.rounds;
+  else if(s.kind==='baseball') total = s.innings;
+  else if(s.kind==='halveit') total = s.sequence.length;
+  else if(s.kind==='custom' && (s.cfg.winCondition==='highScore'||s.cfg.winCondition==='lowScore')) total = s.cfg.rounds||8;
+  const label = s.kind==='baseball' ? 'INNING' : 'ROUND';
+  return `<div><div class="round-label">${label}</div><div class="round-value">${s.round}${total?' of '+total:''}</div></div>`;
+}
 function renderActiveShell(){
   const s = state.session;
   if(!s) return renderHomeShell();
@@ -4602,15 +4652,14 @@ function renderActiveShell(){
     const small = p.isKiller ? 'Hit opponents\' numbers to remove lives. Hitting your own number now costs you a life!' : 'Hit your double ('+p.number+') to become a killer. '+p.lives+' lives.';
     objective = `<div class="objective-banner"><div class="big">${big}</div><div class="small">${small}</div></div>`;
   }
-  return `<div class="active-top">
-    <div class="game-title">${gname} &middot; Round ${s.round}</div>
-    <h2>${playerName(currentParticipant(s).playerId)}${s.kind==='custom' && s.cfg.mode==='teams' ? ' <span style="color:var(--cream-dim); font-size:14px;">(Team '+currentParticipant(s).team+')</span>':''}'s turn</h2>
-    ${objective}
+  return `<div class="game-header-row">
+    ${renderRoundInfo(s)}
+    <div class="game-title-center">${gname}</div>
+    <div></div>
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}
-  <div style="padding:2px 18px 8px 18px; font-size:19px; font-weight:600; color:var(--cream);">${renderTurnHint(s)}</div>
-  ${renderScoreStrip(s)}
-  ${renderTurnArea(s)}
+  <div class="instruction-line">${renderTurnHint(s)}</div>
+  ${renderPlayerBoxes(s)}
   ${renderBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
@@ -4622,76 +4671,47 @@ function renderCallShotActiveShell(s){
   const targetChipRow = ()=>{
     if(s.calledTargets.length<=1) return '';
     const sequential = s.orderMatters;
-    return `<div class="chip-wrap" style="margin:6px 0 0 0;">${s.calledTargets.map((tid,i)=>{
+    return `<div class="chip-wrap" style="margin:0 18px 10px 18px;">${s.calledTargets.map((tid,i)=>{
       const done = sequential ? i<s.targetIndex : s.hitTargets.includes(i);
       const isCurrent = sequential ? i===s.targetIndex : !done;
       return `<span class="chip ${done?'selected':''}" style="${isCurrent&&!done?'border-color:var(--brass);':''} ${done?'opacity:0.6;':''}">${done?'&#10003; ':''}${sectionZoneLabel(tid)}</span>`;
     }).join('')}</div>`;
   };
-  let body = '';
+  let board = '';
   if(actorIsBot){
-    const doingWhat = s.stage==='callselect' ? 'is picking a shot to call' : (s.mode==='natural' && s.calledTargets.length===0) ? 'is throwing to set the shot' : 'is throwing';
-    body = `<div class="active-top">
-      <div class="game-title">Call Your Shot &middot; Round ${s.round}</div>
-      <h2>&#129302; ${currentName} ${doingWhat}&hellip;</h2>
-      <div class="objective-banner"><div class="small">Sit back — the bot's got this turn.</div></div>
-      ${targetChipRow()}
-    </div>
-    <div class="board-wrap" style="pointer-events:none; opacity:0.85;">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))), undefined, s.turnHitPoints)}</div>
+    board = `<div class="board-wrap" style="pointer-events:none; opacity:0.85;">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))), undefined, s.turnHitPoints)}</div>
     <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is acting — no input needed</div>`;
   } else if(s.stage==='callselect'){
-    const remaining = s.numTargets - s.calledTargets.length;
-    let instruction;
-    if(s.numTargets>1){
-      instruction = `${callerName}, select ${s.numTargets} shots on the board — everyone, including you, will need to make all ${s.numTargets} of them${s.orderMatters?' in this exact order':''} or take a letter. (${remaining} more to pick — ${s.calledTargets.length} of ${s.numTargets} chosen so far.)`;
-    } else {
-      instruction = `${callerName}, select your shot on the board. Everyone — including you — needs to hit this exact shot or take a letter.`;
-    }
-    body = `<div class="active-top">
-      <div class="game-title">Call Your Shot &middot; Round ${s.round}</div>
-      <h2>${callerName} calls the shot</h2>
-      <div class="objective-banner"><div class="small">${instruction} You'll each get ${s.maxDarts} dart${s.maxDarts!==1?'s':''} per target to make it.</div></div>
-      ${targetChipRow()}
-    </div>
-    <div class="board-wrap">${renderSectionBoardSVG(null, 'callShotBoardClickForCall')}</div>
+    board = `<div class="board-wrap">${renderSectionBoardSVG(null, 'callShotBoardClickForCall')}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap the exact single, double, triple, or bull you want to call</div>`;
   } else if(s.mode==='natural' && s.calledTargets.length===0){
-    body = `<div class="active-top">
-      <div class="game-title">Call Your Shot &middot; Round ${s.round}</div>
-      <h2>${callerName} throws — no calling ahead</h2>
-      <div class="objective-banner"><div class="small">${callerName}, just throw one dart — no calling ahead of time. Wherever it lands becomes this round's shot, and everyone else needs to match that exact spot or take a letter. You don't need to hit it again yourself.</div></div>
-    </div>
-    <div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
+    board = `<div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   } else {
-    const isCaller = s.stage==='callattempt';
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
-    body = `<div class="active-top">
-      <div class="game-title">Call Your Shot &middot; Round ${s.round}</div>
-      <h2>${currentName}${isCaller?' (caller)':''} — hit ${sectionZoneLabel(currentTargetId)}</h2>
-      <div class="objective-banner">
-        <div class="big">Dart ${s.dartsUsedThisAttempt+1} of ${s.maxDarts}</div>
-        <div class="small">${isCaller ? `${currentName}, make this and everyone else has to match it.` : `${currentName}, match ${callerName}'s exact shot or take a letter.`}</div>
-      </div>
-      ${targetChipRow()}
-    </div>
-    <div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
+    board = `<div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   }
-  const scoreCards = s.participants.map((p,i)=>{
+  const playerBoxes = `<div class="player-box-row">${s.participants.map((p,i)=>{
     const lettersShown = word.slice(0, p.letters);
     const remaining = word.slice(p.letters);
-    return `<div class="score-card ${i===s.currentIdx?'active':''}" style="${p.eliminated?'opacity:0.45;':''}">
-      <div class="pname">${i===s.currentIdx?'<span class="dartpip">&#9679;</span>':''} ${playerName(p.playerId)}${i===s.callerIdx?' &#128227;':''}</div>
-      <div class="pscore" style="font-family:'JetBrains Mono',monospace; letter-spacing:2px;">${p.eliminated?'&#128128; OUT':`<span style="color:var(--red);">${lettersShown}</span><span style="color:var(--cream-dim); font-size:0.6em;">${remaining}</span>`}</div>
+    return `<div class="player-box ${i===s.currentIdx?'active':''}" style="${p.eliminated?'opacity:0.45;':''}">
+      <div class="pb-name">${i===s.currentIdx?'<span class="dartpip">&#9679;</span> ':''}${playerName(p.playerId)}${i===s.callerIdx?' &#128227;':''}</div>
+      <div class="pb-stat" style="font-family:'JetBrains Mono',monospace; letter-spacing:2px; font-size:19px;">${p.eliminated?'&#128128;':`<span style="color:var(--red);">${lettersShown}</span><span style="color:var(--cream-dim);">${remaining}</span>`}</div>
     </div>`;
-  }).join('');
-  return `${body}${FOOTER_MARKER}
-  <div style="padding:2px 18px 8px 18px; font-size:19px; font-weight:600; color:var(--cream);">${renderTurnHint(s)}</div>
-  <div class="score-strip">${scoreCards}</div>
-  <div class="bottom-controls">
-    <button onclick="callShotUndo()">Undo</button>
-    <button class="warn" onclick="openGameMenu()">Menu</button>
+  }).join('')}</div>`;
+  return `<div class="game-header-row">
+    <div><div class="round-label">ROUND</div><div class="round-value">${s.round}</div></div>
+    <div class="game-title-center">Call Your Shot</div>
+    <div></div>
+  </div>
+  ${board}
+  ${targetChipRow()}${FOOTER_MARKER}
+  <div class="instruction-line">${renderTurnHint(s)}</div>
+  ${playerBoxes}
+  <div class="bottom-action-row">
+    <button class="action-link warn" onclick="openGameMenu()">Leave Game</button>
+    <button class="action-link" onclick="callShotUndo()">Undo</button>
   </div>
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
@@ -4902,8 +4922,8 @@ function renderEntryArea(s){
     ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
   }
   return `<div class="entry-toggle">
-    <button class="btn ${state.settings.entryMethod==='grid'?'btn-primary':'btn-secondary'}" onclick="if(state.settings.entryMethod!=='grid') toggleEntryMethod();">Number Grid</button>
-    <button class="btn ${state.settings.entryMethod==='board'?'btn-primary':'btn-secondary'}" onclick="if(state.settings.entryMethod!=='board') toggleEntryMethod();">Dartboard</button>
+    <button class="${state.settings.entryMethod==='grid'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='grid') toggleEntryMethod();">Number Grid</button>
+    <button class="${state.settings.entryMethod==='board'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='board') toggleEntryMethod();">Dartboard</button>
   </div>
   ${entryHtml}`;
 }
@@ -5026,11 +5046,11 @@ function renderNumberGrid(s){
   </div>`;
 }
 function renderBottomControls(s){
-  return `<div class="bottom-controls">
-    <button onclick="doUndo()">Undo</button>
-    <button onclick="doClearTurn()">Clear Turn</button>
-    <button onclick="doEndTurnManually()">End Turn</button>
-    <button class="warn" onclick="openGameMenu()">Menu</button>
+  return `<div class="bottom-action-row">
+    <button class="action-link warn" onclick="openGameMenu()">Leave Game</button>
+    <button class="action-link" onclick="doUndo()">Undo</button>
+    <button class="action-link" onclick="doClearTurn()">Clear Turn</button>
+    <button class="action-link" onclick="doEndTurnManually()">End Turn</button>
   </div>`;
 }
 function renderGameMenu(s){
