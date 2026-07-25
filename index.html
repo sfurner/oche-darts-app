@@ -311,6 +311,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .chalkboard-panel .cb-rows{ flex:1; display:flex; flex-direction:column; justify-content:space-evenly; }
 .chalkboard-panel .cb-num{ color:#f2f2ee; font-family:'Kalam',cursive; font-weight:700; font-size:21px; text-align:center; text-shadow:0 0 3px rgba(255,255,255,0.35); }
 .chalkboard-panel .cb-mark{ display:flex; align-items:center; justify-content:center; }
+.chalkboard-panel .cb-mark.cb-tappable{ cursor:pointer; padding:6px 0; border-radius:5px; }
+.chalkboard-panel .cb-mark.cb-tappable:active{ background:rgba(255,255,255,0.15); }
 .entry-toggle{display:flex; gap:22px; padding:0 18px 14px 18px; justify-content:center;}
 .entry-toggle button{ flex:none; background:none; border:none; padding:0 0 5px 0; font-size:13px; color:var(--cream-dim); cursor:pointer; border-bottom:2px solid transparent; font-family:'Inter',sans-serif; font-weight:500; }
 .entry-toggle button.tab-active{ color:var(--brass); border-bottom-color:var(--brass); font-weight:600; }
@@ -559,7 +561,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 16:06 UTC';
+const BUILD_STAMP = '2026-07-25 16:16 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4767,9 +4769,16 @@ function renderChalkboard(s){
   const cols = `repeat(${left.length||1},1fr) 22px repeat(${right.length||1},1fr)`;
   const plainName = (p)=>{ const pl = state.players.find(x=>x.id===p.playerId); return pl ? pl.name : '???'; };
   const nameCell = (p,idx)=>`<div class="cb-name" style="font-size:${nameFontSize}px; transform:rotate(${idx%2===0?-1.5:1.5}deg);">${plainName(p)}</div>`;
+  const currentPid = s.participants[s.currentIdx].playerId;
+  const canTap = !isBotPlayerId(currentPid);
   const markCell = (p,num)=>{
     const v = p.marks[num]||0;
-    return `<div class="cb-mark">${v>0 ? cricketMarkSVG(v, '#f2f2ee') : ''}</div>`;
+    const content = v>0 ? cricketMarkSVG(v, '#f2f2ee') : '';
+    if(canTap && p.playerId===currentPid){
+      const numArg = num==='B' ? "'B'" : num;
+      return `<div class="cb-mark cb-tappable" onclick="dispatchThrow(${numArg},'single')">${content}</div>`;
+    }
+    return `<div class="cb-mark">${content}</div>`;
   };
   return `<div class="chalkboard-panel">
     <div class="cb-vs">&mdash; VS &mdash;</div>
