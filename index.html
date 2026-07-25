@@ -413,24 +413,20 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .co-row .co-route{color:var(--cream);}
 .co-row .co-none{color:var(--cream-dim); font-style:italic;}
 .co-row.highlight{background:rgba(204,154,61,0.14); border-radius:8px;}
-.cricket-board{ margin:0 18px 10px 18px; overflow-x:auto; background:linear-gradient(180deg, #2d4a3a 0%, #1e3529 100%); border:5px solid #8b6239; border-radius:6px; padding:12px 10px 14px 10px; box-shadow:0 6px 16px rgba(0,0,0,0.4), inset 0 0 40px rgba(0,0,0,0.3); }
-.floating-panel{ position:absolute; z-index:40; margin:0; width:min(520px, calc(100% - 40px)); max-height:70vh; overflow-y:auto; box-shadow:0 14px 36px rgba(0,0,0,0.55), 0 6px 16px rgba(0,0,0,0.4); }
-.floating-panel-header{ display:flex; align-items:center; justify-content:space-between; cursor:grab; user-select:none; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(244,241,232,0.25); position:sticky; top:-14px; background:#25402f; margin:-12px -10px 8px -10px; padding:10px; touch-action:none; }
-.floating-panel-header:active{ cursor:grabbing; }
-.floating-panel-close{ background:none; border:none; color:#f4f1e8; font-size:22px; cursor:pointer; line-height:1; padding:0 4px; }
+.cricket-board{ margin:0 18px 10px 18px; background:var(--ink); border:1px solid var(--felt-lighter); border-radius:12px; padding:8px 6px; overflow-x:auto; }
 .cricket-board table{ width:100%; border-collapse:collapse; min-width:280px;}
-.cricket-board th, .cricket-board td{ padding:7px 4px; text-align:center;}
-.cricket-board th.player-col{ font-family:'Oswald',sans-serif; color:#f4f1e8; text-shadow:0 0 2px rgba(255,255,255,0.35); font-size:12px; font-weight:600; border-bottom:2px solid rgba(244,241,232,0.4); text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap;}
-.cricket-board th.player-col.active{ color:#fff; text-shadow:0 0 4px rgba(255,255,255,0.6);}
+.cricket-board th, .cricket-board td{ padding:6px 4px; text-align:center;}
+.cricket-board th.player-col{ font-family:'Oswald',sans-serif; color:var(--cream-dim); font-size:12px; font-weight:600; border-bottom:2px solid var(--brass-dark); text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap;}
+.cricket-board th.player-col.active{ color:var(--brass);}
 .cricket-board th.player-col .capicon{ display:inline-block; margin-right:3px;}
-.cricket-board td.num-col{ font-family:'Oswald',sans-serif; color:#f4f1e8; text-shadow:0 0 2px rgba(255,255,255,0.35); font-weight:700; font-size:17px; text-align:left; padding-left:8px; width:46px;}
-.cricket-board tr:not(:last-child):not(:first-child) td{ border-bottom:1px dashed rgba(244,241,232,0.18);}
-.cricket-board td.mark-cell{ border-left:1px solid rgba(244,241,232,0.12); color:#f4f1e8; text-shadow:0 0 2px rgba(255,255,255,0.35);}
-.cricket-board td.mark-cell.closed-cell{ background:rgba(244,241,232,0.10); border-radius:50%;}
-.cricket-board .mark-empty{ color:rgba(244,241,232,0.22); font-size:18px;}
-.cricket-board tr.points-row td{ border-top:2px solid rgba(244,241,232,0.4); padding-top:9px;}
-.cricket-board td.pts-cell{ font-family:'JetBrains Mono',monospace; color:#f4f1e8; text-shadow:0 0 2px rgba(255,255,255,0.35); font-weight:700; font-size:15px;}
-.cricket-board td.pts-label{ font-family:'JetBrains Mono',monospace; color:rgba(244,241,232,0.65); font-size:10px; text-transform:uppercase; text-align:left; padding-left:8px;}
+.cricket-board td.num-col{ font-family:'Oswald',sans-serif; color:var(--brass); font-weight:700; font-size:15px; text-align:left; padding-left:8px; width:42px;}
+.cricket-board tr:not(:last-child):not(:first-child) td{ border-bottom:1px dashed rgba(242,236,220,0.12);}
+.cricket-board td.mark-cell{ border-left:1px solid rgba(242,236,220,0.08); color:var(--cream);}
+.cricket-board td.mark-cell.closed-cell{ background:rgba(204,154,61,0.08);}
+.cricket-board .mark-empty{ color:rgba(242,236,220,0.18); font-size:16px;}
+.cricket-board tr.points-row td{ border-top:1px solid var(--brass-dark); padding-top:7px;}
+.cricket-board td.pts-cell{ font-family:'JetBrains Mono',monospace; color:var(--cream); font-weight:700; font-size:14px;}
+.cricket-board td.pts-label{ font-family:'JetBrains Mono',monospace; color:var(--cream-dim); font-size:9px; text-transform:uppercase; text-align:left; padding-left:8px;}
 .co-tabs{display:flex; gap:6px; padding:0 18px 10px 18px;}
 .option-legend{margin-top:8px; display:flex; flex-direction:column; gap:6px;}
 .option-legend .leg-item{font-size:12px; color:var(--cream-dim); line-height:1.4; padding-left:2px; border-left:2px solid var(--felt-lighter); padding-left:8px;}
@@ -525,7 +521,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 03:28 UTC';
+const BUILD_STAMP = '2026-07-25 03:36 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -606,8 +602,6 @@ let state = {
   newBotRating: 5,
   dartSettingsAddingFor: null,
   confirmDeleteCustomGameId: null,
-  cricketBoardOpen: true,
-  cricketBoardPos: null,
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
   settingsReturnTo: null,
@@ -4618,8 +4612,7 @@ function renderActiveShell(){
   ${renderScoreStrip(s)}
   ${renderTurnArea(s)}
   ${renderBottomControls(s)}
-  ${state.gameMenuOpen ? renderGameMenu(s) : ''}
-  ${s.kind==='cricket' ? renderFloatingCricketBoard(s) : ''}`;
+  ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
 function renderCallShotActiveShell(s){
   const word = s.word;
@@ -4710,36 +4703,7 @@ function cricketMarkSVG(n){
   return `<svg viewBox="0 0 24 24" width="26" height="26" style="color:var(--cream);">${inner}</svg>`;
 }
 function renderCricketBoard(s){
-  // Compact, in-flow summary — same visual weight as any other game's score row. The full
-  // chalkboard now lives in a floating panel (see renderFloatingCricketBoard) so it can never
-  // steal layout space from the scrollable board area again, regardless of how tall it gets.
-  return `<div class="score-strip">
-    ${s.participants.map((p,i)=>{
-      const closedCount = CRICKET_NUMS.filter(n=>cricketNumClosed(p,n)).length;
-      return `<div class="score-card ${i===s.currentIdx?'active':''}">
-        <div class="pname">${i===s.currentIdx?'<span class="dartpip">&#9679;</span>':''} ${playerName(p.playerId)}</div>
-        <div class="pscore">${p.points} pts &middot; ${closedCount}/7 closed</div>
-      </div>`;
-    }).join('')}
-    <button onclick="toggleCricketBoard()" class="btn btn-secondary" style="flex:none; align-self:center; padding:8px 14px; font-size:12px;">${state.cricketBoardOpen?'Hide':'Show'} Chalkboard</button>
-  </div>`;
-}
-function toggleCricketBoard(){
-  state.cricketBoardOpen = !state.cricketBoardOpen;
-  render();
-}
-function renderFloatingCricketBoard(s){
-  if(!state.cricketBoardOpen) return '';
-  const pos = state.cricketBoardPos || {top: 90, right: 24};
-  const posStyle = pos.left!==undefined
-    ? `top:${pos.top}px; left:${pos.left}px;`
-    : `top:${pos.top}px; right:${pos.right}px;`;
-  return `<div id="floatingCricketBoard" class="cricket-board floating-panel" style="${posStyle}">
-    <div class="floating-panel-header" onpointerdown="startDragCricketBoard(event)">
-      <span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:rgba(244,241,232,0.7); text-transform:uppercase; letter-spacing:0.08em;">&#9776; Chalkboard &mdash; drag to move</span>
-      <button onclick="toggleCricketBoard()" class="floating-panel-close" title="Close">&times;</button>
-    </div>
-    <table>
+  return `<div class="cricket-board"><table>
     <thead><tr>
       <th class="num-col"></th>
       ${s.participants.map((p,i)=>`<th class="player-col ${i===s.currentIdx?'active':''}">${i===s.currentIdx?'<span class="capicon">&#9679;</span>':''}${playerName(p.playerId)}</th>`).join('')}
@@ -4758,36 +4722,7 @@ function renderFloatingCricketBoard(s){
         ${s.participants.map((p,i)=>`<td>${miniDartChips(participantDisplayDarts(s,i), true, i===s.currentIdx)}</td>`).join('')}
       </tr>
     </tbody>
-  </table>
-  </div>`;
-}
-function startDragCricketBoard(evt){
-  evt.preventDefault();
-  const panel = document.getElementById('floatingCricketBoard');
-  const device = panel.closest('.device');
-  if(!panel || !device) return;
-  const deviceRect = device.getBoundingClientRect();
-  const panelRect = panel.getBoundingClientRect();
-  const offsetX = evt.clientX - panelRect.left;
-  const offsetY = evt.clientY - panelRect.top;
-  function onMove(e){
-    let left = e.clientX - deviceRect.left - offsetX;
-    let top = e.clientY - deviceRect.top - offsetY;
-    left = Math.max(0, Math.min(left, deviceRect.width - panelRect.width));
-    top = Math.max(0, Math.min(top, deviceRect.height - panelRect.height));
-    panel.style.left = left+'px';
-    panel.style.top = top+'px';
-    panel.style.right = 'auto';
-  }
-  function onUp(e){
-    document.removeEventListener('pointermove', onMove);
-    document.removeEventListener('pointerup', onUp);
-    const left = parseFloat(panel.style.left);
-    const top = parseFloat(panel.style.top);
-    state.cricketBoardPos = {left, top};
-  }
-  document.addEventListener('pointermove', onMove);
-  document.addEventListener('pointerup', onUp);
+  </table></div>`;
 }
 function turnHintTargetLabel(t){
   if(!t) return null;
