@@ -56,6 +56,16 @@ body{
 .sidenav-item .navicon{ font-size:17px; }
 .sidenav-item.active{ color:var(--brass); background:rgba(204,154,61,0.10); }
 .sidenav-footer{ margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:4px; width:100%; padding-top:10px; border-top:1px solid var(--felt-lighter); }
+.sidenav-collapse-btn{ display:none; }
+@media (min-width:641px){
+  .sidenav.collapsed{ width:60px; align-items:center; padding:18px 6px; border-radius:0; }
+  .sidenav.collapsed .brand{ justify-content:center; padding:0 0 16px 0; }
+  .sidenav.collapsed .brand h1{ display:none; }
+  .sidenav.collapsed .sidenav-item{ flex-direction:column; align-items:center; gap:2px; font-size:7.5px; text-align:center; border-left:none; padding:9px 2px; }
+  .sidenav.collapsed .sidenav-item .navicon{ font-size:17px; }
+  .sidenav.collapsed .sidenav-collapse-btn{ justify-content:center; }
+  .sidenav-collapse-btn{ display:flex; align-items:center; justify-content:flex-end; cursor:pointer; padding:6px 4px; color:var(--cream-dim); font-size:16px; }
+}
 @media (min-width:641px){
   .sidenav{ width:190px; align-items:stretch; padding:24px 12px; border-radius:24px 0 0 24px; }
   .sidenav .brand{ justify-content:flex-start; padding:0 8px 18px 8px; }
@@ -100,6 +110,7 @@ body{
 @media (min-width:1024px){
   .app-shell{ padding:32px; gap:0; }
   .device{ width:min(1200px, calc(100vw - 280px)); height:calc(100vh - 64px); height:calc(100dvh - 64px); max-height:calc(100vh - 64px); max-height:calc(100dvh - 64px); min-height:0; border-radius:0 24px 24px 0; margin:0; }
+  .app-shell:has(.sidenav.collapsed) .device{ width:min(1400px, calc(100vw - 150px)); }
   .content{ max-width:900px; margin-left:auto; margin-right:auto; }
   .content.content-grid{
     max-width:none; display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr));
@@ -355,8 +366,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   font-weight:700; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer;
 }
 .board-miss-btn:active{ transform:scale(0.95); }
-.dartboard-svg{ width:100%; max-width:320px; max-height:48vh; height:auto; }
-@media (min-width:641px){ .dartboard-svg{ max-width:440px; } }
+.dartboard-svg{ width:min(100%, 320px, 48vh); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
+@media (min-width:641px){ .dartboard-svg{ width:min(100%, 440px, 48vh); } }
 .precision-zoom-svg{ width:100%; max-width:320px; height:auto; touch-action:none; cursor:crosshair; background:var(--ink); border-radius:12px; }
 .precision-loupe{
   position:fixed; width:110px; height:110px; border-radius:50%;
@@ -368,7 +379,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   flex:1; background:linear-gradient(180deg,var(--brass),var(--brass-dark)); border:none; color:#241a06;
   font-weight:700; font-size:13px; border-radius:10px; padding:10px 4px; cursor:pointer;
 }
-@media (min-width:1024px){ .dartboard-svg{ max-width:600px; } }
+@media (min-width:1024px){ .dartboard-svg{ width:min(100%, 600px, 48vh); } }
 .confirm-banner{margin:0 18px 8px 18px; text-align:center; background:var(--felt-dark); border:1px solid var(--brass); border-radius:10px; padding:8px; font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--brass);}
 
 .modal-overlay{
@@ -402,7 +413,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .co-row .co-route{color:var(--cream);}
 .co-row .co-none{color:var(--cream-dim); font-style:italic;}
 .co-row.highlight{background:rgba(204,154,61,0.14); border-radius:8px;}
-.cricket-board{ margin:0 18px 10px 18px; background:var(--ink); border:2px solid var(--brass-dark); border-radius:12px; padding:10px 6px; overflow-x:auto; box-shadow:inset 0 0 24px rgba(0,0,0,0.35);}
+.cricket-board{ margin:0 18px 6px 18px; overflow-x:auto; }
 .cricket-board table{ width:100%; border-collapse:collapse; min-width:280px;}
 .cricket-board th, .cricket-board td{ padding:7px 4px; text-align:center;}
 .cricket-board th.player-col{ font-family:'Oswald',sans-serif; color:var(--cream-dim); font-size:12px; font-weight:600; border-bottom:2px solid var(--brass-dark); text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap;}
@@ -510,7 +521,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 03:00 UTC';
+const BUILD_STAMP = '2026-07-25 03:10 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -591,6 +602,7 @@ let state = {
   newBotRating: 5,
   dartSettingsAddingFor: null,
   confirmDeleteCustomGameId: null,
+  cricketBoardCollapsed: false,
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
   settingsReturnTo: null,
@@ -618,6 +630,7 @@ let state = {
     autoEndTurn: true,
     boardConfirm: false,
     theme: 'cobalt',
+    sidenavCollapsed: false,
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -3826,6 +3839,7 @@ function describeCustomGame(cfg){
 
 /* Settings */
 function setSetting(key, val){ state.settings[key]=val; render(); }
+function toggleSidenavCollapsed(){ state.settings.sidenavCollapsed = !state.settings.sidenavCollapsed; render(); }
 
 /* Checkout table */
 function openCheckoutTable(fromScreen, outRule){
@@ -3846,7 +3860,7 @@ function render(){
   const app = document.getElementById('app');
   const appFooter = document.getElementById('app-footer');
   const sn = document.getElementById('sidenav');
-  if(sn) sn.innerHTML = renderSidenav();
+  if(sn){ sn.innerHTML = renderSidenav(); sn.classList.toggle('collapsed', !!state.settings.sidenavCollapsed); }
   let html = '';
   switch(state.screen){
     case 'home': html = renderHomeShell(); break;
@@ -3905,7 +3919,9 @@ function renderSidenav(){
     {id:'stats', label:'Stats'},
   ];
   const onHome = state.screen==='home';
+  const collapsed = !!state.settings.sidenavCollapsed;
   return `<div class="brand"><span class="dot"></span><h1>Oche</h1></div>
+    <div class="sidenav-collapse-btn" onclick="toggleSidenavCollapsed()" title="${collapsed?'Expand menu':'Collapse menu'}">${collapsed?'&#187;':'&#171;'}</div>
     ${tabs.map(t=>`<div class="sidenav-item ${onHome && state.navTab===t.id?'active':''}" onclick="goTab('${t.id}')">
       <span class="navicon">&#127919;</span>${t.label}
     </div>`).join('')}
@@ -4692,7 +4708,13 @@ function cricketMarkSVG(n){
   return `<svg viewBox="0 0 24 24" width="26" height="26" style="color:var(--cream);">${inner}</svg>`;
 }
 function renderCricketBoard(s){
-  return `<div class="cricket-board"><table>
+  const collapsed = state.cricketBoardCollapsed;
+  return `<div class="cricket-board">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:2px 2px 6px 2px;">
+      <span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:0.06em;">Chalkboard</span>
+      <button onclick="toggleCricketBoard()" style="background:none; border:1px solid var(--felt-lighter); border-radius:6px; color:var(--brass); font-size:11px; cursor:pointer; padding:3px 10px;">${collapsed?'Show &#9662;':'Hide &#9652;'}</button>
+    </div>
+    ${collapsed ? '' : `<table>
     <thead><tr>
       <th class="num-col"></th>
       ${s.participants.map((p,i)=>`<th class="player-col ${i===s.currentIdx?'active':''}">${i===s.currentIdx?'<span class="capicon">&#9679;</span>':''}${playerName(p.playerId)}</th>`).join('')}
@@ -4711,7 +4733,12 @@ function renderCricketBoard(s){
         ${s.participants.map((p,i)=>`<td>${miniDartChips(participantDisplayDarts(s,i), true, i===s.currentIdx)}</td>`).join('')}
       </tr>
     </tbody>
-  </table></div>`;
+  </table>`}
+  </div>`;
+}
+function toggleCricketBoard(){
+  state.cricketBoardCollapsed = !state.cricketBoardCollapsed;
+  render();
 }
 function turnHintTargetLabel(t){
   if(!t) return null;
