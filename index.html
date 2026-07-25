@@ -238,6 +238,9 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 }
 .chip.selected{background:rgba(204,154,61,0.18); border-color:var(--brass); color:var(--brass);}
 .chip-wrap{display:flex; flex-wrap:wrap;}
+.checkout-options{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 18px 8px 18px; }
+.checkout-options-label{ font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:0.05em; margin-right:2px; }
+.checkout-options .chip{ font-family:'JetBrains Mono',monospace; font-size:12px; }
 
 .player-row{
   display:flex; align-items:center; justify-content:space-between; padding:10px 12px;
@@ -372,6 +375,9 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   color:var(--cream); font-family:'JetBrains Mono',monospace; font-weight:700; font-size:22px; border-bottom:1px solid var(--felt-lighter);
 }
 .num-btn-split.recommended .zone-single{ color:var(--brass); }
+.killer-zone-single{ flex-direction:column; gap:1px; }
+.killer-owner-tag{ font-size:11px; font-weight:600; letter-spacing:0.02em; color:var(--cream-dim); max-width:90%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.num-btn-split.recommended .killer-owner-tag{ color:var(--brass); }
 .num-btn-split .zone-row{ flex:1; display:flex; }
 .num-btn-split .zone-double, .num-btn-split .zone-triple{
   flex:1; display:flex; align-items:center; justify-content:center; cursor:pointer;
@@ -422,7 +428,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   flex:1; background:linear-gradient(180deg,var(--brass),var(--brass-dark)); border:none; color:#241a06;
   font-weight:700; font-size:13px; border-radius:10px; padding:10px 4px; cursor:pointer;
 }
-@media (min-width:1024px){ .dartboard-svg{ width:min(100%, 600px, 48vh); } }
+@media (min-width:1024px){ .dartboard-svg{ width:min(100%, 600px, 56vh); } }
 .confirm-banner{margin:0 18px 8px 18px; text-align:center; background:var(--felt-dark); border:1px solid var(--brass); border-radius:10px; padding:8px; font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--brass);}
 
 .modal-overlay{
@@ -564,7 +570,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 21:08 UTC';
+const BUILD_STAMP = '2026-07-25 21:34 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -751,6 +757,53 @@ function finishSetFor(outRule){
   if(outRule==='straight') return ALL_THROWS;
   if(outRule==='master') return ALL_THROWS.filter(t=>t.type==='double'||t.type==='triple'||t.label==='DB');
   return ALL_THROWS.filter(t=>t.type==='double'||t.label==='DB'); // double out (DB counts as double)
+}
+const FRIENDLY_DOUBLES = new Set([2,4,8,10,16,20,24,32,40]);
+function throwDifficulty(label){
+  if(label==='DB') return 2.5;
+  if(label==='SB') return 1.2;
+  const type = label[0];
+  const num = parseInt(label.slice(1),10);
+  if(type==='T') return 3;
+  if(type==='D') return FRIENDLY_DOUBLES.has(num) ? 1 : 2;
+  return 0.6;
+}
+function routeDifficulty(route){ return route.reduce((sum,label)=>sum+throwDifficulty(label),0); }
+function findCheckoutOptions(remaining, dartsLeft, outRule, maxResults){
+  maxResults = maxResults || 4;
+  if(remaining<=0 || dartsLeft<1) return [];
+  const finishSet = finishSetFor(outRule);
+  if(dartsLeft===1){
+    for(const t of finishSet){ if(t.value===remaining) return [[t.label]]; }
+    return [];
+  }
+  const results = [];
+  const seen = new Set();
+  const directRoute = findCheckout(remaining, dartsLeft, outRule);
+  if(directRoute){ const key=directRoute.join(','); seen.add(key); results.push(directRoute); }
+  for(const t of ALL_THROWS){
+    if(results.length >= maxResults*3) break;
+    if(t.value<=0 || t.value>=remaining) continue;
+    const tail = findCheckout(remaining-t.value, dartsLeft-1, outRule);
+    if(tail){
+      const route = [t.label, ...tail];
+      const key = route.join(',');
+      if(!seen.has(key)){ seen.add(key); results.push(route); }
+    }
+  }
+  results.sort((a,b)=> routeDifficulty(a)-routeDifficulty(b));
+  return results.slice(0, maxResults);
+}
+function renderCheckoutOptionsLine(s){
+  if(s.kind!=='x01' || s.guidance==='none') return '';
+  const p = x01Current(s);
+  const dartsLeft = 3 - s.currentTurnDarts.length;
+  const options = findCheckoutOptions(p.score, dartsLeft, s.outRule, 4);
+  if(!options.length) return '';
+  return `<div class="checkout-options">
+    <span class="checkout-options-label">Ways to finish:</span>
+    ${options.map(route=>`<span class="chip">${route.join(' &middot; ')}</span>`).join('')}
+  </div>`;
 }
 function findCheckout(remaining, dartsLeft, outRule){
   if(remaining<=0 || dartsLeft<1) return null;
@@ -2064,13 +2117,15 @@ function sectionUndoThrow(ps){
 function sectionOverallAvg(ps){
   return ps.allThrows.length ? Math.round(ps.allThrows.reduce((a,b)=>a+b,0)/ps.allThrows.length) : 0;
 }
-function renderDartboardSVG(pending, targetHighlight, hitPoint){
+function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels){
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
   const rDoubleOut=R_DOUBLE_OUT, rDoubleIn=R_DOUBLE_IN, rTripleOut=R_TRIPLE_OUT, rTripleIn=R_TRIPLE_IN, rBullOuter=R_BULL_OUTER, rBullInner=R_BULL_INNER;
   const rBezel = R_BEZEL, rLabel = R_NUMBER_LABEL;
+  const highlights = targetHighlight ? (Array.isArray(targetHighlight) ? targetHighlight : [targetHighlight]) : [];
   let wedges = '';
   let labels = '';
   let highlightOverlay = '';
+  let ownerOverlay = '';
   const addHighlight = (d)=>{
     highlightOverlay += `<path d="${d}" fill="#FFD23F" fill-opacity="0.32" stroke="#FFD23F" stroke-width="4" style="pointer-events:none;">
       <animate attributeName="fill-opacity" values="0.18;0.48;0.18" dur="1.1s" repeatCount="indefinite"/>
@@ -2089,27 +2144,38 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint){
     wedges += `<path d="${wedgePath(cx,cy,rTripleIn,rTripleOut,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="1" class="board-seg" data-num="${num}" data-seg="triple" style="cursor:pointer;${isSel('triple')?'filter:brightness(1.5);':''}"/>`;
     const lp = polar(cx,cy,rLabel,(aStart+aEnd)/2);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
-    if(targetHighlight && targetHighlight.num!=='B' && String(targetHighlight.num)===String(num)){
-      const seg = targetHighlight.seg;
-      if(seg==='any'||seg==='single'){ addHighlight(wedgePath(cx,cy,rTripleOut,rDoubleIn,aStart,aEnd)); addHighlight(wedgePath(cx,cy,rBullOuter,rTripleIn,aStart,aEnd)); }
-      if(seg==='any'||seg==='double'){ addHighlight(wedgePath(cx,cy,rDoubleIn,rDoubleOut,aStart,aEnd)); }
-      if(seg==='any'||seg==='triple'){ addHighlight(wedgePath(cx,cy,rTripleIn,rTripleOut,aStart,aEnd)); }
+    highlights.forEach(th=>{
+      if(th.num!=='B' && String(th.num)===String(num)){
+        const seg = th.seg;
+        if(seg==='any'||seg==='single'){ addHighlight(wedgePath(cx,cy,rTripleOut,rDoubleIn,aStart,aEnd)); addHighlight(wedgePath(cx,cy,rBullOuter,rTripleIn,aStart,aEnd)); }
+        if(seg==='any'||seg==='double'){ addHighlight(wedgePath(cx,cy,rDoubleIn,rDoubleOut,aStart,aEnd)); }
+        if(seg==='any'||seg==='triple'){ addHighlight(wedgePath(cx,cy,rTripleIn,rTripleOut,aStart,aEnd)); }
+      }
+    });
+    if(ownerLabels && ownerLabels.length){
+      const owner = ownerLabels.find(o=>String(o.num)===String(num));
+      if(owner){
+        const lp2 = polar(cx,cy,(rTripleOut+rDoubleIn)/2,(aStart+aEnd)/2);
+        ownerOverlay += `<text x="${lp2[0]}" y="${lp2[1]}" fill="${owner.color}" font-family="'JetBrains Mono',monospace" font-size="12" font-weight="700" text-anchor="middle" dominant-baseline="middle" stroke="rgba(0,0,0,0.55)" stroke-width="2.5" paint-order="stroke" style="pointer-events:none;">${owner.text}</text>`;
+      }
     }
   }
   const bullOuterSel = pending && pending.seg==='bullouter';
   const bullInnerSel = pending && pending.seg==='bullinner';
   wedges += `<circle cx="${cx}" cy="${cy}" r="${rBullOuter}" fill="#4A8A66" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;${bullOuterSel?'filter:brightness(1.4);':''}"/>`;
   wedges += `<circle cx="${cx}" cy="${cy}" r="${rBullInner}" fill="#A84545" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;${bullInnerSel?'filter:brightness(1.4);':''}"/>`;
-  if(targetHighlight && targetHighlight.num==='B'){
-    const seg = targetHighlight.seg;
-    if(seg==='any'||seg==='single'){ addHighlight(annulusPath(cx,cy,rBullInner,rBullOuter)); }
-    if(seg==='any'||seg==='bull'){ highlightOverlay += `<circle cx="${cx}" cy="${cy}" r="${rBullInner}" fill="#FFD23F" fill-opacity="0.32" stroke="#FFD23F" stroke-width="4" style="pointer-events:none;"><animate attributeName="fill-opacity" values="0.18;0.48;0.18" dur="1.1s" repeatCount="indefinite"/></circle>`; }
-  }
+  highlights.forEach(th=>{
+    if(th.num==='B'){
+      const seg = th.seg;
+      if(seg==='any'||seg==='single'){ addHighlight(annulusPath(cx,cy,rBullInner,rBullOuter)); }
+      if(seg==='any'||seg==='bull'){ highlightOverlay += `<circle cx="${cx}" cy="${cy}" r="${rBullInner}" fill="#FFD23F" fill-opacity="0.32" stroke="#FFD23F" stroke-width="4" style="pointer-events:none;"><animate attributeName="fill-opacity" values="0.18;0.48;0.18" dur="1.1s" repeatCount="indefinite"/></circle>`; }
+    }
+  });
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
-    ${wedges}${labels}${highlightOverlay}${hitMarker}
+    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}
   </svg>`;
 }
 function handleBoardClick(evt){
@@ -4698,6 +4764,8 @@ function renderActiveShell(){
     <div></div>
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}
+  ${renderBoardConfirmLine(s)}
+  ${renderCheckoutOptionsLine(s)}
   <div class="instruction-line">${renderTurnHint(s)}</div>
   ${renderPlayerBoxes(s)}
   ${renderBottomControls(s)}
@@ -4815,6 +4883,7 @@ function renderCricketBoard(s){
 }
 function turnHintTargetLabel(t){
   if(!t) return null;
+  if(Array.isArray(t)) return t.length ? 'any of the highlighted rivals\u2019 numbers' : null;
   if(t.num==='B') return t.seg==='bull' ? 'the Bullseye' : t.seg==='any' ? 'the Bull' : 'Outer Bull';
   const segWord = t.seg==='triple' ? 'Triple ' : t.seg==='double' ? 'Double ' : t.seg==='any' ? '' : 'Single ';
   return segWord + t.num;
@@ -4972,7 +5041,9 @@ function getCurrentGameTargetHighlight(s){
   if(s.kind==='killer'){
     const p = killerCurrent(s);
     if(!p.isKiller) return {num:p.number, seg:'double'};
-    return null; // once a killer, target is a free choice among open rivals — no single spot to highlight
+    const rivals = s.participants.filter(o=>o!==p && !o.eliminated);
+    if(!rivals.length) return null;
+    return rivals.map(o=>({num:o.number, seg:'any'}));
   }
   if(s.kind==='custom'){
     const cfg = s.cfg;
@@ -4987,6 +5058,15 @@ function getCurrentGameTargetHighlight(s){
   }
   return null;
 }
+function killerOwnerLabels(s){
+  const me = killerCurrent(s);
+  return s.participants.map(p=>{
+    const pl = state.players.find(x=>x.id===p.playerId);
+    const text = pl ? pl.name.slice(0,4).toUpperCase() : '???';
+    const color = p.eliminated ? 'rgba(242,236,220,0.35)' : (p===me ? '#CC9A3D' : '#F2ECDC');
+    return { num: p.number, text, color };
+  });
+}
 function renderEntryArea(s){
   const botTurn = s.kind==='x01' && isBotPlayerId(x01Current(s).playerId);
   const isCricket = s.kind==='cricket';
@@ -4999,9 +5079,7 @@ function renderEntryArea(s){
   } else if(method==='grid'){
     entryHtml = renderNumberGrid(s);
   } else {
-    entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints)}</div>
-    ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
-    ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
+    entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}</div>`;
   }
   const toggle = isCricket
     ? `<div class="entry-toggle">
@@ -5024,6 +5102,15 @@ function setCricketEntryMethod(m){
   state.settings.cricketEntryMethod = m;
   state.pendingBoard = null;
   render();
+}
+function renderBoardConfirmLine(s){
+  const isCricket = s.kind==='cricket';
+  const method = isCricket
+    ? (['grid','board','chalkboard'].includes(state.settings.cricketEntryMethod) ? state.settings.cricketEntryMethod : 'chalkboard')
+    : state.settings.entryMethod;
+  if(method!=='board') return '';
+  return `${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
+  ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function renderNumberGrid(s){
   if(state.pendingSelection){
@@ -5099,9 +5186,10 @@ function renderNumberGrid(s){
         const owner = s.participants.find(o=>o.number===n);
         const isMine = n===p.number;
         const ownerEliminated = owner && owner.eliminated;
-        const ownerTag = owner ? `<span style="font-size:14px; letter-spacing:0; margin-left:2px;">${isMine?'YOU':playerName(owner.playerId).slice(0,3).toUpperCase()}</span>` : '';
+        const ownerName = owner ? (state.players.find(x=>x.id===owner.playerId)||{}).name : null;
+        const ownerTag = ownerName ? `<span class="killer-owner-tag">${isMine?'YOU':ownerName.toUpperCase()}</span>` : '';
         return `<div class="num-btn-split ${isMine?'recommended':''} ${ownerEliminated?'closed':''}">
-          <div class="zone-single" onclick="dispatchThrow(${n},'single')">S-${n}${ownerTag}</div>
+          <div class="zone-single killer-zone-single" onclick="dispatchThrow(${n},'single')"><span>S-${n}</span>${ownerTag}</div>
           <div class="zone-row">
             <div class="zone-double" onclick="dispatchThrow(${n},'double')">D-${n}</div>
             <div class="zone-triple" onclick="dispatchThrow(${n},'triple')">T-${n}</div>
