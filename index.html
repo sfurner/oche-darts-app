@@ -559,7 +559,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 05:15 UTC';
+const BUILD_STAMP = '2026-07-25 16:06 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4976,9 +4976,7 @@ function getCurrentGameTargetHighlight(s){
   return null;
 }
 function renderEntryArea(s){
-  if(s.kind==='x01' && isBotPlayerId(x01Current(s).playerId)){
-    return `<div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is throwing — no input needed</div>`;
-  }
+  const botTurn = s.kind==='x01' && isBotPlayerId(x01Current(s).playerId);
   let entryHtml='';
   if(state.settings.entryMethod==='grid'){
     entryHtml = renderNumberGrid(s);
@@ -4986,6 +4984,14 @@ function renderEntryArea(s){
     entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints)}</div>
     ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
     ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
+  }
+  if(botTurn){
+    return `<div class="entry-toggle">
+      <button class="${state.settings.entryMethod==='grid'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='grid') toggleEntryMethod();">Number Grid</button>
+      <button class="${state.settings.entryMethod==='board'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='board') toggleEntryMethod();">Dartboard</button>
+    </div>
+    <div style="pointer-events:none; opacity:0.85;">${entryHtml}</div>
+    <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is throwing — no input needed</div>`;
   }
   return `<div class="entry-toggle">
     <button class="${state.settings.entryMethod==='grid'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='grid') toggleEntryMethod();">Number Grid</button>
