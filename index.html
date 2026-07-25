@@ -290,11 +290,9 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .mini-dart-chip.editable:hover::after{ opacity:1; }
 .turn-total{margin-left:auto; font-family:'JetBrains Mono',monospace; color:var(--cream-dim); font-size:13px;}
 
-.chalkboard-wrap{ display:flex; flex-direction:column; gap:14px; padding:0 18px 10px 18px; }
-@media (min-width:641px){ .chalkboard-wrap{ flex-direction:row-reverse; align-items:stretch; } }
-.entry-side{ flex:1 1 60%; min-width:0; }
+.chalkboard-standalone{ display:flex; justify-content:center; padding:6px 18px 10px 18px; }
 .chalkboard-panel{
-  flex:none; width:100%; border-radius:6px; padding:10px 8px; display:flex; flex-direction:column;
+  position:relative; width:min(420px, 100%); border-radius:6px; padding:14px 10px 10px 10px; display:flex; flex-direction:column;
   border:5px solid #111;
   background-color:#2d4a3a;
   background-image:
@@ -303,7 +301,12 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
     radial-gradient(circle at 50% 90%, rgba(255,255,255,0.03) 0%, transparent 45%);
   box-shadow:inset 0 0 30px rgba(0,0,0,0.4);
 }
-@media (min-width:641px){ .chalkboard-panel{ flex:0 0 40%; width:auto; max-width:308px; } }
+.cb-miss-btn{
+  position:absolute; top:8px; left:8px; z-index:5;
+  background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.3); color:#f2f2ee;
+  border-radius:8px; padding:5px 11px; font-family:'JetBrains Mono',monospace; font-size:11px;
+  font-weight:700; text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;
+}
 .chalkboard-panel .cb-vs{ text-align:center; color:#a8a89f; font-size:10px; letter-spacing:0.2em; margin-bottom:1px; font-family:'Inter',sans-serif; }
 .chalkboard-panel .cb-title{ text-align:center; color:#f2f2ee; font-size:16px; letter-spacing:0.08em; margin-bottom:4px; font-family:'Kalam',cursive; font-weight:700; text-shadow:0 0 3px rgba(255,255,255,0.35); }
 .chalkboard-panel .cb-header-row, .chalkboard-panel .cb-row{ display:grid; align-items:center; gap:1px; }
@@ -561,7 +564,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 16:16 UTC';
+const BUILD_STAMP = '2026-07-25 21:08 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -670,6 +673,7 @@ let state = {
     boardConfirm: false,
     theme: 'cobalt',
     sidenavCollapsed: false,
+    cricketEntryMethod: 'chalkboard',
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -4693,9 +4697,7 @@ function renderActiveShell(){
     <div class="game-title-center">${gname}</div>
     <div></div>
   </div>
-  ${s.kind==='cricket'
-    ? `<div class="chalkboard-wrap">${renderChalkboard(s)}<div class="entry-side">${renderEntryArea(s)}</div></div>`
-    : renderEntryArea(s)}${FOOTER_MARKER}
+  ${renderEntryArea(s)}${FOOTER_MARKER}
   <div class="instruction-line">${renderTurnHint(s)}</div>
   ${renderPlayerBoxes(s)}
   ${renderBottomControls(s)}
@@ -4765,7 +4767,7 @@ function renderChalkboard(s){
   const leftCount = Math.ceil(n/2);
   const left = s.participants.slice(0, leftCount);
   const right = s.participants.slice(leftCount);
-  const nameFontSize = n<=2 ? 16 : n===3 ? 14 : 13;
+  const nameFontSize = n<=2 ? 16 : n===3 ? 14 : n===4 ? 13 : n<=6 ? 11 : 9.5;
   const cols = `repeat(${left.length||1},1fr) 22px repeat(${right.length||1},1fr)`;
   const plainName = (p)=>{ const pl = state.players.find(x=>x.id===p.playerId); return pl ? pl.name : '???'; };
   const nameCell = (p,idx)=>`<div class="cb-name" style="font-size:${nameFontSize}px; transform:rotate(${idx%2===0?-1.5:1.5}deg);">${plainName(p)}</div>`;
@@ -4781,6 +4783,7 @@ function renderChalkboard(s){
     return `<div class="cb-mark">${content}</div>`;
   };
   return `<div class="chalkboard-panel">
+    ${canTap ? `<button class="cb-miss-btn" onclick="recordMiss()">Miss</button>` : ''}
     <div class="cb-vs">&mdash; VS &mdash;</div>
     <div class="cb-title">CRICKET</div>
     <div class="cb-header-row" style="grid-template-columns:${cols};">
@@ -4825,7 +4828,7 @@ function renderTurnHint(s){
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
     const darts = s.currentTurnDarts;
     if(darts.length===0){
-      if(s.mode==='natural' && s.calledTargets.length===0) return `${name} is throwing to set the shot&hellip;`;
+      if(s.mode==='natural' && s.calledTargets.length===0) return `${name} is throwing &mdash; any hit on the board sets the shot, only a total miss takes a letter.`;
       const label = currentTargetId ? sectionZoneLabel(currentTargetId) : 'the target';
       return isCaller ? `${name} is throwing for ${label}.` : `${name} is trying to match ${label}.`;
     }
@@ -4986,27 +4989,41 @@ function getCurrentGameTargetHighlight(s){
 }
 function renderEntryArea(s){
   const botTurn = s.kind==='x01' && isBotPlayerId(x01Current(s).playerId);
+  const isCricket = s.kind==='cricket';
+  const method = isCricket
+    ? (['grid','board','chalkboard'].includes(state.settings.cricketEntryMethod) ? state.settings.cricketEntryMethod : 'chalkboard')
+    : state.settings.entryMethod;
   let entryHtml='';
-  if(state.settings.entryMethod==='grid'){
+  if(isCricket && method==='chalkboard'){
+    entryHtml = `<div class="chalkboard-standalone">${renderChalkboard(s)}</div>`;
+  } else if(method==='grid'){
     entryHtml = renderNumberGrid(s);
   } else {
     entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints)}</div>
     ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
     ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
   }
+  const toggle = isCricket
+    ? `<div class="entry-toggle">
+        <button class="${method==='grid'?'tab-active':''}" onclick="setCricketEntryMethod('grid')">Number Grid</button>
+        <button class="${method==='board'?'tab-active':''}" onclick="setCricketEntryMethod('board')">Dartboard</button>
+        <button class="${method==='chalkboard'?'tab-active':''}" onclick="setCricketEntryMethod('chalkboard')">Chalkboard</button>
+      </div>`
+    : `<div class="entry-toggle">
+        <button class="${state.settings.entryMethod==='grid'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='grid') toggleEntryMethod();">Number Grid</button>
+        <button class="${state.settings.entryMethod==='board'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='board') toggleEntryMethod();">Dartboard</button>
+      </div>`;
   if(botTurn){
-    return `<div class="entry-toggle">
-      <button class="${state.settings.entryMethod==='grid'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='grid') toggleEntryMethod();">Number Grid</button>
-      <button class="${state.settings.entryMethod==='board'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='board') toggleEntryMethod();">Dartboard</button>
-    </div>
+    return `${toggle}
     <div style="pointer-events:none; opacity:0.85;">${entryHtml}</div>
     <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is throwing — no input needed</div>`;
   }
-  return `<div class="entry-toggle">
-    <button class="${state.settings.entryMethod==='grid'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='grid') toggleEntryMethod();">Number Grid</button>
-    <button class="${state.settings.entryMethod==='board'?'tab-active':''}" onclick="if(state.settings.entryMethod!=='board') toggleEntryMethod();">Dartboard</button>
-  </div>
-  ${entryHtml}`;
+  return `${toggle}${entryHtml}`;
+}
+function setCricketEntryMethod(m){
+  state.settings.cricketEntryMethod = m;
+  state.pendingBoard = null;
+  render();
 }
 function renderNumberGrid(s){
   if(state.pendingSelection){
