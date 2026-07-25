@@ -294,16 +294,22 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 @media (min-width:641px){ .chalkboard-wrap{ flex-direction:row-reverse; align-items:stretch; } }
 .entry-side{ flex:1 1 60%; min-width:0; }
 .chalkboard-panel{
-  flex:none; width:100%; background:#0b0b0b; border-radius:8px; padding:12px 10px; display:flex; flex-direction:column;
-  box-shadow:inset 0 0 24px rgba(0,0,0,0.45);
+  flex:none; width:100%; border-radius:6px; padding:10px 8px; display:flex; flex-direction:column;
+  border:5px solid #111;
+  background-color:#2d4a3a;
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(255,255,255,0.05) 0%, transparent 35%),
+    radial-gradient(circle at 85% 75%, rgba(255,255,255,0.04) 0%, transparent 40%),
+    radial-gradient(circle at 50% 90%, rgba(255,255,255,0.03) 0%, transparent 45%);
+  box-shadow:inset 0 0 30px rgba(0,0,0,0.4);
 }
-@media (min-width:641px){ .chalkboard-panel{ flex:0 0 36%; width:auto; max-width:280px; } }
-.chalkboard-panel .cb-vs{ text-align:center; color:#8f8f8a; font-size:9px; letter-spacing:0.2em; margin-bottom:2px; font-family:'Inter',sans-serif; }
-.chalkboard-panel .cb-title{ text-align:center; color:#f2f2ee; font-size:14px; letter-spacing:0.1em; margin-bottom:8px; font-family:'Kalam',cursive; font-weight:700; }
-.chalkboard-panel .cb-header-row, .chalkboard-panel .cb-row{ display:grid; align-items:center; gap:2px; }
-.chalkboard-panel .cb-name{ text-align:center; color:#fff; font-family:'Kalam',cursive; font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:4px; }
-.chalkboard-panel .cb-rows{ flex:1; display:flex; flex-direction:column; justify-content:space-between; }
-.chalkboard-panel .cb-num{ color:#f2f2ee; font-family:'Kalam',cursive; font-weight:700; font-size:19px; }
+@media (min-width:641px){ .chalkboard-panel{ flex:0 0 40%; width:auto; max-width:308px; } }
+.chalkboard-panel .cb-vs{ text-align:center; color:#a8a89f; font-size:10px; letter-spacing:0.2em; margin-bottom:1px; font-family:'Inter',sans-serif; }
+.chalkboard-panel .cb-title{ text-align:center; color:#f2f2ee; font-size:16px; letter-spacing:0.08em; margin-bottom:4px; font-family:'Kalam',cursive; font-weight:700; text-shadow:0 0 3px rgba(255,255,255,0.35); }
+.chalkboard-panel .cb-header-row, .chalkboard-panel .cb-row{ display:grid; align-items:center; gap:1px; }
+.chalkboard-panel .cb-name{ text-align:center; color:#fff; font-family:'Kalam',cursive; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px; text-shadow:0 0 3px rgba(255,255,255,0.3); }
+.chalkboard-panel .cb-rows{ flex:1; display:flex; flex-direction:column; justify-content:space-evenly; }
+.chalkboard-panel .cb-num{ color:#f2f2ee; font-family:'Kalam',cursive; font-weight:700; font-size:21px; text-align:center; text-shadow:0 0 3px rgba(255,255,255,0.35); }
 .chalkboard-panel .cb-mark{ display:flex; align-items:center; justify-content:center; }
 .entry-toggle{display:flex; gap:22px; padding:0 18px 14px 18px; justify-content:center;}
 .entry-toggle button{ flex:none; background:none; border:none; padding:0 0 5px 0; font-size:13px; color:var(--cream-dim); cursor:pointer; border-bottom:2px solid transparent; font-family:'Inter',sans-serif; font-weight:500; }
@@ -553,7 +559,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 05:03 UTC';
+const BUILD_STAMP = '2026-07-25 05:15 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4750,22 +4756,34 @@ function cricketMarkSVG(n, color){
   let inner = `<line x1="5" y1="19" x2="19" y2="5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`;
   if(n>=2) inner += `<line x1="5" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>`;
   if(n>=3) inner += `<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2.5"/>`;
-  return `<svg viewBox="0 0 24 24" width="26" height="26" style="color:${color||'var(--cream)'};">${inner}</svg>`;
+  return `<svg viewBox="0 0 24 24" width="26" height="26" style="color:${color||'var(--cream)'}; filter:drop-shadow(0 0 1.5px rgba(255,255,255,0.4));">${inner}</svg>`;
 }
 function renderChalkboard(s){
   const n = s.participants.length;
-  const cols = `20px repeat(${n},1fr)`;
+  const leftCount = Math.ceil(n/2);
+  const left = s.participants.slice(0, leftCount);
+  const right = s.participants.slice(leftCount);
+  const nameFontSize = n<=2 ? 16 : n===3 ? 14 : 13;
+  const cols = `repeat(${left.length||1},1fr) 22px repeat(${right.length||1},1fr)`;
+  const plainName = (p)=>{ const pl = state.players.find(x=>x.id===p.playerId); return pl ? pl.name : '???'; };
+  const nameCell = (p,idx)=>`<div class="cb-name" style="font-size:${nameFontSize}px; transform:rotate(${idx%2===0?-1.5:1.5}deg);">${plainName(p)}</div>`;
+  const markCell = (p,num)=>{
+    const v = p.marks[num]||0;
+    return `<div class="cb-mark">${v>0 ? cricketMarkSVG(v, '#f2f2ee') : ''}</div>`;
+  };
   return `<div class="chalkboard-panel">
     <div class="cb-vs">&mdash; VS &mdash;</div>
     <div class="cb-title">CRICKET</div>
     <div class="cb-header-row" style="grid-template-columns:${cols};">
+      ${left.map((p,i)=>nameCell(p,i)).join('')}
       <div></div>
-      ${s.participants.map(p=>`<div class="cb-name">${playerName(p.playerId)}</div>`).join('')}
+      ${right.map((p,i)=>nameCell(p,i+left.length)).join('')}
     </div>
     <div class="cb-rows">
       ${CRICKET_NUMS.map(num=>`<div class="cb-row" style="grid-template-columns:${cols};">
+        ${left.map(p=>markCell(p,num)).join('')}
         <div class="cb-num">${num==='B'?'B':num}</div>
-        ${s.participants.map(p=>`<div class="cb-mark">${cricketMarkSVG(p.marks[num], '#f2f2ee')}</div>`).join('')}
+        ${right.map(p=>markCell(p,num)).join('')}
       </div>`).join('')}
     </div>
   </div>`;
