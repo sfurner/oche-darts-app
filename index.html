@@ -304,6 +304,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
     radial-gradient(circle at 50% 90%, rgba(255,255,255,0.03) 0%, transparent 45%);
   box-shadow:inset 0 0 30px rgba(0,0,0,0.4);
 }
+@media (min-width:641px){ .chalkboard-panel{ width:min(520px, 92%); padding:18px 14px 14px 14px; } }
+@media (min-width:1024px){ .chalkboard-panel{ width:min(680px, 88%); padding:22px 18px 18px 18px; } }
 .cb-miss-btn{
   position:absolute; top:8px; left:8px; z-index:5;
   background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.3); color:#f2f2ee;
@@ -316,9 +318,22 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .chalkboard-panel .cb-name{ text-align:center; color:#fff; font-family:'Kalam',cursive; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px; text-shadow:0 0 3px rgba(255,255,255,0.3); }
 .chalkboard-panel .cb-rows{ flex:1; display:flex; flex-direction:column; justify-content:space-evenly; }
 .chalkboard-panel .cb-num{ color:#f2f2ee; font-family:'Kalam',cursive; font-weight:700; font-size:21px; text-align:center; text-shadow:0 0 3px rgba(255,255,255,0.35); }
-.chalkboard-panel .cb-mark{ display:flex; align-items:center; justify-content:center; }
-.chalkboard-panel .cb-mark.cb-tappable{ cursor:pointer; padding:6px 0; border-radius:5px; }
+.chalkboard-panel .cb-mark{ display:flex; align-items:center; justify-content:center; min-height:30px; }
+.chalkboard-panel .cb-mark.cb-tappable{ cursor:pointer; padding:10px 0; border-radius:5px; position:relative; }
 .chalkboard-panel .cb-mark.cb-tappable:active{ background:rgba(255,255,255,0.15); }
+.chalkboard-panel .cb-mark.cb-tappable .aim-dot{ width:9px; height:9px; border-radius:50%; border:1.5px dashed rgba(255,255,255,0.55); }
+@media (min-width:641px){
+  .chalkboard-panel .cb-num{ font-size:26px; }
+  .chalkboard-panel .cb-mark{ min-height:38px; }
+  .chalkboard-panel .cb-mark.cb-tappable{ padding:14px 0; }
+  .chalkboard-panel .cb-mark.cb-tappable .aim-dot{ width:13px; height:13px; }
+}
+@media (min-width:1024px){
+  .chalkboard-panel .cb-num{ font-size:30px; }
+  .chalkboard-panel .cb-mark{ min-height:46px; }
+  .chalkboard-panel .cb-mark.cb-tappable{ padding:18px 0; }
+  .chalkboard-panel .cb-mark.cb-tappable .aim-dot{ width:16px; height:16px; }
+}
 .entry-toggle{display:flex; gap:22px; padding:0 18px 14px 18px; justify-content:center;}
 .entry-toggle button{ flex:none; background:none; border:none; padding:0 0 5px 0; font-size:13px; color:var(--cream-dim); cursor:pointer; border-bottom:2px solid transparent; font-family:'Inter',sans-serif; font-weight:500; }
 .entry-toggle button.tab-active{ color:var(--brass); border-bottom-color:var(--brass); font-weight:600; }
@@ -362,11 +377,15 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .num-btn.closed{background:repeating-linear-gradient(135deg, var(--felt-light), var(--felt-light) 4px, color-mix(in srgb, var(--red) 35%, transparent) 4px, color-mix(in srgb, var(--red) 35%, transparent) 8px); color:color-mix(in srgb, var(--red) 75%, white);}
 .num-btn .marks{position:absolute; bottom:5px; font-size:16px; letter-spacing:3px; color:var(--brass);}
 .num-btn.wide{grid-column:span 2; aspect-ratio:auto; height:88px; font-size:26px; font-family:'Inter',sans-serif; font-weight:600;}
+.num-btn.wide.compact{ grid-column:span 1; height:56px; font-size:16px; }
 
 .num-btn-split{
   height:92px; border-radius:16px; border:1px solid var(--felt-lighter); background:var(--felt-light);
   display:flex; flex-direction:column; overflow:hidden; position:relative;
 }
+.num-btn-split.compact{ height:56px; border-radius:11px; }
+.num-btn-split.compact .zone-single{ font-size:15px; }
+.num-btn-split.compact .zone-double, .num-btn-split.compact .zone-triple{ font-size:13px; }
 .num-btn-split.recommended{border-color:var(--brass); box-shadow:0 0 0 1px var(--brass);}
 .num-btn-split.closed{background:repeating-linear-gradient(135deg, var(--felt-light), var(--felt-light) 4px, color-mix(in srgb, var(--red) 35%, transparent) 4px, color-mix(in srgb, var(--red) 35%, transparent) 8px);}
 .num-btn-split.closed .zone-single{ color:color-mix(in srgb, var(--red) 75%, white); }
@@ -570,7 +589,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-25 21:51 UTC';
+const BUILD_STAMP = '2026-07-26 23:36 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4870,7 +4889,8 @@ function renderChalkboard(s){
     const content = v>0 ? cricketMarkSVG(v, '#f2f2ee') : '';
     if(canTap && p.playerId===currentPid){
       const numArg = num==='B' ? "'B'" : num;
-      return `<div class="cb-mark cb-tappable" onclick="dispatchThrow(${numArg},'single')">${content}</div>`;
+      const aim = v===0 ? '<div class="aim-dot"></div>' : '';
+      return `<div class="cb-mark cb-tappable" onclick="dispatchThrow(${numArg},'single')">${content}${aim}</div>`;
     }
     return `<div class="cb-mark">${content}</div>`;
   };
@@ -5011,8 +5031,8 @@ function renderTurnArea(s){
   }
   return `<div class="turn-area"><div class="turn-darts">${chips}${total}</div></div>`;
 }
-function splitNumBtn(n, recommended){
-  return `<div class="num-btn-split${recommended?' recommended':''}">
+function splitNumBtn(n, recommended, closed, compact){
+  return `<div class="num-btn-split${recommended?' recommended':''}${closed?' closed':''}${compact?' compact':''}">
     <div class="zone-single" onclick="dispatchThrow(${n},'single')">S-${n}</div>
     <div class="zone-row">
       <div class="zone-double" onclick="dispatchThrow(${n},'double')">D-${n}</div>
@@ -5020,8 +5040,8 @@ function splitNumBtn(n, recommended){
     </div>
   </div>`;
 }
-function splitBullBtn(recommended){
-  return `<div class="num-btn-split bull${recommended?' recommended':''}">
+function splitBullBtn(recommended, closed, compact){
+  return `<div class="num-btn-split bull${recommended?' recommended':''}${closed?' closed':''}${compact?' compact':''}">
     <div class="zone-single" onclick="dispatchThrow('B','single')">S-Bull</div>
     <div class="zone-row">
       <div class="zone-double" onclick="dispatchThrow('B','bull')">D-Bull</div>
@@ -5158,48 +5178,44 @@ function renderNumberGrid(s){
     return `<div class="numgrid" style="grid-template-columns:repeat(4,1fr);">
       ${CRICKET_NUMS.map(n=>{
         const closed = cricketNumClosed(p,n);
-        const label = n==='B'?'Bull':n;
-        return `<div class="num-btn ${closed?'closed':''}" onclick="selectNumberGrid(${n==='B'?"'B'":n})">${label}<span class="marks">${'&#9679;'.repeat(Math.min(p.marks[n],3))}</span></div>`;
+        return n==='B' ? splitBullBtn(false, closed, true) : splitNumBtn(n, false, closed, true);
       }).join('')}
-      <div class="num-btn wide" onclick="selectNumberGrid('miss')">Miss</div>
+      <div class="num-btn wide compact" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   if(s.kind==='custom'){
     const cfg = s.cfg;
     const p = customCurrent(s);
     const req = cfg.requiredHitsPerTarget||1;
-    return `<div class="numgrid" style="grid-template-columns:repeat(5,1fr);">
+    return `<div class="numgrid" style="grid-template-columns:repeat(3,1fr);">
       ${cfg.targets.map(n=>{
         const hits = p.hits[n]||0;
         const done = cfg.winCondition==='allTargets' && hits>=req;
-        const label = n==='B'?'Bull':n;
-        return `<div class="num-btn ${done?'closed':''}" onclick="selectNumberGrid(${n==='B'?"'B'":n})">${label}${cfg.winCondition==='allTargets'?`<span class="marks">${'&#9679;'.repeat(Math.min(hits,3))}</span>`:''}</div>`;
+        return n==='B' ? splitBullBtn(false, done) : splitNumBtn(n, false, done);
       }).join('')}
-      <div class="num-btn wide" style="grid-column:span ${cfg.targets.length%5===0?5:(5-(cfg.targets.length%5))};" onclick="selectNumberGrid('miss')">Miss</div>
+      <div class="num-btn wide" style="grid-column:span ${cfg.targets.length%3===0?3:(3-(cfg.targets.length%3))};" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   if(s.kind==='atc'){
     const p = atcCurrent(s);
     const target = s.sequence[p.idx];
     if(target===undefined) return `<div class="numgrid"></div>`;
-    const label = target==='B'?'Bull':target;
     return `<div class="numgrid" style="grid-template-columns:repeat(2,1fr);">
-      <div class="num-btn recommended" style="aspect-ratio:auto; height:120px; font-size:44px; grid-column:span 2;" onclick="selectNumberGrid(${target==='B'?"'B'":target})">${label}</div>
+      <div style="grid-column:span 2;">${target==='B' ? splitBullBtn(true) : splitNumBtn(target, true)}</div>
       <div class="num-btn wide" style="grid-column:span 2;" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   if(s.kind==='shanghai' || s.kind==='baseball'){
     const target = s.round;
     return `<div class="numgrid" style="grid-template-columns:repeat(2,1fr);">
-      <div class="num-btn recommended" style="aspect-ratio:auto; height:120px; font-size:44px; grid-column:span 2;" onclick="selectNumberGrid(${target})">${target}</div>
+      <div style="grid-column:span 2;">${splitNumBtn(target, true)}</div>
       <div class="num-btn wide" style="grid-column:span 2;" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   if(s.kind==='halveit'){
     const target = s.sequence[s.round-1];
-    const label = target==='B'?'Bull':target;
     return `<div class="numgrid" style="grid-template-columns:repeat(2,1fr);">
-      <div class="num-btn recommended" style="aspect-ratio:auto; height:120px; font-size:44px; grid-column:span 2;" onclick="selectNumberGrid(${target==='B'?"'B'":target})">${label}</div>
+      <div style="grid-column:span 2;">${target==='B' ? splitBullBtn(true) : splitNumBtn(target, true)}</div>
       <div class="num-btn wide" style="grid-column:span 2;" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
