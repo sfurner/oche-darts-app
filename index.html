@@ -383,9 +383,9 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   height:92px; border-radius:16px; border:1px solid var(--felt-lighter); background:var(--felt-light);
   display:flex; flex-direction:column; overflow:hidden; position:relative;
 }
-.num-btn-split.compact{ height:56px; border-radius:11px; }
-.num-btn-split.compact .zone-single{ font-size:15px; }
-.num-btn-split.compact .zone-double, .num-btn-split.compact .zone-triple{ font-size:13px; }
+.num-btn-split.compact{ height:42px; border-radius:9px; }
+.num-btn-split.compact .zone-single{ font-size:12px; }
+.num-btn-split.compact .zone-double, .num-btn-split.compact .zone-triple{ font-size:10.5px; }
 .num-btn-split.recommended{border-color:var(--brass); box-shadow:0 0 0 1px var(--brass);}
 .num-btn-split.closed{background:repeating-linear-gradient(135deg, var(--felt-light), var(--felt-light) 4px, color-mix(in srgb, var(--red) 35%, transparent) 4px, color-mix(in srgb, var(--red) 35%, transparent) 8px);}
 .num-btn-split.closed .zone-single{ color:color-mix(in srgb, var(--red) 75%, white); }
@@ -589,7 +589,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-27 01:55 UTC';
+const BUILD_STAMP = '2026-07-27 02:33 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1700,7 +1700,8 @@ const WEDGE_ROTATION = 18;
 // footer part (after) — used so score rows and Undo/Menu controls never get scrolled out of view
 // behind a large dartboard, regardless of window size or fullscreen mode.
 const FOOTER_MARKER = '<!--__FOOTER__-->';
-const BOARD_CX=235, BOARD_CY=235, BOARD_CANVAS=470;
+const BOARD_CX=290, BOARD_CY=290, BOARD_CANVAS=580;
+const KILLER_COLORS = ['#5B9BF5','#C9584A','#4A8A66','#9B6BC9','#D48A3D','#3DBFCC'];
 const R_BULL_INNER=11, R_BULL_OUTER=24, R_TRIPLE_IN=106, R_TRIPLE_OUT=122, R_DOUBLE_IN=178;
 const R_DOUBLE_OUT = R_DOUBLE_IN + (R_TRIPLE_OUT-R_TRIPLE_IN); // double ring width == triple ring width
 const R_BEZEL = R_DOUBLE_OUT+32, R_OVER_OUT = R_DOUBLE_OUT+22;
@@ -2196,10 +2197,13 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels){
       if(owner){
         const midAngle = (aStart+aEnd)/2;
         const lineInner = polar(cx,cy,rDoubleOut+3,midAngle);
-        const lineOuter = polar(cx,cy,rBezel-7,midAngle);
-        const textPos = polar(cx,cy,rBezel-6,midAngle);
-        ownerOverlay += `<line x1="${lineInner[0]}" y1="${lineInner[1]}" x2="${lineOuter[0]}" y2="${lineOuter[1]}" stroke="${owner.color}" stroke-width="1.5" opacity="0.75" style="pointer-events:none;"/>`;
-        ownerOverlay += `<text x="${textPos[0]}" y="${textPos[1]}" fill="${owner.color}" font-family="'JetBrains Mono',monospace" font-size="10.5" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${owner.text}</text>`;
+        const lineOuter = polar(cx,cy,rBezel+36,midAngle);
+        const textPos = polar(cx,cy,rBezel+44,midAngle);
+        const dx = textPos[0]-cx;
+        const anchor = Math.abs(dx)<15 ? 'middle' : (dx<0 ? 'end' : 'start');
+        ownerOverlay += `<line x1="${lineInner[0]}" y1="${lineInner[1]}" x2="${lineOuter[0]}" y2="${lineOuter[1]}" stroke="${owner.color}" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.8" style="pointer-events:none;"/>`;
+        ownerOverlay += `<circle cx="${lineInner[0]}" cy="${lineInner[1]}" r="2.5" fill="${owner.color}" style="pointer-events:none;"/>`;
+        ownerOverlay += `<text x="${textPos[0]}" y="${textPos[1]}" fill="${owner.color}" font-family="'JetBrains Mono',monospace" font-size="13" font-weight="700" text-anchor="${anchor}" dominant-baseline="middle" style="pointer-events:none;">${owner.text}</text>`;
       }
     }
   }
@@ -4895,7 +4899,6 @@ function renderChalkboard(s){
     return `<div class="cb-mark">${content}</div>`;
   };
   return `<div class="chalkboard-panel">
-    ${canTap ? `<button class="cb-miss-btn" onclick="recordMiss()">Miss</button>` : ''}
     <div class="cb-vs">&mdash; VS &mdash;</div>
     <div class="cb-title">CRICKET</div>
     <div class="cb-header-row" style="grid-template-columns:${cols};">
@@ -5105,11 +5108,11 @@ function getCurrentGameTargetHighlight(s){
 }
 function killerOwnerLabels(s){
   const me = killerCurrent(s);
-  return s.participants.map(p=>{
+  return s.participants.map((p,idx)=>{
     const pl = state.players.find(x=>x.id===p.playerId);
-    const text = pl ? pl.name.slice(0,4).toUpperCase() : '???';
-    const color = p.eliminated ? 'rgba(242,236,220,0.35)' : (p===me ? '#CC9A3D' : '#F2ECDC');
-    return { num: p.number, text, color };
+    const text = pl ? pl.name.slice(0,10) : '???';
+    const color = p.eliminated ? 'rgba(242,236,220,0.35)' : (p===me ? '#CC9A3D' : KILLER_COLORS[idx % KILLER_COLORS.length]);
+    return { num: p.number, text: p===me ? text+' (you)' : text, color };
   });
 }
 function renderEntryArea(s){
@@ -5122,7 +5125,7 @@ function renderEntryArea(s){
   if(isCricket && method==='chalkboard'){
     entryHtml = `<div class="chalkboard-standalone">${renderChalkboard(s)}</div>`;
   } else if(method==='grid'){
-    entryHtml = `<div style="position:relative; padding-top:56px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
+    entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
     entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}</div>`;
   }
@@ -5219,12 +5222,15 @@ function renderNumberGrid(s){
     const nums = Array.from({length:20},(_,i)=>i+1);
     return `<div class="numgrid">
       ${nums.map(n=>{
-        const owner = s.participants.find(o=>o.number===n);
+        const ownerIdx = s.participants.findIndex(o=>o.number===n);
+        const owner = ownerIdx>=0 ? s.participants[ownerIdx] : null;
         const isMine = n===p.number;
         const ownerEliminated = owner && owner.eliminated;
         const ownerName = owner ? (state.players.find(x=>x.id===owner.playerId)||{}).name : null;
-        const ownerTag = ownerName ? `<span class="killer-owner-tag">${isMine?'YOU':ownerName.toUpperCase()}</span>` : '';
-        return `<div class="num-btn-split ${isMine?'recommended':''} ${ownerEliminated?'closed':''}">
+        const color = (owner && !isMine) ? KILLER_COLORS[ownerIdx % KILLER_COLORS.length] : null;
+        const ownerTag = ownerName ? `<span class="killer-owner-tag" style="${color?`color:${color}; font-weight:700;`:''}">${isMine?'YOU':ownerName.toUpperCase()}</span>` : '';
+        const styleAttr = color ? `style="border-left:7px solid ${color}; background:color-mix(in srgb, ${color} 22%, var(--felt-light));"` : '';
+        return `<div class="num-btn-split ${isMine?'recommended':''} ${ownerEliminated?'closed':''}" ${styleAttr}>
           <div class="zone-single killer-zone-single" onclick="dispatchThrow(${n},'single')"><span>S-${n}</span>${ownerTag}</div>
           <div class="zone-row">
             <div class="zone-double" onclick="dispatchThrow(${n},'double')">D-${n}</div>
