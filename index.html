@@ -589,7 +589,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-27 03:09 UTC';
+const BUILD_STAMP = '2026-07-27 03:56 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4956,7 +4956,7 @@ function renderCricketBoard(s){
 }
 function turnHintTargetLabel(t){
   if(!t) return null;
-  if(Array.isArray(t)) return t.length ? 'any of the highlighted rivals\u2019 numbers' : null;
+  if(Array.isArray(t)) return t.length ? 'one of the highlighted numbers' : null;
   if(t.num==='B') return t.seg==='bull' ? 'the Bullseye' : t.seg==='any' ? 'the Bull' : 'Outer Bull';
   const segWord = t.seg==='triple' ? 'Triple ' : t.seg==='double' ? 'Double ' : t.seg==='any' ? '' : 'Single ';
   return segWord + t.num;
@@ -5121,14 +5121,15 @@ function getCurrentGameTargetHighlight(s){
   }
   if(s.kind==='custom'){
     const cfg = s.cfg;
+    const seg = (cfg.multiplierReq && cfg.multiplierReq!=='any') ? cfg.multiplierReq : 'any';
     if(cfg.winCondition==='allTargets'){
       const p = customCurrent(s);
       const remaining = cfg.targets.filter(t=>(p.hits[t]||0) < (cfg.requiredHitsPerTarget||1));
       if(!remaining.length) return null;
-      const t = remaining[0];
-      return t==='B' ? {num:'B', seg:'any'} : {num:t, seg:'any'};
+      return remaining.map(t=>({num:t, seg}));
     }
-    return null;
+    if(!cfg.targets.length) return null;
+    return cfg.targets.map(t=>({num:t, seg}));
   }
   return null;
 }
@@ -5149,7 +5150,7 @@ function renderEntryArea(s){
     : state.settings.entryMethod;
   let entryHtml='';
   if(isCricket && method==='chalkboard'){
-    entryHtml = `<div class="chalkboard-standalone">${renderChalkboard(s)}</div>`;
+    entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button><div class="chalkboard-standalone">${renderChalkboard(s)}</div></div>`;
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
