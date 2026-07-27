@@ -589,7 +589,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-27 03:56 UTC';
+const BUILD_STAMP = '2026-07-27 04:03 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1048,15 +1048,22 @@ function customTargetValue(num){
   if(num==='B') return 25; // outer bull face value; inner bull handled as 50 via multiplier
   return num;
 }
-function customDartQualifies(cfg, num, mult){
-  // mult: 'single'|'double'|'triple'|'bull' (bull = inner 50)
+function customDartQualifies(s, num, mult){
+  const cfg = s.cfg;
   const targetOk = cfg.targets.includes(num==='B'?'B':num);
   if(!targetOk) return false;
-  if(cfg.multiplierReq==='any') return true;
-  if(cfg.multiplierReq==='single') return mult==='single';
-  if(cfg.multiplierReq==='double') return mult==='double' || mult==='bull';
-  if(cfg.multiplierReq==='triple') return mult==='triple';
+  const req = cfg.randomMultiplier ? (s.targetMultipliers && s.targetMultipliers[num==='B'?'B':num]) : cfg.multiplierReq;
+  if(!req || req==='any') return true;
+  if(req==='single') return mult==='single';
+  if(req==='double') return mult==='double' || mult==='bull';
+  if(req==='triple') return mult==='triple';
   return true;
+}
+function customGenerateTargetMultipliers(cfg){
+  const opts = ['single','double','triple'];
+  const map = {};
+  cfg.targets.forEach(t=>{ map[t] = opts[Math.floor(Math.random()*opts.length)]; });
+  return map;
 }
 function customDartPoints(cfg, num, mult){
   const base = customTargetValue(num);
@@ -1072,13 +1079,14 @@ function startCustomGameSession(playerIds, cfg){
     kind:'custom', cfg,
     participants: playerIds.map((pid,i)=>({
       playerId:pid, score: style==='countdown' ? cfg.startingScore : 0, hits:{}, lives:cfg.startingLives||3,
-      eliminated:false, finished:false, letters:0,
+      eliminated:false, finished:false, letters:0, darts:0,
       team: teams ? (i%2===0?'A':'B') : null,
     })),
     currentIdx:0, round:1,
     currentTurnDarts:[], turnHistory:[],
     complete:false, winnerId:null, winnerTeam:null, manualEnded:false,
   };
+  if(cfg.randomMultiplier && style!=='countdown'){ s.targetMultipliers = customGenerateTargetMultipliers(cfg); }
   return s;
 }
 function customCurrent(s){ return s.participants[s.currentIdx]; }
@@ -1088,7 +1096,8 @@ function customTeamScore(s, team){
 function customMutateForDart(s, num, mult){
   const cfg = s.cfg;
   const p = customCurrent(s);
-  const qualifies = customDartQualifies(cfg, num, mult);
+  p.darts = (p.darts||0)+1;
+  const qualifies = customDartQualifies(s, num, mult);
   let label = num==='B' ? (mult==='bull'?'Bull':'Outer Bull') : ((mult==='double'?'D':mult==='triple'?'T':'S')+num);
   let pointsGained = 0;
   if(qualifies){
@@ -1157,6 +1166,16 @@ function customCheckWin(s){
   if(cfg.winCondition==='allTargets'){
     const winner = s.participants.find(p=>customAllTargetsHit(cfg,p));
     if(winner){ s.complete=true; s.winnerId=winner.playerId; s.winnerTeam=winner.team; }
+  } else if(cfg.winCondition==='fewestDarts'){
+    s.participants.forEach(p=>{ if(!p.finished && customAllTargetsHit(cfg,p)) p.finished = true; });
+    if(s.participants.length===1){
+      if(s.participants[0].finished) s.complete = true;
+    } else if(s.participants.every(p=>p.finished)){
+      s.complete = true;
+      const sorted = s.participants.slice().sort((a,b)=>a.darts-b.darts);
+      s.winnerId = sorted[0].playerId;
+      s.winnerTeam = sorted[0].team;
+    }
   } else if(cfg.winCondition==='reachScore'){
     const winner = s.participants.find(p=>p.score >= (cfg.targetScore||101));
     if(winner){ s.complete=true; s.winnerId=winner.playerId; s.winnerTeam=winner.team; }
@@ -1184,7 +1203,7 @@ function customEndTurn(s){
   if(s.complete) return;
   let tries=0, idx=s.currentIdx;
   do{ idx=(idx+1)%s.participants.length; tries++; }
-  while(s.participants[idx].eliminated && tries<=s.participants.length);
+  while((s.participants[idx].eliminated || s.participants[idx].finished) && tries<=s.participants.length);
   if(idx <= s.currentIdx) {
     s.round++;
     if((cfg.winCondition==='highScore'||cfg.winCondition==='lowScore') && s.round > (cfg.rounds||8)){
@@ -3929,11 +3948,11 @@ function openCustomGameBuilder(existingId){
     multiplierReq: existing.multiplierReq, turnLength: existing.turnLength, pointMode: existing.pointMode,
     penalty: existing.penalty, penaltyAmount: existing.penaltyAmount,
     winCondition: existing.winCondition, requiredHitsPerTarget: existing.requiredHitsPerTarget, rounds: existing.rounds,
-    targetScore: existing.targetScore, startingLives: existing.startingLives,
+    targetScore: existing.targetScore, startingLives: existing.startingLives, randomMultiplier: !!existing.randomMultiplier,
     style: validStyles.includes(existing.style) ? existing.style : 'standard', outRule: existing.outRule || 'double', startingScore: existing.startingScore || 301,
   } : {
     editingId: null, name:'', mode:'multi', targets:[], multiplierReq:'any', turnLength:3,
-    pointMode:'standard', penalty:'none', penaltyAmount:5,
+    pointMode:'standard', penalty:'none', penaltyAmount:5, randomMultiplier:false,
     winCondition:'reachScore', requiredHitsPerTarget:3, rounds:8, targetScore:101, startingLives:3,
     style:'standard', outRule:'double', startingScore:301,
   };
@@ -3959,7 +3978,7 @@ function cgbSave(andPlay){
     name, mode:cgb.mode, targets:cgb.targets.slice(),
     multiplierReq:cgb.multiplierReq, turnLength:cgb.turnLength, pointMode:cgb.pointMode,
     penalty:cgb.penalty, penaltyAmount:cgb.penaltyAmount, winCondition:cgb.winCondition,
-    requiredHitsPerTarget:cgb.requiredHitsPerTarget, rounds:cgb.rounds,
+    requiredHitsPerTarget:cgb.requiredHitsPerTarget, rounds:cgb.rounds, randomMultiplier: !!cgb.randomMultiplier,
     targetScore:cgb.targetScore, startingLives:cgb.startingLives,
     style: cgb.style || 'standard', outRule: cgb.outRule, startingScore: cgb.startingScore,
   };
@@ -3988,10 +4007,11 @@ function describeCustomGame(cfg){
     return `Countdown from ${cfg.startingScore} &middot; ${cfg.outRule} out &middot; first to zero wins`;
   }
   const modeLabel = cfg.mode==='teams'?'Teams':cfg.mode==='solo'?'Solo':'Multiplayer';
-  const winLabel = {allTargets:'first to hit every target', highScore:'highest score after '+cfg.rounds+' rounds',
+  const winLabel = {allTargets:'first to hit every target', fewestDarts:'fewest darts to hit every target',
+    highScore:'highest score after '+cfg.rounds+' rounds',
     lowScore:'lowest score after '+cfg.rounds+' rounds', reachScore:'first to '+cfg.targetScore+' points',
     lastStanding:'last player standing', manual:'ends manually'}[cfg.winCondition];
-  return `${modeLabel} &middot; ${cfg.targets.length} target${cfg.targets.length!==1?'s':''} &middot; ${winLabel}`;
+  return `${modeLabel} &middot; ${cfg.targets.length} target${cfg.targets.length!==1?'s':''} &middot; ${winLabel}${cfg.randomMultiplier?' &middot; random single/double/triple per target':''}`;
 }
 
 /* Settings */
@@ -4682,6 +4702,9 @@ function playerBoxData(s, p){
   if(s.kind==='cricket') return {stat: p.points, dim:false};
   if(s.kind==='custom'){
     const cfg = s.cfg;
+    if(cfg.winCondition==='fewestDarts'){
+      return {stat: p.darts||0, dim:false, line2: p.finished ? 'Finished!' : 'darts so far'};
+    }
     const scoreVal = cfg.mode==='teams' ? customTeamScore(s,p.team) : p.score;
     return {stat: scoreVal, dim: !!p.eliminated};
   }
@@ -5121,15 +5144,15 @@ function getCurrentGameTargetHighlight(s){
   }
   if(s.kind==='custom'){
     const cfg = s.cfg;
-    const seg = (cfg.multiplierReq && cfg.multiplierReq!=='any') ? cfg.multiplierReq : 'any';
-    if(cfg.winCondition==='allTargets'){
+    const segFor = (t)=> cfg.randomMultiplier ? ((s.targetMultipliers && s.targetMultipliers[t]) || 'any') : ((cfg.multiplierReq && cfg.multiplierReq!=='any') ? cfg.multiplierReq : 'any');
+    if(cfg.winCondition==='allTargets' || cfg.winCondition==='fewestDarts'){
       const p = customCurrent(s);
       const remaining = cfg.targets.filter(t=>(p.hits[t]||0) < (cfg.requiredHitsPerTarget||1));
       if(!remaining.length) return null;
-      return remaining.map(t=>({num:t, seg}));
+      return remaining.map(t=>({num:t, seg:segFor(t)}));
     }
     if(!cfg.targets.length) return null;
-    return cfg.targets.map(t=>({num:t, seg}));
+    return cfg.targets.map(t=>({num:t, seg:segFor(t)}));
   }
   return null;
 }
@@ -5219,7 +5242,7 @@ function renderNumberGrid(s){
     return `<div class="numgrid" style="grid-template-columns:repeat(3,1fr);">
       ${cfg.targets.map(n=>{
         const hits = p.hits[n]||0;
-        const done = cfg.winCondition==='allTargets' && hits>=req;
+        const done = (cfg.winCondition==='allTargets'||cfg.winCondition==='fewestDarts') && hits>=req;
         return n==='B' ? splitBullBtn(false, done) : splitNumBtn(n, false, done);
       }).join('')}
     </div>`;
@@ -6028,6 +6051,11 @@ function renderCustomGameBuilder(){
     <div>
       <span class="field-label">Multiplier Requirement</span>
       <div class="chip-wrap">${chip('Any','multiplierReq','any')}${chip('Singles Only','multiplierReq','single')}${chip('Doubles Only','multiplierReq','double')}${chip('Triples Only','multiplierReq','triple')}</div>
+      <div style="margin-top:8px;">
+        <span class="field-label">Randomize</span>
+        <div class="chip-wrap"><span class="chip ${cgb.randomMultiplier?'selected':''}" onclick="cgbSet('randomMultiplier',${!cgb.randomMultiplier})">Random single/double/triple per target</span></div>
+        <p class="info-note">When on, each target gets its own random requirement (picked once at game start) instead of the single rule above — so you might need a single 5, a double 12, and a triple 20, all in the same game.</p>
+      </div>
     </div>
 
     <div>
@@ -6055,13 +6083,15 @@ function renderCustomGameBuilder(){
       <span class="field-label">Win Condition</span>
       <div class="chip-wrap">
         ${chip('First to Hit All Targets','winCondition','allTargets')}
+        ${chip('Fewest Darts to Finish','winCondition','fewestDarts')}
         ${chip('Highest Score After Rounds','winCondition','highScore')}
         ${chip('Lowest Score After Rounds','winCondition','lowScore')}
         ${chip('First to a Score','winCondition','reachScore')}
         ${chip('Last Player Standing','winCondition','lastStanding')}
         ${chip('Manual Ending','winCondition','manual')}
       </div>
-      ${cgb.winCondition==='allTargets' ? `<div style="margin-top:8px;"><span class="field-label">Hits Required Per Target</span>
+      ${cgb.winCondition==='fewestDarts' ? `<p class="info-note">Everyone plays until they've hit all targets — whoever needed the fewest total darts wins, not whoever finishes first by turn order.</p>` : ''}
+      ${(cgb.winCondition==='allTargets'||cgb.winCondition==='fewestDarts') ? `<div style="margin-top:8px;"><span class="field-label">Hits Required Per Target</span>
         <div class="chip-wrap">${[1,2,3,5].map(v=>`<span class="chip ${cgb.requiredHitsPerTarget===v?'selected':''}" onclick="cgbSet('requiredHitsPerTarget',${v})">${v}</span>`).join('')}</div></div>` : ''}
       ${(cgb.winCondition==='highScore'||cgb.winCondition==='lowScore') ? `<div style="margin-top:8px;"><span class="field-label">Number of Rounds</span>
         <div class="chip-wrap">${[5,8,10,15,20].map(v=>`<span class="chip ${cgb.rounds===v?'selected':''}" onclick="cgbSet('rounds',${v})">${v}</span>`).join('')}</div></div>` : ''}
