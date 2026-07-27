@@ -589,7 +589,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-27 02:33 UTC';
+const BUILD_STAMP = '2026-07-27 03:09 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -670,6 +670,7 @@ let state = {
   newBotRating: 5,
   dartSettingsAddingFor: null,
   confirmDeleteCustomGameId: null,
+  confirmDeletePracticeId: null,
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
   settingsReturnTo: null,
@@ -1700,7 +1701,7 @@ const WEDGE_ROTATION = 18;
 // footer part (after) — used so score rows and Undo/Menu controls never get scrolled out of view
 // behind a large dartboard, regardless of window size or fullscreen mode.
 const FOOTER_MARKER = '<!--__FOOTER__-->';
-const BOARD_CX=290, BOARD_CY=290, BOARD_CANVAS=580;
+const BOARD_CX=310, BOARD_CY=310, BOARD_CANVAS=620;
 const KILLER_COLORS = ['#5B9BF5','#C9584A','#4A8A66','#9B6BC9','#D48A3D','#3DBFCC'];
 const R_BULL_INNER=11, R_BULL_OUTER=24, R_TRIPLE_IN=106, R_TRIPLE_OUT=122, R_DOUBLE_IN=178;
 const R_DOUBLE_OUT = R_DOUBLE_IN + (R_TRIPLE_OUT-R_TRIPLE_IN); // double ring width == triple ring width
@@ -2197,13 +2198,13 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels){
       if(owner){
         const midAngle = (aStart+aEnd)/2;
         const lineInner = polar(cx,cy,rDoubleOut+3,midAngle);
-        const lineOuter = polar(cx,cy,rBezel+36,midAngle);
-        const textPos = polar(cx,cy,rBezel+44,midAngle);
+        const lineOuter = polar(cx,cy,rBezel+40,midAngle);
+        const textPos = polar(cx,cy,rBezel+50,midAngle);
         const dx = textPos[0]-cx;
         const anchor = Math.abs(dx)<15 ? 'middle' : (dx<0 ? 'end' : 'start');
         ownerOverlay += `<line x1="${lineInner[0]}" y1="${lineInner[1]}" x2="${lineOuter[0]}" y2="${lineOuter[1]}" stroke="${owner.color}" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.8" style="pointer-events:none;"/>`;
         ownerOverlay += `<circle cx="${lineInner[0]}" cy="${lineInner[1]}" r="2.5" fill="${owner.color}" style="pointer-events:none;"/>`;
-        ownerOverlay += `<text x="${textPos[0]}" y="${textPos[1]}" fill="${owner.color}" font-family="'JetBrains Mono',monospace" font-size="13" font-weight="700" text-anchor="${anchor}" dominant-baseline="middle" style="pointer-events:none;">${owner.text}</text>`;
+        ownerOverlay += `<text x="${textPos[0]}" y="${textPos[1]}" fill="${owner.color}" font-family="'JetBrains Mono',monospace" font-size="16.5" font-weight="700" text-anchor="${anchor}" dominant-baseline="middle" style="pointer-events:none;">${owner.text}</text>`;
       }
     }
   }
@@ -4165,7 +4166,6 @@ function renderPlayTab(){
   </div>`;
 }
 function renderPracticeTab(){
-  const all = [...state.customPractices, ...PRACTICES];
   return `<div class="section-label">Featured</div>
   <div class="content content-grid">
     <div class="card" style="border:1px solid var(--brass);">
@@ -4193,9 +4193,30 @@ function renderPracticeTab(){
       <button class="btn btn-primary btn-full" onclick="openCustomBuilder()">Build a Routine</button>
     </div>
   </div>
+  ${state.customPractices.length ? `<div class="section-label">Your Routines</div>
+  <div class="content content-grid">
+    ${state.customPractices.map(p=>`
+      <div class="card" style="border:1px solid var(--brass);">
+        <h3>${p.name}</h3>
+        <p class="desc">${p.desc}</p>
+        ${state.confirmDeletePracticeId===p.id ? `
+          <p style="color:var(--red); font-size:13px;">Delete "${p.name}"? This can't be undone.</p>
+          <div class="btn-row">
+            <button class="btn btn-danger" onclick="confirmDeletePractice('${p.id}')">Delete</button>
+            <button class="btn btn-secondary" onclick="state.confirmDeletePracticeId=null; render();">Cancel</button>
+          </div>
+        ` : `
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="openPracticePlayerSetup('${p.id}')">Start</button>
+        </div>
+        <button class="btn btn-danger btn-full" style="margin-top:6px;" onclick="state.confirmDeletePracticeId='${p.id}'; render();">Delete</button>
+        `}
+      </div>
+    `).join('')}
+  </div>` : ''}
   <div class="section-label">Guided routines</div>
   <div class="content content-grid">
-    ${all.map(p=>`
+    ${PRACTICES.map(p=>`
       <div class="card">
         <h3>${p.name}</h3>
         <p class="desc">${p.desc}</p>
@@ -4205,6 +4226,11 @@ function renderPracticeTab(){
       </div>
     `).join('')}
   </div>`;
+}
+function confirmDeletePractice(id){
+  state.customPractices = state.customPractices.filter(p=>p.id!==id);
+  state.confirmDeletePracticeId = null;
+  render();
 }
 function renderCustomTab(){
   return `<div class="section-label">Design your own game</div>
@@ -5110,7 +5136,7 @@ function killerOwnerLabels(s){
   const me = killerCurrent(s);
   return s.participants.map((p,idx)=>{
     const pl = state.players.find(x=>x.id===p.playerId);
-    const text = pl ? pl.name.slice(0,10) : '???';
+    const text = pl ? pl.name : '???';
     const color = p.eliminated ? 'rgba(242,236,220,0.35)' : (p===me ? '#CC9A3D' : KILLER_COLORS[idx % KILLER_COLORS.length]);
     return { num: p.number, text: p===me ? text+' (you)' : text, color };
   });
@@ -5181,7 +5207,7 @@ function renderNumberGrid(s){
     return `<div class="numgrid" style="grid-template-columns:repeat(4,1fr);">
       ${CRICKET_NUMS.map(n=>{
         const closed = cricketNumClosed(p,n);
-        return n==='B' ? splitBullBtn(false, closed, true) : splitNumBtn(n, false, closed, true);
+        return n==='B' ? splitBullBtn(false, closed) : splitNumBtn(n, false, closed);
       }).join('')}
     </div>`;
   }
