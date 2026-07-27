@@ -304,8 +304,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
     radial-gradient(circle at 50% 90%, rgba(255,255,255,0.03) 0%, transparent 45%);
   box-shadow:inset 0 0 30px rgba(0,0,0,0.4);
 }
-@media (min-width:641px){ .chalkboard-panel{ width:min(520px, 92%); padding:18px 14px 14px 14px; } }
-@media (min-width:1024px){ .chalkboard-panel{ width:min(680px, 88%); padding:22px 18px 18px 18px; } }
+@media (min-width:641px){ .chalkboard-panel{ width:min(380px, 70%); padding:18px 14px 14px 14px; } }
+@media (min-width:1024px){ .chalkboard-panel{ width:min(440px, 44%); padding:22px 18px 18px 18px; } }
 .cb-miss-btn{
   position:absolute; top:8px; left:8px; z-index:5;
   background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.3); color:#f2f2ee;
@@ -589,7 +589,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-26 23:36 UTC';
+const BUILD_STAMP = '2026-07-27 01:55 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5122,7 +5122,7 @@ function renderEntryArea(s){
   if(isCricket && method==='chalkboard'){
     entryHtml = `<div class="chalkboard-standalone">${renderChalkboard(s)}</div>`;
   } else if(method==='grid'){
-    entryHtml = renderNumberGrid(s);
+    entryHtml = `<div style="position:relative; padding-top:56px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
     entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}</div>`;
   }
@@ -5180,7 +5180,6 @@ function renderNumberGrid(s){
         const closed = cricketNumClosed(p,n);
         return n==='B' ? splitBullBtn(false, closed, true) : splitNumBtn(n, false, closed, true);
       }).join('')}
-      <div class="num-btn wide compact" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   if(s.kind==='custom'){
@@ -5193,7 +5192,6 @@ function renderNumberGrid(s){
         const done = cfg.winCondition==='allTargets' && hits>=req;
         return n==='B' ? splitBullBtn(false, done) : splitNumBtn(n, false, done);
       }).join('')}
-      <div class="num-btn wide" style="grid-column:span ${cfg.targets.length%3===0?3:(3-(cfg.targets.length%3))};" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   if(s.kind==='atc'){
@@ -5202,21 +5200,18 @@ function renderNumberGrid(s){
     if(target===undefined) return `<div class="numgrid"></div>`;
     return `<div class="numgrid" style="grid-template-columns:repeat(2,1fr);">
       <div style="grid-column:span 2;">${target==='B' ? splitBullBtn(true) : splitNumBtn(target, true)}</div>
-      <div class="num-btn wide" style="grid-column:span 2;" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   if(s.kind==='shanghai' || s.kind==='baseball'){
     const target = s.round;
     return `<div class="numgrid" style="grid-template-columns:repeat(2,1fr);">
       <div style="grid-column:span 2;">${splitNumBtn(target, true)}</div>
-      <div class="num-btn wide" style="grid-column:span 2;" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   if(s.kind==='halveit'){
     const target = s.sequence[s.round-1];
     return `<div class="numgrid" style="grid-template-columns:repeat(2,1fr);">
       <div style="grid-column:span 2;">${target==='B' ? splitBullBtn(true) : splitNumBtn(target, true)}</div>
-      <div class="num-btn wide" style="grid-column:span 2;" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   if(s.kind==='killer'){
@@ -5237,7 +5232,6 @@ function renderNumberGrid(s){
           </div>
         </div>`;
       }).join('')}
-      <div class="num-btn wide" style="grid-column:span 5;" onclick="selectNumberGrid('miss')">Miss</div>
     </div>`;
   }
   // x01
@@ -5268,7 +5262,6 @@ function renderNumberGrid(s){
   <div class="numgrid">
     ${nums.map(n=>splitNumBtn(n, recommended.has(n))).join('')}
     ${splitBullBtn(recommended.has(25))}
-    <div class="num-btn wide" onclick="selectNumberGrid('miss')">Miss</div>
     ${!state.showAllNumbers && highScore ? `<div class="num-btn wide" style="grid-column:span 5;" onclick="toggleShowAll()">Show All Numbers</div>` : (highScore? `<div class="num-btn wide" style="grid-column:span 5;" onclick="toggleShowAll()">Show Fewer Numbers</div>`:'')}
   </div>`;
 }
