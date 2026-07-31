@@ -295,7 +295,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 
 .chalkboard-standalone{ display:flex; justify-content:center; padding:6px 18px 10px 18px; }
 .chalkboard-panel{
-  position:relative; width:min(420px, 100%); border-radius:6px; padding:14px 10px 10px 10px; display:flex; flex-direction:column;
+  position:relative; width:calc(min(420px, 100%) * var(--chalkboard-scale, 1)); border-radius:6px; padding:14px 10px 10px 10px; display:flex; flex-direction:column;
   border:5px solid #111;
   background-color:#2d4a3a;
   background-image:
@@ -304,8 +304,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
     radial-gradient(circle at 50% 90%, rgba(255,255,255,0.03) 0%, transparent 45%);
   box-shadow:inset 0 0 30px rgba(0,0,0,0.4);
 }
-@media (min-width:641px){ .chalkboard-panel{ width:min(380px, 70%); padding:18px 14px 14px 14px; } }
-@media (min-width:1024px){ .chalkboard-panel{ width:min(440px, 44%); padding:22px 18px 18px 18px; } }
+@media (min-width:641px){ .chalkboard-panel{ width:calc(min(380px, 70%) * var(--chalkboard-scale, 1)); padding:18px 14px 14px 14px; } }
+@media (min-width:1024px){ .chalkboard-panel{ width:calc(min(440px, 44%) * var(--chalkboard-scale, 1)); padding:22px 18px 18px 18px; } }
 .cb-miss-btn{
   position:absolute; top:8px; left:8px; z-index:5;
   background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.3); color:#f2f2ee;
@@ -322,6 +322,12 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .chalkboard-panel .cb-mark.cb-tappable{ cursor:pointer; padding:10px 0; border-radius:5px; position:relative; }
 .chalkboard-panel .cb-mark.cb-tappable:active{ background:rgba(255,255,255,0.15); }
 .chalkboard-panel .cb-mark.cb-tappable .aim-dot{ width:9px; height:9px; border-radius:50%; border:1.5px dashed rgba(255,255,255,0.55); }
+.resize-handle{
+  position:absolute; bottom:2px; right:2px; z-index:6; width:26px; height:26px; cursor:nwse-resize;
+  display:flex; align-items:center; justify-content:center; color:var(--cream-dim); font-size:15px;
+  background:rgba(0,0,0,0.35); border-radius:6px; touch-action:none; user-select:none;
+}
+.resize-handle:hover{ color:var(--brass); background:rgba(0,0,0,0.5); }
 @media (min-width:641px){
   .chalkboard-panel .cb-num{ font-size:26px; }
   .chalkboard-panel .cb-mark{ min-height:38px; }
@@ -434,8 +440,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   font-weight:700; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer;
 }
 .board-miss-btn:active{ transform:scale(0.95); }
-.dartboard-svg{ width:min(100%, 320px, 48vh); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
-@media (min-width:641px){ .dartboard-svg{ width:min(100%, 440px, 48vh); } }
+.dartboard-svg{ width:calc(min(100%, 320px, 48vh) * var(--dartboard-scale, 1)); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
+@media (min-width:641px){ .dartboard-svg{ width:calc(min(100%, 440px, 48vh) * var(--dartboard-scale, 1)); } }
 .precision-zoom-svg{ width:100%; max-width:320px; height:auto; touch-action:none; cursor:crosshair; background:var(--ink); border-radius:12px; }
 .precision-loupe{
   position:fixed; width:110px; height:110px; border-radius:50%;
@@ -447,7 +453,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   flex:1; background:linear-gradient(180deg,var(--brass),var(--brass-dark)); border:none; color:#241a06;
   font-weight:700; font-size:13px; border-radius:10px; padding:10px 4px; cursor:pointer;
 }
-@media (min-width:1024px){ .dartboard-svg{ width:min(100%, 600px, 56vh); } }
+@media (min-width:1024px){ .dartboard-svg{ width:calc(min(100%, 600px, 56vh) * var(--dartboard-scale, 1)); } }
 .confirm-banner{margin:0 18px 8px 18px; text-align:center; background:var(--felt-dark); border:1px solid var(--brass); border-radius:10px; padding:8px; font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--brass);}
 
 .modal-overlay{
@@ -589,7 +595,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-31 03:03 UTC';
+const BUILD_STAMP = '2026-07-31 11:45 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -701,6 +707,9 @@ let state = {
     theme: 'cobalt',
     sidenavCollapsed: false,
     cricketEntryMethod: 'chalkboard',
+    dartboardScale: 1,
+    heatmapScale: 1,
+    chalkboardScale: 1,
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -4058,6 +4067,32 @@ function describeCustomGame(cfg){
 /* Settings */
 function setSetting(key, val){ state.settings[key]=val; render(); }
 function toggleSidenavCollapsed(){ state.settings.sidenavCollapsed = !state.settings.sidenavCollapsed; render(); }
+function startResizeDrag(evt, settingsKey, cssVarName, minScale, maxScale){
+  evt.preventDefault();
+  evt.stopPropagation();
+  const root = document.documentElement;
+  const startScale = state.settings[settingsKey] || 1;
+  const startX = evt.clientX, startY = evt.clientY;
+  let liveScale = startScale;
+  function onMove(e){
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const delta = (dx + dy) / 2;
+    liveScale = Math.max(minScale, Math.min(maxScale, startScale + delta/150));
+    root.style.setProperty(cssVarName, liveScale);
+  }
+  function onUp(){
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    state.settings[settingsKey] = Math.round(liveScale*100)/100;
+    render();
+  }
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+}
+function renderResizeHandle(settingsKey, cssVarName, minScale, maxScale){
+  return `<div class="resize-handle" onpointerdown="startResizeDrag(event, '${settingsKey}', '${cssVarName}', ${minScale}, ${maxScale})" title="Drag to resize">&#8690;</div>`;
+}
 
 /* Checkout table */
 function openCheckoutTable(fromScreen, outRule){
@@ -4075,6 +4110,9 @@ function closeCheckoutTable(){
 /* ========================= RENDER: SHELL ========================= */
 function render(){
   applyTheme();
+  document.documentElement.style.setProperty('--dartboard-scale', state.settings.dartboardScale||1);
+  document.documentElement.style.setProperty('--chalkboard-scale', state.settings.chalkboardScale||1);
+  document.documentElement.style.setProperty('--heatmap-scale', state.settings.heatmapScale||1);
   const app = document.getElementById('app');
   const appFooter = document.getElementById('app-footer');
   const sn = document.getElementById('sidenav');
@@ -4934,7 +4972,7 @@ function renderCallShotActiveShell(s){
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   } else {
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
-    board = `<div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
+    board = `<div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   }
   const playerBoxes = `<div class="player-box-row">${s.participants.map((p,i)=>{
@@ -5003,6 +5041,7 @@ function renderChalkboard(s){
         ${right.map(p=>markCell(p,num)).join('')}
       </div>`).join('')}
     </div>
+    ${renderResizeHandle('chalkboardScale','--chalkboard-scale',0.6,1.6)}
   </div>`;
 }
 function renderCricketBoard(s){
@@ -5218,7 +5257,7 @@ function renderEntryArea(s){
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
-    entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}</div>`;
+    entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}</div>`;
   }
   const toggle = isCricket
     ? `<div class="entry-toggle">
@@ -5524,7 +5563,10 @@ function renderPracticeHeatmap(ps, compact){
   return `<div style="padding:0 18px 8px 18px;">
     ${label}
     <div style="display:flex; justify-content:center;">
-      <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${rings}${dots}</svg>
+      <div style="position:relative; transform:scale(var(--heatmap-scale, 1)); transform-origin:top center;">
+        <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${rings}${dots}</svg>
+        ${renderResizeHandle('heatmapScale','--heatmap-scale',0.6,1.8)}
+      </div>
     </div>
   </div>`;
 }
