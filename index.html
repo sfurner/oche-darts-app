@@ -328,6 +328,13 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   background:rgba(0,0,0,0.35); border-radius:6px; touch-action:none; user-select:none;
 }
 .resize-handle:hover{ color:var(--brass); background:rgba(0,0,0,0.5); }
+.move-handle{
+  position:absolute; top:2px; right:2px; z-index:6; width:26px; height:26px; cursor:grab;
+  display:flex; align-items:center; justify-content:center; color:var(--cream-dim); font-size:14px;
+  background:rgba(0,0,0,0.35); border-radius:6px; touch-action:none; user-select:none;
+}
+.move-handle:hover{ color:var(--brass); background:rgba(0,0,0,0.5); }
+.move-handle:active{ cursor:grabbing; }
 @media (min-width:641px){
   .chalkboard-panel .cb-num{ font-size:26px; }
   .chalkboard-panel .cb-mark{ min-height:38px; }
@@ -595,7 +602,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-31 11:45 UTC';
+const BUILD_STAMP = '2026-07-31 11:53 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -710,6 +717,9 @@ let state = {
     dartboardScale: 1,
     heatmapScale: 1,
     chalkboardScale: 1,
+    dartboardPos: null,
+    heatmapPos: null,
+    chalkboardPos: null,
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -4093,6 +4103,41 @@ function startResizeDrag(evt, settingsKey, cssVarName, minScale, maxScale){
 function renderResizeHandle(settingsKey, cssVarName, minScale, maxScale){
   return `<div class="resize-handle" onpointerdown="startResizeDrag(event, '${settingsKey}', '${cssVarName}', ${minScale}, ${maxScale})" title="Drag to resize">&#8690;</div>`;
 }
+function startMoveDrag(evt, settingsKey, elementId){
+  evt.preventDefault();
+  evt.stopPropagation();
+  const el = document.getElementById(elementId);
+  const device = el ? el.closest('.device') : null;
+  if(!el || !device) return;
+  const deviceRect = device.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  const offsetX = evt.clientX - elRect.left, offsetY = evt.clientY - elRect.top;
+  el.style.position = 'absolute';
+  el.style.margin = '0';
+  let liveLeft = elRect.left - deviceRect.left, liveTop = elRect.top - deviceRect.top;
+  function onMove(e){
+    liveLeft = e.clientX - deviceRect.left - offsetX;
+    liveTop = e.clientY - deviceRect.top - offsetY;
+    liveLeft = Math.max(0, Math.min(liveLeft, deviceRect.width - elRect.width));
+    liveTop = Math.max(0, Math.min(liveTop, deviceRect.height - elRect.height));
+    el.style.left = liveLeft+'px';
+    el.style.top = liveTop+'px';
+  }
+  function onUp(){
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    state.settings[settingsKey] = {left:Math.round(liveLeft), top:Math.round(liveTop)};
+    render();
+  }
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+}
+function renderMoveHandle(settingsKey, elementId){
+  return `<div class="move-handle" onpointerdown="startMoveDrag(event, '${settingsKey}', '${elementId}')" title="Drag to move">&#10021;</div>`;
+}
+function floatingStyle(pos){
+  return pos ? `position:absolute; left:${pos.left}px; top:${pos.top}px; margin:0;` : '';
+}
 
 /* Checkout table */
 function openCheckoutTable(fromScreen, outRule){
@@ -4972,7 +5017,7 @@ function renderCallShotActiveShell(s){
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   } else {
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
-    board = `<div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}</div>
+    board = `<div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   }
   const playerBoxes = `<div class="player-box-row">${s.participants.map((p,i)=>{
@@ -5026,8 +5071,8 @@ function renderChalkboard(s){
     }
     return `<div class="cb-mark">${content}</div>`;
   };
-  return `<div class="chalkboard-panel">
-    <div class="cb-vs">&mdash; VS &mdash;</div>
+  return `<div class="chalkboard-panel" id="chalkboardWrap" style="${floatingStyle(state.settings.chalkboardPos)}">
+    ${renderMoveHandle('chalkboardPos','chalkboardWrap')}    <div class="cb-vs">&mdash; VS &mdash;</div>
     <div class="cb-title">CRICKET</div>
     <div class="cb-header-row" style="grid-template-columns:${cols};">
       ${left.map((p,i)=>nameCell(p,i)).join('')}
@@ -5257,7 +5302,7 @@ function renderEntryArea(s){
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
-    entryHtml = `<div class="board-wrap"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}</div>`;
+    entryHtml = `<div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div>`;
   }
   const toggle = isCricket
     ? `<div class="entry-toggle">
@@ -5563,9 +5608,10 @@ function renderPracticeHeatmap(ps, compact){
   return `<div style="padding:0 18px 8px 18px;">
     ${label}
     <div style="display:flex; justify-content:center;">
-      <div style="position:relative; transform:scale(var(--heatmap-scale, 1)); transform-origin:top center;">
+      <div id="heatmapWrap" style="position:relative; transform:scale(var(--heatmap-scale, 1)); transform-origin:top center; ${floatingStyle(state.settings.heatmapPos)}">
         <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${rings}${dots}</svg>
         ${renderResizeHandle('heatmapScale','--heatmap-scale',0.6,1.8)}
+        ${renderMoveHandle('heatmapPos','heatmapWrap')}
       </div>
     </div>
   </div>`;
