@@ -142,6 +142,32 @@ body{
   background:inherit;
 }
 .screen-footer:empty{ display:none; }
+.panel-controls{ display:flex; gap:8px; padding-top:12px; margin-top:auto; }
+.panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
+.panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
+.panel-controls .btn-leave{ background:rgba(160,60,50,0.16); border-color:rgba(200,120,110,0.3); color:#e8a488; }
+.panel-zone-players{ flex:1; display:flex; flex-direction:column; }
+.panel-zone-instruction{ flex:1; display:flex; flex-direction:column; justify-content:center; }
+.panel-zone-tips{ flex:1; display:flex; flex-direction:column; justify-content:flex-end; }
+.panel-zone-tips .objective-banner{ background:none; border:none; padding:0; margin:0; }
+.panel-zone-tips .objective-banner .big{ font-size:13px; color:var(--brass); }
+.panel-zone-tips .objective-banner .small{ font-size:10.5px; color:var(--cream-dim); }
+.panel-zone-tips .checkout-options{ padding:0 0 8px 0; }
+.panel-players-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.panel-player-card{ background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:8px; padding:7px 8px; }
+.panel-player-card.active{ border:2px solid #5b9bf5; background:rgba(91,155,245,0.14); box-shadow:0 0 10px rgba(91,155,245,0.3); }
+.panel-player-card .pp-name{ font-size:10px; color:var(--cream-dim); font-weight:700; letter-spacing:0.02em; }
+.panel-player-card.active .pp-name{ color:#8fc0ff; }
+.panel-player-card .pp-stat{ font-size:16px; font-weight:700; color:var(--cream); }
+.panel-player-card.active .pp-stat{ font-size:19px; font-weight:800; color:#fff; }
+.panel-instruction-box{ border:1px solid rgba(255,210,63,0.4); background:rgba(255,210,63,0.08); border-radius:8px; padding:9px; }
+.panel-instruction-box .pi-label{ font-size:10px; color:var(--brass); font-weight:700; letter-spacing:0.04em; margin-bottom:3px; }
+.panel-instruction-box .pi-text{ font-size:13.5px; color:#fff; font-weight:600; line-height:1.35; }
+@media (min-width:900px){
+  .device.game-layout{ flex-direction:row; }
+  .device.game-layout .screen{ flex:1; min-width:0; }
+  .device.game-layout .screen-footer{ flex:none; width:230px; height:auto; border-left:1px solid var(--felt-lighter); overflow-y:auto; padding:14px 12px; }
+}
 h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; font-weight:600;}
 .topbar{
   display:flex;
@@ -603,7 +629,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-31 18:37 UTC';
+const BUILD_STAMP = '2026-07-31 20:02 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2239,7 +2265,8 @@ function sectionUndoThrow(ps){
 function sectionOverallAvg(ps){
   return ps.allThrows.length ? Math.round(ps.allThrows.reduce((a,b)=>a+b,0)/ps.allThrows.length) : 0;
 }
-function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels){
+function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, missHandler){
+  missHandler = missHandler || 'recordMiss()';
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
   const rDoubleOut=R_DOUBLE_OUT, rDoubleIn=R_DOUBLE_IN, rTripleOut=R_TRIPLE_OUT, rTripleIn=R_TRIPLE_IN, rBullOuter=R_BULL_OUTER, rBullInner=R_BULL_INNER;
   const rBezel = R_BEZEL, rLabel = R_NUMBER_LABEL;
@@ -2303,11 +2330,12 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels){
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const needsWideMargin = ownerLabels && ownerLabels.length;
-  const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - 14;
+  const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - 20;
   const viewSize = canvas - cropMargin*2;
+  const missRing = `<circle cx="${cx}" cy="${cy}" r="${rBezel+10}" fill="none" stroke="#e8a488" stroke-width="2" stroke-dasharray="4 6" opacity="0.55" style="cursor:pointer;" onclick="${missHandler}"/>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
-    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}
+    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}${missRing}
   </svg>`;
 }
 function handleBoardClick(evt){
@@ -4183,6 +4211,8 @@ function render(){
   const appFooter = document.getElementById('app-footer');
   const sn = document.getElementById('sidenav');
   if(sn){ sn.innerHTML = renderSidenav(); sn.classList.toggle('collapsed', !!state.settings.sidenavCollapsed); }
+  const deviceEl = document.querySelector('.device');
+  if(deviceEl) deviceEl.classList.toggle('game-layout', state.screen==='active');
   let html = '';
   switch(state.screen){
     case 'home': html = renderHomeShell(); break;
@@ -4870,17 +4900,25 @@ function playerBoxData(s, p){
   return {stat:'', dim:false};
 }
 function renderPlayerBoxes(s){
-  return `<div class="player-box-row">${s.participants.map((p,i)=>{
-    const d = playerBoxData(s,p);
-    const darts = participantDisplayDarts(s,i);
-    const dartsLabel = [0,1,2].map(j=>darts[j]||'&mdash;').join(' &middot; ');
-    return `<div class="player-box ${i===s.currentIdx?'active':''}" style="${d.dim?'opacity:0.45;':''}">
-      <div class="pb-name">${i===s.currentIdx?'<span class="dartpip">&#9679;</span> ':''}${playerName(p.playerId)}</div>
-      ${d.line2 ? `<div class="pb-line2">${d.line2}</div>` : ''}
-      <div class="pb-stat">${d.stat}</div>
-      <div class="pb-sub">${dartsLabel}</div>
-    </div>`;
-  }).join('')}</div>`;
+  return `<div class="panel-zone-players">
+    <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:10px; letter-spacing:0.04em;">PLAYERS</div>
+    <div class="panel-players-grid">${s.participants.map((p,i)=>{
+      const d = playerBoxData(s,p);
+      const isCurrent = i===s.currentIdx;
+      return `<div class="panel-player-card ${isCurrent?'active':''}" style="${d.dim?'opacity:0.5;':''}">
+        <div class="pp-name">${isCurrent?'&#9679; ':''}${playerName(p.playerId).toUpperCase()}</div>
+        <div class="pp-stat">${d.stat}</div>
+      </div>`;
+    }).join('')}</div>
+  </div>`;
+}
+function renderInstructionBox(s){
+  return `<div class="panel-zone-instruction">
+    <div class="panel-instruction-box">
+      <div class="pi-label">&#9679; NOW</div>
+      <div class="pi-text">${renderTurnHint(s)}</div>
+    </div>
+  </div>`;
 }
 function renderRoundInfo(s){
   let total = null;
@@ -4891,12 +4929,7 @@ function renderRoundInfo(s){
   const label = s.kind==='baseball' ? 'INNING' : 'ROUND';
   return `<div><div class="round-label">${label}</div><div class="round-value">${s.round}${total?' of '+total:''}</div></div>`;
 }
-function renderActiveShell(){
-  const s = state.session;
-  if(!s) return renderHomeShell();
-  if(s.kind==='callshot') return renderCallShotActiveShell(s);
-  const GNAMES = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer'};
-  const gname = s.kind==='x01' ? (s.startScore+'') : s.kind==='custom' ? (s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':s.cfg.name) : (GNAMES[s.kind]||s.kind);
+function renderTipsSection(s){
   let objective='', top='';
   if(s.kind==='x01'){
     const p = x01Current(s);
@@ -4999,6 +5032,14 @@ function renderActiveShell(){
     const small = p.isKiller ? 'Hit opponents\' numbers to remove lives. Hitting your own number now costs you a life!' : 'Hit your double ('+p.number+') to become a killer. '+p.lives+' lives.';
     objective = `<div class="objective-banner"><div class="big">${big}</div><div class="small">${small}</div></div>`;
   }
+  return objective;
+}
+function renderActiveShell(){
+  const s = state.session;
+  if(!s) return renderHomeShell();
+  if(s.kind==='callshot') return renderCallShotActiveShell(s);
+  const GNAMES = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer'};
+  const gname = s.kind==='x01' ? (s.startScore+'') : s.kind==='custom' ? (s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':s.cfg.name) : (GNAMES[s.kind]||s.kind);
   return `<div class="game-header-row">
     ${renderRoundInfo(s)}
     <div class="game-title-center">${gname}</div>
@@ -5006,9 +5047,9 @@ function renderActiveShell(){
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}
   ${renderBoardConfirmLine(s)}
-  ${renderCheckoutOptionsLine(s)}
-  <div class="instruction-line">${renderTurnHint(s)}</div>
+  ${renderInstructionBox(s)}
   ${renderPlayerBoxes(s)}
+  <div class="panel-zone-tips">${renderCheckoutOptionsLine(s)}${renderTipsSection(s)}</div>
   ${renderBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
@@ -5034,21 +5075,25 @@ function renderCallShotActiveShell(s){
     board = `<div class="board-area">${renderSectionBoardSVG(null, 'callShotBoardClickForCall')}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap the exact single, double, triple, or bull you want to call</div>`;
   } else if(s.mode==='natural' && s.calledTargets.length===0){
-    board = `<div class="board-area"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
+    board = `<div class="board-area">${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   } else {
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
-    board = `<div class="board-area"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>
+    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   }
-  const playerBoxes = `<div class="player-box-row">${s.participants.map((p,i)=>{
-    const lettersShown = word.slice(0, p.letters);
-    const remaining = word.slice(p.letters);
-    return `<div class="player-box ${i===s.currentIdx?'active':''}" style="${p.eliminated?'opacity:0.45;':''}">
-      <div class="pb-name">${i===s.currentIdx?'<span class="dartpip">&#9679;</span> ':''}${playerName(p.playerId)}${i===s.callerIdx?' &#128227;':''}</div>
-      <div class="pb-stat" style="font-family:'JetBrains Mono',monospace; letter-spacing:2px; font-size:19px;">${p.eliminated?'&#128128;':`<span style="color:var(--red);">${lettersShown}</span><span style="color:var(--cream-dim);">${remaining}</span>`}</div>
-    </div>`;
-  }).join('')}</div>`;
+  const playerBoxes = `<div class="panel-zone-players">
+    <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:10px; letter-spacing:0.04em;">PLAYERS</div>
+    <div class="panel-players-grid">${s.participants.map((p,i)=>{
+      const lettersShown = word.slice(0, p.letters);
+      const remaining = word.slice(p.letters);
+      const isCurrent = i===s.currentIdx;
+      return `<div class="panel-player-card ${isCurrent?'active':''}" style="${p.eliminated?'opacity:0.5;':''}">
+        <div class="pp-name">${isCurrent?'&#9679; ':''}${playerName(p.playerId).toUpperCase()}${i===s.callerIdx?' &#128227;':''}</div>
+        <div class="pp-stat" style="font-family:'JetBrains Mono',monospace; letter-spacing:1.5px; font-size:15px;">${p.eliminated?'&#128128;':`<span style="color:var(--red);">${lettersShown}</span><span style="color:var(--cream-dim);">${remaining}</span>`}</div>
+      </div>`;
+    }).join('')}</div>
+  </div>`;
   return `<div class="game-header-row">
     <div><div class="round-label">ROUND</div><div class="round-value">${s.round}</div></div>
     <div class="game-title-center">Call Your Shot</div>
@@ -5056,11 +5101,11 @@ function renderCallShotActiveShell(s){
   </div>
   ${board}
   ${targetChipRow()}${FOOTER_MARKER}
-  <div class="instruction-line">${renderTurnHint(s)}</div>
+  ${renderInstructionBox(s)}
   ${playerBoxes}
-  <div class="bottom-action-row">
-    <button class="action-link warn" onclick="openGameMenu()">Leave Game</button>
-    <button class="action-link" onclick="callShotUndo()">Undo</button>
+  <div class="panel-controls">
+    <button class="btn-undo" onclick="callShotUndo()">Undo</button>
+    <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
@@ -5323,7 +5368,7 @@ function renderEntryArea(s){
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
-    entryHtml = `<div class="board-area"><button class="board-miss-btn" onclick="recordMiss()">Miss</button><div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>`;
+    entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>`;
   }
   const toggle = isCricket
     ? `<div class="entry-toggle">
@@ -5468,11 +5513,9 @@ function renderNumberGrid(s){
   </div>`;
 }
 function renderBottomControls(s){
-  return `<div class="bottom-action-row">
-    <button class="action-link warn" onclick="openGameMenu()">Leave Game</button>
-    <button class="action-link" onclick="doUndo()">Undo</button>
-    <button class="action-link" onclick="doClearTurn()">Clear Turn</button>
-    <button class="action-link" onclick="doEndTurnManually()">End Turn</button>
+  return `<div class="panel-controls">
+    <button class="btn-undo" onclick="doUndo()">Undo</button>
+    <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>`;
 }
 function renderGameMenu(s){
@@ -5685,7 +5728,7 @@ function renderPracticeGrid(ps){
 function renderPracticeBoard(ps){
   const target = practiceCurrentTarget(ps);
   const highlight = target!==undefined ? {num:target, seg: ps.def.requiredMultiplier || 'any'} : null;
-  return `<div class="board-area"><button class="board-miss-btn" onclick="practiceSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || ps.lastHitPoint)}</div>
+  return `<div class="board-area">${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || ps.lastHitPoint, null, "practiceSelectNumber('miss')")}</div>
   ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
@@ -5779,7 +5822,7 @@ function renderCheckoutPracticeBoard(cp){
   const dartsLeft = 3 - cp.dartsThisAttempt.length;
   const route = findCheckout(cp.currentScore, dartsLeft, 'double');
   const highlight = route && route.length ? parseThrowLabel(route[0]) : null;
-  return `<div class="board-area"><button class="board-miss-btn" onclick="checkoutPracticeSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || cp.lastHitPoint)}</div>
+  return `<div class="board-area">${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || cp.lastHitPoint, null, "checkoutPracticeSelectNumber('miss')")}</div>
   ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
@@ -5807,7 +5850,7 @@ function annulusPath(cx,cy,rIn,rOut){
   return `M ${cx-rOut},${cy} a ${rOut},${rOut} 0 1,0 ${rOut*2},0 a ${rOut},${rOut} 0 1,0 -${rOut*2},0 Z `+
          `M ${cx-rIn},${cy} a ${rIn},${rIn} 0 1,0 ${rIn*2},0 a ${rIn},${rIn} 0 1,0 -${rIn*2},0 Z`;
 }
-function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint){
+function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler){
   clickHandler = clickHandler || 'handleSectionBoardClick';
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
   // A merged single target (e.g. "20-single") should light up both the inner and outer single bands for that number.
@@ -5856,12 +5899,13 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint){
   }
   const hitPointsArr2 = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr2.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
-  const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - 8;
+  const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - 16;
   const viewSize2 = canvas - cropMargin2*2;
+  const missRing2 = missHandler ? `<circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+27}" fill="none" stroke="#e8a488" stroke-width="2" stroke-dasharray="4 6" opacity="0.55" style="cursor:pointer;" onclick="${missHandler}"/>` : '';
   return `<svg viewBox="${cropMargin2} ${cropMargin2} ${viewSize2} ${viewSize2}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
     <circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>
-    ${wedges}${labels}${highlight}${hitMarker}
+    ${wedges}${labels}${highlight}${hitMarker}${missRing2}
   </svg>`;
 }
 function renderSectionSetup(){
@@ -5913,7 +5957,7 @@ function renderSectionActive(){
       <div class="small">${ps.dartsThisTurn.length} of 3 darts this turn${lastThrow?(' — last: '+sectionZoneLabel(lastThrow.zoneId)+' ('+lastThrow.score+' pts)'):''}</div>
     </div>
   </div>
-  <div class="board-area"><button class="board-miss-btn" onclick="sectionSelectZone('totalmiss')">Miss</button>${renderSectionBoardSVG(ps.currentTarget)}</div>
+  <div class="board-area">${renderSectionBoardSVG(ps.currentTarget, undefined, undefined, "sectionSelectZone('totalmiss')")}</div>
   <div class="confirm-banner" style="opacity:0.7;">Tap the section where your dart landed</div>${FOOTER_MARKER}
   <div class="turn-area"><div class="turn-darts">
     ${[0,1,2].map(i=> ps.dartsThisTurn[i] ? `<span class="dart-chip">${ps.dartsThisTurn[i].score}</span>` : `<span class="dart-chip empty">—</span>`).join('')}
@@ -6056,7 +6100,7 @@ function renderPrecisionActive(){
       <div class="small">${ps.dartsThisTurn.length} of 3 darts this turn${last?(' — last: '+last.label+' ('+last.distanceMm+'mm off)'):''}</div>
     </div>
   </div>
-  <div class="board-area"><button class="board-miss-btn" onclick="handleFullBoardTotalMiss()">Miss</button>${renderSectionBoardSVG(ps.currentTarget, 'handlePrecisionFullBoardClick')}</div>
+  <div class="board-area">${renderSectionBoardSVG(ps.currentTarget, 'handlePrecisionFullBoardClick', undefined, 'handleFullBoardTotalMiss()')}</div>
   <div class="confirm-banner" style="opacity:0.7;">Tap roughly where your dart landed — you'll fine-tune it next</div>${FOOTER_MARKER}
   <div class="turn-area"><div class="turn-darts">
     ${[0,1,2].map(i=> ps.dartsThisTurn[i] ? `<span class="dart-chip">${ps.dartsThisTurn[i].distanceMm}mm</span>` : `<span class="dart-chip empty">—</span>`).join('')}
