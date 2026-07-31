@@ -589,7 +589,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-27 04:03 UTC';
+const BUILD_STAMP = '2026-07-31 01:34 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -671,6 +671,7 @@ let state = {
   dartSettingsAddingFor: null,
   confirmDeleteCustomGameId: null,
   confirmDeletePracticeId: null,
+  practiceRandomMode: 'sequence',
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
   settingsReturnTo: null,
@@ -1624,41 +1625,64 @@ function customUndo(s){
 
 /* ========================= PRACTICE ENGINE ========================= */
 function startPracticeSession(def, playerId){
-  return {
+  const ps = {
     def, playerId,
     sequence: def.targets.slice(),
     order: def.order,
+    randomMode: def.randomMode || null,
     idx: 0,
-    hitsOnCurrent: 0,
+    dartsOnCurrentTurn: 0,
     requiredHits: def.requiredHits,
     totalDarts: 0,
     successfulHits: 0,
     misses: 0,
     perTarget: {},
+    dartsSpentPerTarget: {},
+    dartsPerTarget: {},
     startTime: Date.now(),
     complete:false,
   };
+  if(ps.randomMode) ps.currentTarget = practicePickRandomTarget(ps);
+  return ps;
 }
-function practiceCurrentTarget(ps){ return ps.sequence[ps.idx]; }
+function practicePickRandomTarget(ps){
+  const remaining = ps.def.targets.filter(t => (ps.perTarget[t]||0) < ps.requiredHits);
+  if(!remaining.length) return null;
+  return remaining[Math.floor(Math.random()*remaining.length)];
+}
+function practiceCurrentTarget(ps){ return ps.randomMode ? ps.currentTarget : ps.sequence[ps.idx]; }
 function practiceApplyDart(ps, hitTarget, multiplier){
   ps.totalDarts++;
   const target = practiceCurrentTarget(ps);
+  ps.dartsSpentPerTarget[target] = (ps.dartsSpentPerTarget[target]||0)+1;
   const reqMult = ps.def.requiredMultiplier || 'any';
   const multOk = reqMult==='any' ? true : (reqMult==='double' ? (multiplier==='double'||multiplier==='bull') : reqMult===multiplier);
   const isHit = (hitTarget === target) && multOk;
-  let hitValue = 0;
   if(isHit){
-    hitValue = ps.def.multiplierRule==='exact' ? 1 : (multiplier==='triple'?3:multiplier==='double'?2:1);
-    if(ps.def.multiplierRule==='simple') hitValue = 1;
-    ps.hitsOnCurrent += hitValue;
+    const hitValue = ps.def.multiplierRule==='simple' ? 1 : (ps.def.multiplierRule==='exact' ? 1 : (multiplier==='triple'?3:multiplier==='double'?2:1));
+    ps.perTarget[target] = (ps.perTarget[target]||0)+hitValue;
     ps.successfulHits++;
-    ps.perTarget[target] = (ps.perTarget[target]||0)+1;
   } else {
     ps.misses++;
   }
-  if(ps.hitsOnCurrent >= ps.requiredHits){
+  const wasAlreadyDone = ps.dartsPerTarget[target] !== undefined;
+  const nowComplete = (ps.perTarget[target]||0) >= ps.requiredHits;
+  if(nowComplete && !wasAlreadyDone) ps.dartsPerTarget[target] = ps.dartsSpentPerTarget[target];
+  if(ps.randomMode){
+    ps.dartsOnCurrentTurn++;
+    const turnUp = ps.randomMode==='perTurn' && ps.dartsOnCurrentTurn>=3;
+    if(nowComplete || ps.randomMode==='perDart' || turnUp){
+      const next = practicePickRandomTarget(ps);
+      if(next===null){
+        ps.complete = true;
+        ps.completionTime = Math.round((Date.now()-ps.startTime)/1000);
+      } else {
+        ps.currentTarget = next;
+        ps.dartsOnCurrentTurn = 0;
+      }
+    }
+  } else if(nowComplete){
     ps.idx++;
-    ps.hitsOnCurrent = 0;
     if(ps.idx >= ps.sequence.length){
       ps.complete = true;
       ps.completionTime = Math.round((Date.now()-ps.startTime)/1000);
@@ -3700,20 +3724,26 @@ function startPracticeFlow(practId){
   let def;
   const nums20 = Array.from({length:20},(_,i)=>i+1);
   const shuffled = arr=>{ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+  const mode = state.practiceRandomMode || 'sequence';
+  const applyMode = (baseDef)=>{
+    if(mode==='shuffle'){ baseDef.targets = shuffled(baseDef.targets); baseDef.order = 'random'; }
+    else if(mode==='perTurn' || mode==='perDart'){ baseDef.randomMode = mode; }
+    return baseDef;
+  };
   if(practId==='threeofeach'){
-    def = {name:'Three of Each', targets:nums20, order:'numerical', requiredHits:3, multiplierRule:'simple'};
+    def = applyMode({name:'Three of Each', targets:nums20, order:'numerical', requiredHits:3, multiplierRule:'simple'});
   } else if(practId==='atb-singles'){
-    def = {name:'Around the Board Singles', targets:nums20, order:'numerical', requiredHits:1, multiplierRule:'exact', requiredMultiplier:'single'};
+    def = applyMode({name:'Around the Board Singles', targets:nums20, order:'numerical', requiredHits:1, multiplierRule:'exact', requiredMultiplier:'single'});
   } else if(practId==='atb-doubles'){
-    def = {name:'Around the Board Doubles', targets:nums20, order:'numerical', requiredHits:1, multiplierRule:'exact', requiredMultiplier:'double'};
+    def = applyMode({name:'Around the Board Doubles', targets:nums20, order:'numerical', requiredHits:1, multiplierRule:'exact', requiredMultiplier:'double'});
   } else if(practId==='atb-triples'){
-    def = {name:'Around the Board Triples', targets:nums20, order:'numerical', requiredHits:1, multiplierRule:'exact', requiredMultiplier:'triple'};
+    def = applyMode({name:'Around the Board Triples', targets:nums20, order:'numerical', requiredHits:1, multiplierRule:'exact', requiredMultiplier:'triple'});
   } else if(practId==='cricket-trainer'){
     def = {name:'Cricket Trainer', targets:[20,19,18,17,16,15,'B'], order:'numerical', requiredHits:3, multiplierRule:'simple'};
   } else if(practId==='twenty-scoring'){
     def = {name:'20 Scoring', targets:Array(25).fill(20), order:'numerical', requiredHits:1, multiplierRule:'exact'};
   } else if(practId==='doubles-practice'){
-    def = {name:'Doubles Practice', targets:shuffled(nums20), order:'random', requiredHits:1, multiplierRule:'exact', requiredMultiplier:'double'};
+    def = applyMode({name:'Doubles Practice', targets:nums20, order:'numerical', requiredHits:1, multiplierRule:'exact', requiredMultiplier:'double'});
   } else if(practId==='random-target'){
     const pool = [...nums20,'B'];
     const targets = Array.from({length:15},()=>pool[Math.floor(Math.random()*pool.length)]);
@@ -5427,21 +5457,72 @@ function renderPracticeNeedsPlayer(){
 function renderPracticePlayerSetup(){
   const practId = state.practicePendingId;
   const def = PRACTICES.find(p=>p.id===practId) || state.customPractices.find(p=>p.id===practId);
+  const RANDOMIZABLE_PRACTICES = ['threeofeach','atb-singles','atb-doubles','atb-triples','doubles-practice'];
+  const showModePicker = RANDOMIZABLE_PRACTICES.includes(practId);
+  const modeChip = (label, val)=>`<span class="chip ${state.practiceRandomMode===val?'selected':''}" onclick="state.practiceRandomMode='${val}'; render();">${label}</span>`;
   return `<div class="topbar"><div class="iconbtn" onclick="state.screen='home'; state.navTab='practice'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Who's Practicing?</h1><div style="width:38px;"></div></div>
   <div class="subtitle">${def?def.name:'Practice'}</div>
   <div class="content">
     ${renderPracticePlayerChips()}
+    ${showModePicker ? `<div style="margin-top:10px;">
+      <span class="field-label">Order</span>
+      <div class="chip-wrap">${modeChip('In Order','sequence')}${modeChip('Shuffle Once','shuffle')}${modeChip('Random Each Turn','perTurn')}${modeChip('Random Each Dart','perDart')}</div>
+      <p class="info-note">
+        ${state.practiceRandomMode==='sequence' ? 'Work through the targets in the normal order.' : ''}
+        ${state.practiceRandomMode==='shuffle' ? 'The order is scrambled once at the start, then you work through it like normal.' : ''}
+        ${state.practiceRandomMode==='perTurn' ? 'A fresh random target every 3 darts, whether or not you finished the last one.' : ''}
+        ${state.practiceRandomMode==='perDart' ? 'A brand new random target on every single throw — pure reflex.' : ''}
+      </p>
+    </div>` : ''}
     <button class="btn btn-primary btn-full" ${!state.practicePlayerId?'disabled':''} onclick="startPracticeFlow('${practId}')">Continue</button>
+  </div>`;
+}
+function practiceEfficiencyColor(target, ps){
+  const spent = ps.dartsPerTarget[target];
+  if(spent===undefined) return null;
+  const ratio = ps.requiredHits / spent;
+  if(ratio>=0.9) return '#4a9e5c';
+  if(ratio>=0.7) return '#8fbf5a';
+  if(ratio>=0.55) return '#c9d94a';
+  if(ratio>=0.4) return '#e0c93a';
+  if(ratio>=0.25) return '#e08a3a';
+  return '#c9563a';
+}
+function renderPracticeGauge(ps, big){
+  const uniqueTargets = [...new Set(ps.def.targets.filter(t=>t!==undefined))];
+  if(uniqueTargets.length < 3) return '';
+  const n = uniqueTargets.length;
+  const size = big ? 220 : 140;
+  const cx=size/2, cy=size/2, rOuter=size*0.44, rInner=size*0.30;
+  const current = ps.complete ? null : practiceCurrentTarget(ps);
+  let wedges = '';
+  uniqueTargets.forEach((t,i)=>{
+    const a0 = (i*360/n - 90) * Math.PI/180, a1 = ((i+1)*360/n - 90) * Math.PI/180;
+    const x0=cx+rOuter*Math.cos(a0), y0=cy+rOuter*Math.sin(a0);
+    const x1=cx+rOuter*Math.cos(a1), y1=cy+rOuter*Math.sin(a1);
+    const x2=cx+rInner*Math.cos(a1), y2=cy+rInner*Math.sin(a1);
+    const x3=cx+rInner*Math.cos(a0), y3=cy+rInner*Math.sin(a0);
+    const color = t===current ? 'var(--brass)' : (practiceEfficiencyColor(t,ps) || 'var(--felt-lighter)');
+    const largeArc = (a1-a0) > Math.PI ? 1 : 0;
+    wedges += `<path d="M${x0},${y0} A${rOuter},${rOuter} 0 ${largeArc},1 ${x1},${y1} L${x2},${y2} A${rInner},${rInner} 0 ${largeArc},0 ${x3},${y3} Z" fill="${color}" stroke="var(--ink)" stroke-width="1"/>`;
+  });
+  const done = Object.keys(ps.dartsPerTarget).length;
+  const label = big ? '' : `<div style="font-size:12px; color:var(--cream-dim);">${done} of ${uniqueTargets.length} targets done<br><span style="color:var(--cream); font-weight:600;">${ps.totalDarts} darts thrown</span></div>`;
+  return `<div style="display:flex; align-items:center; justify-content:${big?'center':'flex-start'}; gap:14px; padding:0 18px 8px 18px;">
+    <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${wedges}</svg>
+    ${label}
   </div>`;
 }
 function renderPracticeActive(){
   const ps = state.practiceSession;
   const target = practiceCurrentTarget(ps);
-  const darts = [];
+  const totalTargets = ps.randomMode ? [...new Set(ps.def.targets)].length : ps.sequence.length;
+  const doneCount = ps.randomMode ? Object.keys(ps.dartsPerTarget).length : ps.idx;
   return `<div class="active-top">
-    <div class="game-title">${ps.def.name || 'Practice'} &middot; Target ${ps.idx+1} of ${ps.sequence.length}</div>
+    <div class="game-title">${ps.def.name || 'Practice'} &middot; Target ${doneCount+1} of ${totalTargets}</div>
     <h2>Hit ${target}</h2>
-    <div class="objective-banner"><div class="big">${ps.hitsOnCurrent} of ${ps.requiredHits}</div><div class="small">${ps.totalDarts} darts thrown so far</div></div>
+    <div class="objective-banner"><div class="big">${ps.perTarget[target]||0} of ${ps.requiredHits}</div><div class="small">${ps.totalDarts} darts thrown so far</div></div>
+    ${renderPracticeGauge(ps)}
   </div>
   <div class="entry-toggle">
     <button class="btn ${state.settings.entryMethod==='grid'?'btn-primary':'btn-secondary'}" onclick="if(state.settings.entryMethod!=='grid'){state.settings.entryMethod='grid'; render();}">Number Grid</button>
@@ -5484,13 +5565,28 @@ function renderPracticeBoard(ps){
   ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
+function practiceBestWorst(ps){
+  const entries = Object.entries(ps.dartsPerTarget);
+  if(entries.length < 4) return null;
+  const sorted = entries.slice().sort((a,b)=>a[1]-b[1]);
+  const labelOf = (t)=> t==='B' ? 'Bull' : t;
+  const best = sorted.slice(0,3).map(([t,d])=>({label:labelOf(t), darts:d}));
+  const worst = sorted.slice(-3).reverse().map(([t,d])=>({label:labelOf(t), darts:d}));
+  return {best, worst};
+}
 function renderPracticeResults(){
   const ps = state.practiceSession;
   const acc = ps.totalDarts? Math.round((ps.successfulHits/ps.totalDarts)*1000)/10 : 0;
   const r = state.pendingGameReview;
+  const bw = practiceBestWorst(ps);
+  const uniqueTargets = [...new Set(ps.def.targets.filter(t=>t!==undefined))];
+  const isFullBoard = uniqueTargets.length >= 15;
   return `<div class="topbar"><div class="brand"><span class="dot"></span><h1 style="color:var(--brass);">Session Complete</h1></div><div style="width:38px;"></div></div>
   <div class="content">
-    <div class="rule-block" style="text-align:center;"><h2 style="color:var(--brass);">${ps.def.name || 'Practice'} Complete</h2></div>
+    <div class="rule-block" style="text-align:center;"><h2 style="color:var(--brass);">${ps.def.name || 'Practice'} Complete</h2>
+      ${isFullBoard ? `<p style="font-size:15px; color:var(--cream);">It took you <b style="color:var(--brass);">${ps.totalDarts} darts</b> to get all the way around the board.</p>` : ''}
+    </div>
+    ${renderPracticeGauge(ps, true)}
     <div class="stat-grid">
       <div class="stat-box"><div class="val">${ps.totalDarts}</div><div class="lab">Darts Thrown</div></div>
       <div class="stat-box"><div class="val">${ps.successfulHits}</div><div class="lab">Target Hits</div></div>
@@ -5498,6 +5594,12 @@ function renderPracticeResults(){
       <div class="stat-box"><div class="val">${acc}%</div><div class="lab">Accuracy</div></div>
       <div class="stat-box"><div class="val">${ps.completionTime||0}s</div><div class="lab">Time</div></div>
     </div>
+    ${bw ? `<div class="rule-block">
+      <span class="field-label">Best Numbers &mdash; fewest darts to finish</span>
+      <div class="chip-wrap">${bw.best.map(b=>`<span class="chip" style="border-color:#4a9e5c; color:#8fd4a8;">${b.label} &middot; ${b.darts} dart${b.darts!==1?'s':''}</span>`).join('')}</div>
+      <span class="field-label" style="margin-top:10px; display:block;">Needs Work &mdash; took the most darts</span>
+      <div class="chip-wrap">${bw.worst.map(b=>`<span class="chip" style="border-color:#c9563a; color:#e8a488;">${b.label} &middot; ${b.darts} dart${b.darts!==1?'s':''}</span>`).join('')}</div>
+    </div>` : ''}
     ${r ? `<span class="field-label">Dart Used</span>${r.players.map(rp=>playerDartRow(rp,'practiceResults')).join('')}` : ''}
     <button class="btn btn-primary btn-full" onclick="saveGameResults()">Save Results</button>
     <button class="btn btn-danger btn-full" onclick="discardGameResults()">Exit Without Saving</button>
