@@ -439,7 +439,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 }
 .bottom-controls button.warn{color:color-mix(in srgb, var(--red) 75%, white);}
 
-.board-wrap{display:flex; justify-content:center; padding:8px 18px; position:relative;}
+.board-area{display:flex; justify-content:center; padding:8px 18px; position:relative;}
+.board-wrap{display:inline-block; position:relative; line-height:0;}
 .board-miss-btn{
   position:absolute; top:2px; left:20px; z-index:5;
   background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim);
@@ -602,7 +603,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-31 11:53 UTC';
+const BUILD_STAMP = '2026-07-31 18:37 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -809,29 +810,46 @@ function throwDifficulty(label){
   return 0.6;
 }
 function routeDifficulty(route){ return route.reduce((sum,label)=>sum+throwDifficulty(label),0); }
+const EASIEST_BY_VALUE = (() => {
+  const byValue = {};
+  for(const t of ALL_THROWS){
+    const d = throwDifficulty(t.label);
+    if(!byValue[t.value] || d < byValue[t.value].d){ byValue[t.value] = {label:t.label, value:t.value, d}; }
+  }
+  return Object.values(byValue);
+})();
 function findCheckoutOptions(remaining, dartsLeft, outRule, maxResults){
   maxResults = maxResults || 4;
   if(remaining<=0 || dartsLeft<1) return [];
   const finishSet = finishSetFor(outRule);
   if(dartsLeft===1){
-    for(const t of finishSet){ if(t.value===remaining) return [[t.label]]; }
-    return [];
+    let best = null;
+    for(const t of finishSet){
+      if(t.value===remaining && (!best || throwDifficulty(t.label) < throwDifficulty(best.label))) best = t;
+    }
+    return best ? [[best.label]] : [];
   }
-  const results = [];
+  const found = [];
   const seen = new Set();
-  const directRoute = findCheckout(remaining, dartsLeft, outRule);
-  if(directRoute){ const key=directRoute.join(','); seen.add(key); results.push(directRoute); }
-  for(const t of ALL_THROWS){
-    if(results.length >= maxResults*3) break;
-    if(t.value<=0 || t.value>=remaining) continue;
-    const tail = findCheckout(remaining-t.value, dartsLeft-1, outRule);
-    if(tail){
-      const route = [t.label, ...tail];
-      const key = route.join(',');
-      if(!seen.has(key)){ seen.add(key); results.push(route); }
+  let iterations = 0;
+  function search(rem, darts, path, difficultySoFar){
+    if(iterations++ > 20000) return;
+    for(const t of finishSet){
+      if(t.value===rem){
+        const route = [...path, t.label];
+        const key = route.join(',');
+        if(!seen.has(key)){ seen.add(key); found.push({route, difficulty: difficultySoFar+throwDifficulty(t.label)}); }
+      }
+    }
+    if(darts<=1) return;
+    for(const t of EASIEST_BY_VALUE){
+      if(t.value<=0 || t.value>=rem) continue;
+      search(rem-t.value, darts-1, [...path, t.label], difficultySoFar+t.d);
     }
   }
-  results.sort((a,b)=> routeDifficulty(a)-routeDifficulty(b));
+  search(remaining, dartsLeft, [], 0);
+  found.sort((a,b)=> a.difficulty-b.difficulty);
+  const results = found.map(f=>f.route);
   return results.slice(0, maxResults);
 }
 function renderCheckoutOptionsLine(s){
@@ -2284,7 +2302,10 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels){
   });
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
-  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">
+  const needsWideMargin = ownerLabels && ownerLabels.length;
+  const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - 14;
+  const viewSize = canvas - cropMargin*2;
+  return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
     ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}
   </svg>`;
@@ -5007,17 +5028,17 @@ function renderCallShotActiveShell(s){
   };
   let board = '';
   if(actorIsBot){
-    board = `<div class="board-wrap" style="pointer-events:none; opacity:0.85;">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))), undefined, s.turnHitPoints)}</div>
+    board = `<div class="board-area" style="pointer-events:none; opacity:0.85;">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))), undefined, s.turnHitPoints)}</div>
     <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is acting — no input needed</div>`;
   } else if(s.stage==='callselect'){
-    board = `<div class="board-wrap">${renderSectionBoardSVG(null, 'callShotBoardClickForCall')}</div>
+    board = `<div class="board-area">${renderSectionBoardSVG(null, 'callShotBoardClickForCall')}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap the exact single, double, triple, or bull you want to call</div>`;
   } else if(s.mode==='natural' && s.calledTargets.length===0){
-    board = `<div class="board-wrap"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
+    board = `<div class="board-area"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints)}</div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   } else {
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
-    board = `<div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button>${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div>
+    board = `<div class="board-area"><button class="board-miss-btn" onclick="callShotAttemptThrow(false)">Miss</button><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   }
   const playerBoxes = `<div class="player-box-row">${s.participants.map((p,i)=>{
@@ -5302,7 +5323,7 @@ function renderEntryArea(s){
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
-    entryHtml = `<div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div>`;
+    entryHtml = `<div class="board-area"><button class="board-miss-btn" onclick="recordMiss()">Miss</button><div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>`;
   }
   const toggle = isCricket
     ? `<div class="entry-toggle">
@@ -5664,7 +5685,7 @@ function renderPracticeGrid(ps){
 function renderPracticeBoard(ps){
   const target = practiceCurrentTarget(ps);
   const highlight = target!==undefined ? {num:target, seg: ps.def.requiredMultiplier || 'any'} : null;
-  return `<div class="board-wrap"><button class="board-miss-btn" onclick="practiceSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || ps.lastHitPoint)}</div>
+  return `<div class="board-area"><button class="board-miss-btn" onclick="practiceSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || ps.lastHitPoint)}</div>
   ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
@@ -5758,7 +5779,7 @@ function renderCheckoutPracticeBoard(cp){
   const dartsLeft = 3 - cp.dartsThisAttempt.length;
   const route = findCheckout(cp.currentScore, dartsLeft, 'double');
   const highlight = route && route.length ? parseThrowLabel(route[0]) : null;
-  return `<div class="board-wrap"><button class="board-miss-btn" onclick="checkoutPracticeSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || cp.lastHitPoint)}</div>
+  return `<div class="board-area"><button class="board-miss-btn" onclick="checkoutPracticeSelectNumber('miss')">Miss</button>${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || cp.lastHitPoint)}</div>
   ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
@@ -5835,7 +5856,9 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint){
   }
   const hitPointsArr2 = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr2.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
-  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="${clickHandler}(event)">
+  const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - 8;
+  const viewSize2 = canvas - cropMargin2*2;
+  return `<svg viewBox="${cropMargin2} ${cropMargin2} ${viewSize2} ${viewSize2}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
     <circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>
     ${wedges}${labels}${highlight}${hitMarker}
@@ -5863,7 +5886,7 @@ function renderSectionSetup(){
     ${mode==='focus' ? `
     <div>
       <span class="field-label">Pick Your Section</span>
-      <div class="board-wrap">${renderSectionBoardSVG(focusZone, 'handleSectionSetupBoardClick')}</div>
+      <div class="board-area">${renderSectionBoardSVG(focusZone, 'handleSectionSetupBoardClick')}</div>
       <div class="confirm-banner" style="${focusZone?'':'opacity:0.6;'}">${focusZone ? 'Selected: '+sectionZoneLabel(focusZone) : 'Tap a section on the board to select it'}</div>
     </div>
     ` : ''}
@@ -5890,7 +5913,7 @@ function renderSectionActive(){
       <div class="small">${ps.dartsThisTurn.length} of 3 darts this turn${lastThrow?(' — last: '+sectionZoneLabel(lastThrow.zoneId)+' ('+lastThrow.score+' pts)'):''}</div>
     </div>
   </div>
-  <div class="board-wrap"><button class="board-miss-btn" onclick="sectionSelectZone('totalmiss')">Miss</button>${renderSectionBoardSVG(ps.currentTarget)}</div>
+  <div class="board-area"><button class="board-miss-btn" onclick="sectionSelectZone('totalmiss')">Miss</button>${renderSectionBoardSVG(ps.currentTarget)}</div>
   <div class="confirm-banner" style="opacity:0.7;">Tap the section where your dart landed</div>${FOOTER_MARKER}
   <div class="turn-area"><div class="turn-darts">
     ${[0,1,2].map(i=> ps.dartsThisTurn[i] ? `<span class="dart-chip">${ps.dartsThisTurn[i].score}</span>` : `<span class="dart-chip empty">—</span>`).join('')}
@@ -6005,7 +6028,7 @@ function renderPrecisionSetup(){
     ${mode==='focus' ? `
     <div>
       <span class="field-label">Pick Your Section</span>
-      <div class="board-wrap">${renderSectionBoardSVG(focusZone, 'handlePrecisionSetupBoardClick')}</div>
+      <div class="board-area">${renderSectionBoardSVG(focusZone, 'handlePrecisionSetupBoardClick')}</div>
       <div class="confirm-banner" style="${focusZone?'':'opacity:0.6;'}">${focusZone ? 'Selected: '+sectionZoneLabel(focusZone) : 'Tap a section on the board to select it'}</div>
     </div>
     ` : ''}
@@ -6033,7 +6056,7 @@ function renderPrecisionActive(){
       <div class="small">${ps.dartsThisTurn.length} of 3 darts this turn${last?(' — last: '+last.label+' ('+last.distanceMm+'mm off)'):''}</div>
     </div>
   </div>
-  <div class="board-wrap"><button class="board-miss-btn" onclick="handleFullBoardTotalMiss()">Miss</button>${renderSectionBoardSVG(ps.currentTarget, 'handlePrecisionFullBoardClick')}</div>
+  <div class="board-area"><button class="board-miss-btn" onclick="handleFullBoardTotalMiss()">Miss</button>${renderSectionBoardSVG(ps.currentTarget, 'handlePrecisionFullBoardClick')}</div>
   <div class="confirm-banner" style="opacity:0.7;">Tap roughly where your dart landed — you'll fine-tune it next</div>${FOOTER_MARKER}
   <div class="turn-area"><div class="turn-darts">
     ${[0,1,2].map(i=> ps.dartsThisTurn[i] ? `<span class="dart-chip">${ps.dartsThisTurn[i].distanceMm}mm</span>` : `<span class="dart-chip empty">—</span>`).join('')}
@@ -6058,7 +6081,7 @@ function renderPrecisionZoomScreen(){
     <h2>Aim for: ${sectionZoneLabel(ps.currentTarget)}</h2>
     <div class="objective-banner"><div class="small">Tap the exact spot to lock it in — or drag the marker first and let go when it's right. Gold dashes mark your target.</div></div>
   </div>
-  <div class="board-wrap">${renderZoomBoardSVG(z.tapX, z.tapY, 130, z.markerX, z.markerY, 'precisionMarkerDot', {x:targetZone.x, y:targetZone.y})}</div>
+  <div class="board-area">${renderZoomBoardSVG(z.tapX, z.tapY, 130, z.markerX, z.markerY, 'precisionMarkerDot', {x:targetZone.x, y:targetZone.y})}</div>
   <div class="confirm-banner">Currently: ${pointLabel(preview.number, preview.ring)}</div>
   <div id="precisionLoupe" class="precision-loupe" style="display:none;"></div>
   <div class="bottom-controls">
