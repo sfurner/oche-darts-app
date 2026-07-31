@@ -589,7 +589,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-31 01:34 UTC';
+const BUILD_STAMP = '2026-07-31 01:58 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1639,6 +1639,7 @@ function startPracticeSession(def, playerId){
     perTarget: {},
     dartsSpentPerTarget: {},
     dartsPerTarget: {},
+    hitPoints: [],
     startTime: Date.now(),
     complete:false,
   };
@@ -2301,7 +2302,11 @@ function commitBoardThrow(c){
   else if(c.seg==='bullouter'){ num='B'; mult='single'; }
   else { num=parseInt(c.num,10); mult=c.seg; }
   if(state.screen==='practiceActive'){
-    practiceApplyDart(state.practiceSession, num, mult);
+    const isHit = practiceApplyDart(state.practiceSession, num, mult);
+    if(c.point){
+      if(!state.practiceSession.hitPoints) state.practiceSession.hitPoints = [];
+      state.practiceSession.hitPoints.push({x:c.point.x, y:c.point.y, hit:!!isHit});
+    }
     checkPracticeDone();
     render();
   } else if(state.screen==='checkoutPracticeActive'){
@@ -5488,6 +5493,13 @@ function practiceEfficiencyColor(target, ps){
   if(ratio>=0.25) return '#e08a3a';
   return '#c9563a';
 }
+function practiceSegmentColor(target, ps){
+  const done = practiceEfficiencyColor(target, ps);
+  if(done) return done;
+  const spent = ps.dartsSpentPerTarget[target]||0;
+  if(spent>0) return '#8a7433';
+  return '#2c3a52';
+}
 function renderPracticeGauge(ps, big){
   const uniqueTargets = [...new Set(ps.def.targets.filter(t=>t!==undefined))];
   if(uniqueTargets.length < 3) return '';
@@ -5496,21 +5508,77 @@ function renderPracticeGauge(ps, big){
   const cx=size/2, cy=size/2, rOuter=size*0.44, rInner=size*0.30;
   const current = ps.complete ? null : practiceCurrentTarget(ps);
   let wedges = '';
+  let currentOutline = '';
   uniqueTargets.forEach((t,i)=>{
     const a0 = (i*360/n - 90) * Math.PI/180, a1 = ((i+1)*360/n - 90) * Math.PI/180;
     const x0=cx+rOuter*Math.cos(a0), y0=cy+rOuter*Math.sin(a0);
     const x1=cx+rOuter*Math.cos(a1), y1=cy+rOuter*Math.sin(a1);
     const x2=cx+rInner*Math.cos(a1), y2=cy+rInner*Math.sin(a1);
     const x3=cx+rInner*Math.cos(a0), y3=cy+rInner*Math.sin(a0);
-    const color = t===current ? 'var(--brass)' : (practiceEfficiencyColor(t,ps) || 'var(--felt-lighter)');
+    const color = practiceSegmentColor(t, ps);
     const largeArc = (a1-a0) > Math.PI ? 1 : 0;
-    wedges += `<path d="M${x0},${y0} A${rOuter},${rOuter} 0 ${largeArc},1 ${x1},${y1} L${x2},${y2} A${rInner},${rInner} 0 ${largeArc},0 ${x3},${y3} Z" fill="${color}" stroke="var(--ink)" stroke-width="1"/>`;
+    const path = `M${x0},${y0} A${rOuter},${rOuter} 0 ${largeArc},1 ${x1},${y1} L${x2},${y2} A${rInner},${rInner} 0 ${largeArc},0 ${x3},${y3} Z`;
+    wedges += `<path d="${path}" fill="${color}" stroke="var(--ink)" stroke-width="1"/>`;
+    if(t===current){
+      currentOutline = `<path d="${path}" fill="none" stroke="#ffffff" stroke-width="3" style="pointer-events:none;"><animate attributeName="stroke-opacity" values="1;0.35;1" dur="1.2s" repeatCount="indefinite"/></path>`;
+    }
   });
   const done = Object.keys(ps.dartsPerTarget).length;
   const label = big ? '' : `<div style="font-size:12px; color:var(--cream-dim);">${done} of ${uniqueTargets.length} targets done<br><span style="color:var(--cream); font-weight:600;">${ps.totalDarts} darts thrown</span></div>`;
+  const legend = `<div style="display:flex; align-items:center; gap:12px; font-size:10px; color:var(--cream-dim); margin-top:8px; flex-wrap:wrap; justify-content:${big?'center':'flex-start'};">
+    <span><span style="display:inline-block; width:8px; height:8px; background:#2c3a52; border-radius:2px; margin-right:4px;"></span>Not started</span>
+    <span><span style="display:inline-block; width:8px; height:8px; background:#8a7433; border-radius:2px; margin-right:4px;"></span>In progress</span>
+    <span><span style="display:inline-block; width:8px; height:8px; background:linear-gradient(90deg,#4a9e5c,#c9563a); border-radius:2px; margin-right:4px;"></span>Done (fast&rarr;slow)</span>
+    <span><span style="display:inline-block; width:8px; height:8px; border-radius:2px; border:2px solid #ffffff; margin-right:4px;"></span>Aiming here now</span>
+  </div>`;
+  return `<div style="padding:0 18px 8px 18px;">
+    <div style="display:flex; align-items:center; justify-content:${big?'center':'flex-start'}; gap:14px;">
+      <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${wedges}${currentOutline}</svg>
+      ${label}
+    </div>
+    ${legend}
+  </div>`;
   return `<div style="display:flex; align-items:center; justify-content:${big?'center':'flex-start'}; gap:14px; padding:0 18px 8px 18px;">
     <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${wedges}</svg>
     ${label}
+  </div>`;
+}
+function renderPracticeHeatmap(ps, compact){
+  const points = ps.hitPoints || [];
+  if(points.length < 3) return '';
+  const size = compact ? 110 : 190;
+  const scale = size / BOARD_CANVAS;
+  const cx = BOARD_CX*scale, cy = BOARD_CY*scale;
+  const rB = R_BEZEL*scale, rDO=R_DOUBLE_OUT*scale, rDI=R_DOUBLE_IN*scale, rTO=R_TRIPLE_OUT*scale, rTI=R_TRIPLE_IN*scale, rBO=R_BULL_OUTER*scale, rBI=R_BULL_INNER*scale;
+  let rings = `<circle cx="${cx}" cy="${cy}" r="${rB}" fill="var(--felt)" stroke="var(--felt-lighter)" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="${rDO}" fill="none" stroke="var(--felt-lighter)" stroke-width="0.6"/>
+    <circle cx="${cx}" cy="${cy}" r="${rDI}" fill="none" stroke="var(--felt-lighter)" stroke-width="0.6"/>
+    <circle cx="${cx}" cy="${cy}" r="${rTO}" fill="none" stroke="var(--felt-lighter)" stroke-width="0.6"/>
+    <circle cx="${cx}" cy="${cy}" r="${rTI}" fill="none" stroke="var(--felt-lighter)" stroke-width="0.6"/>
+    <circle cx="${cx}" cy="${cy}" r="${rBO}" fill="none" stroke="var(--felt-lighter)" stroke-width="0.6"/>
+    <circle cx="${cx}" cy="${cy}" r="${rBI}" fill="none" stroke="var(--felt-lighter)" stroke-width="0.6"/>`;
+  for(let i=0;i<20;i++){
+    const a = -9 + i*18 + WEDGE_ROTATION;
+    const p1 = polar(cx,cy,rBO,a), p2 = polar(cx,cy,rB,a);
+    rings += `<line x1="${p1[0]}" y1="${p1[1]}" x2="${p2[0]}" y2="${p2[1]}" stroke="var(--felt-lighter)" stroke-width="0.5"/>`;
+  }
+  const dotR = compact ? 2.5 : 3.5;
+  const dots = points.map(pt=>{
+    const x = pt.x*scale, y = pt.y*scale;
+    const color = pt.hit ? '#4a9e5c' : '#c9563a';
+    return `<circle cx="${x}" cy="${y}" r="${dotR}" fill="${color}" fill-opacity="0.85" stroke="var(--ink)" stroke-width="0.5"/>`;
+  }).join('');
+  const hitCount = points.filter(p=>p.hit).length;
+  const label = compact ? '' : `<span class="field-label">Where Your Darts Actually Landed</span>`;
+  return `<div style="padding:0 18px 8px 18px;">
+    ${label}
+    <div style="display:flex; align-items:center; gap:14px;">
+      <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${rings}${dots}</svg>
+      <div style="font-size:12px; color:var(--cream-dim);">
+        <span style="color:#8fd4a8;">&#9679;</span> ${hitCount} on target<br>
+        <span style="color:#e8a488;">&#9679;</span> ${points.length-hitCount} off target
+      </div>
+    </div>
   </div>`;
 }
 function renderPracticeActive(){
@@ -5523,6 +5591,7 @@ function renderPracticeActive(){
     <h2>Hit ${target}</h2>
     <div class="objective-banner"><div class="big">${ps.perTarget[target]||0} of ${ps.requiredHits}</div><div class="small">${ps.totalDarts} darts thrown so far</div></div>
     ${renderPracticeGauge(ps)}
+    ${renderPracticeHeatmap(ps, true)}
   </div>
   <div class="entry-toggle">
     <button class="btn ${state.settings.entryMethod==='grid'?'btn-primary':'btn-secondary'}" onclick="if(state.settings.entryMethod!=='grid'){state.settings.entryMethod='grid'; render();}">Number Grid</button>
@@ -5587,6 +5656,7 @@ function renderPracticeResults(){
       ${isFullBoard ? `<p style="font-size:15px; color:var(--cream);">It took you <b style="color:var(--brass);">${ps.totalDarts} darts</b> to get all the way around the board.</p>` : ''}
     </div>
     ${renderPracticeGauge(ps, true)}
+    ${renderPracticeHeatmap(ps)}
     <div class="stat-grid">
       <div class="stat-box"><div class="val">${ps.totalDarts}</div><div class="lab">Darts Thrown</div></div>
       <div class="stat-box"><div class="val">${ps.successfulHits}</div><div class="lab">Target Hits</div></div>
