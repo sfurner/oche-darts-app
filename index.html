@@ -641,7 +641,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-01 04:13 UTC';
+const BUILD_STAMP = '2026-08-01 04:40 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1513,7 +1513,7 @@ function startHalveItSession(playerIds, opts){
     for(let i=seq.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [seq[i],seq[j]]=[seq[j],seq[i]]; }
   }
   return {
-    kind:'halveit', sequence: seq,
+    kind:'halveit', sequence: seq, halveitBooster: opts.halveitBooster || 'off',
     participants: playerIds.map(pid=>({playerId:pid, score:0, hitThisRound:false})),
     currentIdx:0, round:1, currentTurnDarts:[], turnHistory:[],
     complete:false, winnerId:null,
@@ -1524,14 +1524,17 @@ function halveItMutateForDart(s, num, mult){
   const p = halveItCurrent(s);
   const target = s.sequence[s.round-1];
   const hit = target===undefined ? false : (target==='B' ? num==='B' : num===target);
+  const dartValue = halveItDartValue(num, mult);
   let points=0, label='Miss';
   if(hit){
-    points = halveItDartValue(num, mult);
+    points = dartValue;
     p.score += points;
     p.hitThisRound = true;
     label = num==='B' ? (mult==='bull'?'Bull':'Outer Bull') : (mult==='double'?'D':mult==='triple'?'T':'S')+num;
+  } else if(s.halveitBooster && s.halveitBooster!=='off' && mult!=='miss' && dartValue>0){
+    label = num==='B' ? (mult==='bull'?'Bull':'Outer Bull') : (mult==='double'?'D':mult==='triple'?'T':'S')+num;
   }
-  return {label, points, num, mult};
+  return {label, points, num, mult, dartValue, hit};
 }
 function halveItApplyDart(s, num, mult){
   if(s.currentTurnDarts.length===0) s.turnStartSnapshot = JSON.parse(JSON.stringify(halveItCurrent(s)));
@@ -1544,9 +1547,22 @@ function halveItEndTurn(s){
   const p = halveItCurrent(s);
   const name = playerName(p.playerId);
   const before = p.score;
+  let bonusTotal = 0;
+  if(p.hitThisRound && s.halveitBooster && s.halveitBooster!=='off'){
+    const darts = s.currentTurnDarts;
+    const firstHitIdx = darts.findIndex(d=>d.hit);
+    darts.forEach((d,i)=>{
+      if(d.hit) return;
+      if(s.halveitBooster==='anyorder') bonusTotal += d.dartValue;
+      else if(s.halveitBooster==='sequential' && i>firstHitIdx) bonusTotal += d.dartValue;
+    });
+    p.score += bonusTotal;
+  }
   if(!p.hitThisRound){ p.score = Math.floor(p.score/2); }
   s.lastTurnSummary = p.hitThisRound
-    ? `${name} hit the target and is sitting at ${p.score} points.`
+    ? (bonusTotal>0
+        ? `${name} hit the target and boosted with an extra ${bonusTotal} — sitting at ${p.score} points.`
+        : `${name} hit the target and is sitting at ${p.score} points.`)
     : `${name} missed the target all 3 darts — score halved from ${before} to ${p.score}.`;
   p.lastTurnDarts = s.currentTurnDarts.map(d=>d.label);
   s.turnHistory.push({participantIdx:s.currentIdx, darts:s.currentTurnDarts, snapshot:JSON.parse(JSON.stringify(p)), roundAtEnd:s.round});
@@ -3544,7 +3560,7 @@ function proceedToOptions(){
     startScore: state.pendingGameId==='301'?301:501, inRule:'straight', outRule:'double', guidance:'beginner', variant:'standard',
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
-    halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence',
+    halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
   };
   render();
 }
@@ -4794,6 +4810,16 @@ function renderGameOptions(){
       <span class="field-label">Order</span>
       <div class="chip-wrap">${chip('In Order','halveitOrder','sequence')}${chip('Random Order','halveitOrder','random')}</div>
       <p class="info-note">${o.halveitOrder==='random' ? 'The target order is shuffled once at the start of the game.' : 'Targets go from 20 down to 1, with Bull last.'}</p>
+    </div>
+    <div>
+      <span class="field-label">Score Booster</span>
+      <div class="chip-wrap">${chip('Off','halveitBooster','off')}${chip('After Close','halveitBooster','sequential')}${chip('Any Order','halveitBooster','anyorder')}</div>
+      <div class="option-legend">
+        <div class="leg-item ${(!o.halveitBooster||o.halveitBooster==='off')?'active-leg':''}"><b>Off</b> — only darts that hit the round's exact target score. Everything else is a dead throw, even if it lands somewhere else on the board.</div>
+        <div class="leg-item ${o.halveitBooster==='sequential'?'active-leg':''}"><b>After Close</b> — once you hit the target, any darts you throw <i>after</i> that also score at face value. Example: target is 18, you throw 20, 18, 4 in that order — the 20 came before you closed it and doesn't count, so you'd score 18+4 = 22.</div>
+        <div class="leg-item ${o.halveitBooster==='anyorder'?'active-leg':''}"><b>Any Order</b> — as long as you hit the target at some point in the turn, every dart that turn scores at face value, regardless of order. Same example (20, 18, 4) scores 20+18+4 = 42.</div>
+      </div>
+      <p class="info-note">This keeps the game from going flat once you're down to small targets like 3, 2, 1 — a good turn can still add real points instead of the extra darts going to waste.</p>
     </div>
     <p class="info-note">Hit the round's target at least once to keep your points — miss it entirely across all 3 darts and your running score is cut in half.</p>`;
   } else if(id==='killer'){
