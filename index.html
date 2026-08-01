@@ -505,6 +505,19 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .modal-overlay{
   position:absolute; inset:0; background:rgba(6,10,8,0.72); display:flex; align-items:center; justify-content:center; z-index:50; padding:24px;
 }
+.celebration-overlay{
+  position:fixed; inset:0; background:rgba(4,8,14,0.55); display:flex; align-items:center; justify-content:center; z-index:80; overflow:hidden;
+}
+.celebration-card{
+  position:relative; z-index:2; background:var(--felt); border:2px solid var(--brass); border-radius:20px; padding:36px 44px;
+  text-align:center; box-shadow:0 0 60px rgba(255,210,63,0.25);
+}
+.celebration-trophy{ font-size:64px; line-height:1; margin-bottom:14px; animation:trophyPulse 1.4s ease-in-out infinite; }
+.celebration-winner{ font-family:'Oswald',sans-serif; font-size:34px; font-weight:700; color:var(--brass); letter-spacing:0.02em; }
+@keyframes trophyPulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.12); } }
+.confetti-field{ position:absolute; inset:0; z-index:1; pointer-events:none; }
+.confetti-piece{ position:absolute; top:-5%; border-radius:1px; animation-name:confettiFall; animation-timing-function:linear; animation-iteration-count:infinite; opacity:0.9; }
+@keyframes confettiFall{ 0%{ top:-5%; opacity:0.9; } 100%{ top:105%; opacity:0.6; } }
 .modal{
   background:var(--felt); border:1px solid var(--brass); border-radius:16px; padding:22px; width:100%; max-width:340px;
 }
@@ -641,7 +654,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-01 04:40 UTC';
+const BUILD_STAMP = '2026-08-01 20:25 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -723,6 +736,8 @@ let state = {
   dartSettingsAddingFor: null,
   confirmDeleteCustomGameId: null,
   confirmDeletePracticeId: null,
+  celebration: null,
+  celebrationTimer: null,
   practiceRandomMode: 'sequence',
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
@@ -3240,7 +3255,37 @@ function buildAndShowReview(opts){
     rawSession: opts.session || null,
     extra: opts.extra || null,
   };
+  state.celebration = { winnerName: opts.winnerName };
+  if(state.celebrationTimer) clearTimeout(state.celebrationTimer);
+  state.celebrationTimer = setTimeout(()=>{ advanceFromCelebration(); }, 14000);
+}
+function advanceFromCelebration(){
+  if(state.celebrationTimer){ clearTimeout(state.celebrationTimer); state.celebrationTimer = null; }
+  state.celebration = null;
   state.screen = 'gameReview';
+  render();
+}
+function renderCelebrationOverlay(){
+  const c = state.celebration;
+  if(!c) return '';
+  const confettiColors = ['#FFD23F','#5B9BF5','#4a9e5c','#e8a488','#c9584a','#9b6bc9'];
+  const pieces = Array.from({length:36},(_,i)=>{
+    const left = Math.round(Math.random()*100);
+    const delay = (Math.random()*0.6).toFixed(2);
+    const duration = (2.2+Math.random()*1.4).toFixed(2);
+    const color = confettiColors[i%confettiColors.length];
+    const size = 6+Math.round(Math.random()*6);
+    const rotate = Math.round(Math.random()*360);
+    return `<div class="confetti-piece" style="left:${left}%; background:${color}; width:${size}px; height:${size*0.4}px; animation-delay:${delay}s; animation-duration:${duration}s; transform:rotate(${rotate}deg);"></div>`;
+  }).join('');
+  return `<div class="celebration-overlay">
+    <div class="confetti-field">${pieces}</div>
+    <div class="celebration-card">
+      <div class="celebration-trophy">&#127942;</div>
+      <div class="celebration-winner">${c.winnerName} wins!</div>
+      <button class="btn btn-primary" style="margin-top:18px;" onclick="advanceFromCelebration()">Continue</button>
+    </div>
+  </div>`;
 }
 function finishX01Game(s){
   const winner = state.players.find(p=>p.id===s.winnerId);
@@ -4336,6 +4381,7 @@ function render(){
     default: html = renderHomeShell();
   }
   if(state.emojiPickerPlayerId) html += renderEmojiPickerModal(state.emojiPickerPlayerId);
+  if(state.celebration) html += renderCelebrationOverlay();
   const footerSplit = html.split(FOOTER_MARKER);
   app.innerHTML = footerSplit[0];
   if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
@@ -5673,14 +5719,14 @@ function playerDartRow(rp, returnScreen){
     <div style="display:flex; align-items:center; gap:10px;">
       <div class="player-avatar" style="background:${playerColor({id:rp.playerId}, state.players.findIndex(x=>x.id===rp.playerId))}">${rp.emoji||initials(rp.name)}</div>
       <div>
-        <div>${rp.name}${rp.isWinner?' &#127942;':''}</div>
-        <div style="font-size:11px; color:var(--cream-dim);">${rp.throwCount} recorded throw${rp.throwCount!==1?'s':''}</div>
+        <div style="font-size:16px; font-weight:600;">${rp.name}${rp.isWinner?' &#127942;':''}</div>
+        <div style="font-size:13px; color:var(--cream-dim);">${rp.throwCount} recorded throw${rp.throwCount!==1?'s':''}</div>
       </div>
     </div>
     <div style="text-align:right; cursor:pointer; display:flex; align-items:center; gap:8px;" onclick="openDartPicker('${rp.playerId}','${returnScreen}')">
       <div>
-        <div style="color:var(--brass); font-size:13px;">${d?dartSetupDisplayName(d):'No Dart Selected'}</div>
-        <div style="font-size:11px; color:var(--cream-dim);">Tap to change &#9656;</div>
+        <div style="color:var(--brass); font-size:15px;">${d?dartSetupDisplayName(d):'No Dart Selected'}</div>
+        <div style="font-size:13px; color:var(--cream-dim);">Tap to change &#9656;</div>
       </div>
       ${d ? dartAvatarHtml(d, 28) : ''}
     </div>
@@ -5693,13 +5739,13 @@ function renderGameReview(){
   const others = r.players.filter(p=>!p.isWinner);
   return `<div class="topbar"><div class="brand"><span class="dot"></span><h1 style="color:var(--brass);">${r.title}</h1></div><div style="width:38px;"></div></div>
   <div class="content">
-    <div class="rule-block" style="text-align:center; padding:22px 16px;">
-      <div style="font-size:34px; margin-bottom:8px;">&#127942;</div>
-      <h2 style="color:var(--brass); font-size:24px;">${winner? winner.name+' won' : r.historyEntry.winner}</h2>
-      ${others.length? `<p style="color:var(--cream-dim); margin-top:6px; font-size:13px;">${others.map(o=>o.name).join(', ')} also played.</p>` : ''}
-      <p style="color:var(--cream-dim); margin-top:4px; font-size:13px;">${r.historyEntry.detail}</p>
+    <div class="rule-block" style="text-align:center; padding:32px 20px;">
+      <div style="font-size:56px; margin-bottom:12px;">&#127942;</div>
+      <h2 style="color:var(--brass); font-size:38px;">${winner? winner.name+' won' : r.historyEntry.winner}</h2>
+      ${others.length? `<p style="color:var(--cream-dim); margin-top:10px; font-size:17px;">${others.map(o=>o.name).join(', ')} also played.</p>` : ''}
+      <p style="color:var(--cream-dim); margin-top:8px; font-size:17px;">${r.historyEntry.detail}</p>
     </div>
-    <span class="field-label">Players &amp; Darts Used</span>
+    <span class="field-label" style="font-size:14px;">Players &amp; Darts Used</span>
     ${r.players.map(rp=>playerDartRow(rp,'gameReview')).join('')}
     <p class="info-note">Save Results to count this game toward history, stats, and dart setup ratings. Exit Without Saving discards it completely — handy for a casual game that shouldn't count.</p>
     <button class="btn btn-primary btn-full" onclick="saveGameResults()">Save Results</button>
