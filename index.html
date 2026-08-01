@@ -167,7 +167,7 @@ body{
   .device.game-layout{ flex-direction:row; }
   .device.game-layout .screen{ flex:1; min-width:0; }
   .device.game-layout .screen-footer{ flex:none; width:var(--panel-width, 230px); height:auto; border-left:1px solid var(--felt-lighter); overflow-y:auto; padding:14px 12px; position:relative; zoom:var(--panel-scale, 1); }
-  .device.game-layout .dartboard-svg{ width:min(100%, 900px, 82vh); }
+  .device.game-layout .dartboard-svg{ width:min(70vw, 1200px, 92vh); }
   .panel-resize-handle{
     position:absolute; top:0; left:-3px; width:8px; height:100%; cursor:ew-resize; z-index:8;
     background:transparent; touch-action:none;
@@ -361,8 +361,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   background:rgba(0,0,0,0.35); border-radius:6px; touch-action:none; user-select:none;
 }
 .resize-handle:hover{ color:var(--brass); background:rgba(0,0,0,0.5); }
-.miss-ring-band{ fill:none; stroke:rgba(160,166,178,0.22); stroke-width:30; cursor:pointer; transition:stroke 0.15s ease; }
-.miss-ring-band:hover{ stroke:rgba(160,166,178,0.42); }
+.miss-ring-band{ fill:none; stroke:rgba(140,146,158,0.07); stroke-width:22; cursor:pointer; transition:stroke 0.15s ease; }
+.miss-ring-band:hover{ stroke:rgba(140,146,158,0.24); }
 .move-handle{
   position:absolute; top:2px; right:2px; z-index:6; width:26px; height:26px; cursor:grab;
   display:flex; align-items:center; justify-content:center; color:var(--cream-dim); font-size:14px;
@@ -483,8 +483,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   font-weight:700; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer;
 }
 .board-miss-btn:active{ transform:scale(0.95); }
-.dartboard-svg{ width:min(100%, 320px, 48vh); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
-@media (min-width:641px){ .dartboard-svg{ width:min(100%, 440px, 48vh); } }
+.dartboard-svg{ width:min(90vw, 320px, 48vh); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
+@media (min-width:641px){ .dartboard-svg{ width:min(85vw, 440px, 48vh); } }
 .precision-zoom-svg{ width:100%; max-width:320px; height:auto; touch-action:none; cursor:crosshair; background:var(--ink); border-radius:12px; }
 .precision-loupe{
   position:fixed; width:110px; height:110px; border-radius:50%;
@@ -496,7 +496,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   flex:1; background:linear-gradient(180deg,var(--brass),var(--brass-dark)); border:none; color:#241a06;
   font-weight:700; font-size:13px; border-radius:10px; padding:10px 4px; cursor:pointer;
 }
-@media (min-width:1024px){ .dartboard-svg{ width:min(100%, 680px, 64vh); } }
+@media (min-width:1024px){ .dartboard-svg{ width:min(75vw, 680px, 64vh); } }
 .confirm-banner{margin:0 18px 8px 18px; text-align:center; background:var(--felt-dark); border:1px solid var(--brass); border-radius:10px; padding:8px; font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--brass);}
 
 .modal-overlay{
@@ -638,7 +638,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-01 00:42 UTC';
+const BUILD_STAMP = '2026-08-01 02:55 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2340,11 +2340,11 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const needsWideMargin = ownerLabels && ownerLabels.length;
-  const missRingWidth = 30;
+  const missRingWidth = 22;
   const missRingRadius = rBezel + missRingWidth/2;
   const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - (missRingWidth+16);
   const viewSize = canvas - cropMargin*2;
-  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" stroke-width="${missRingWidth}" onclick="${missHandler}"/>`;
+  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" onclick="${missHandler}"/>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
     ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}${missRingBand}
@@ -5118,7 +5118,7 @@ function renderCallShotActiveShell(s){
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   } else {
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
-    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>
+    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>
     <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
   }
   const playerBoxes = `<div class="panel-zone-players">
@@ -5407,7 +5407,7 @@ function renderEntryArea(s){
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
-    entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.5,1.8)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>`;
+    entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>`;
   }
   const toggle = isCricket
     ? `<div class="entry-toggle">
@@ -5938,11 +5938,11 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
   }
   const hitPointsArr2 = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr2.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
-  const missRingWidth2 = 30;
+  const missRingWidth2 = 22;
   const missRingRadius2 = (R_OVER_OUT+19) + missRingWidth2/2;
   const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - (missRingWidth2+16);
   const viewSize2 = canvas - cropMargin2*2;
-  const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius2}" stroke-width="${missRingWidth2}" onclick="${missHandler}"/>` : '';
+  const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius2}" onclick="${missHandler}"/>` : '';
   return `<svg viewBox="${cropMargin2} ${cropMargin2} ${viewSize2} ${viewSize2}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
     <circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>
