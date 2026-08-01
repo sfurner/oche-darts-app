@@ -166,7 +166,12 @@ body{
 @media (min-width:900px){
   .device.game-layout{ flex-direction:row; }
   .device.game-layout .screen{ flex:1; min-width:0; }
-  .device.game-layout .screen-footer{ flex:none; width:230px; height:auto; border-left:1px solid var(--felt-lighter); overflow-y:auto; padding:14px 12px; }
+  .device.game-layout .screen-footer{ flex:none; width:var(--panel-width, 230px); height:auto; border-left:1px solid var(--felt-lighter); overflow-y:auto; padding:14px 12px; position:relative; zoom:var(--panel-scale, 1); }
+  .panel-resize-handle{
+    position:absolute; top:0; left:-3px; width:8px; height:100%; cursor:ew-resize; z-index:8;
+    background:transparent; touch-action:none;
+  }
+  .panel-resize-handle:hover, .panel-resize-handle.dragging{ background:rgba(91,155,245,0.25); }
 }
 h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; font-weight:600;}
 .topbar{
@@ -321,7 +326,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 
 .chalkboard-standalone{ display:flex; justify-content:center; padding:6px 18px 10px 18px; }
 .chalkboard-panel{
-  position:relative; width:calc(min(420px, 100%) * var(--chalkboard-scale, 1)); border-radius:6px; padding:14px 10px 10px 10px; display:flex; flex-direction:column;
+  position:relative; width:min(420px, 100%); border-radius:6px; padding:14px 10px 10px 10px; display:flex; flex-direction:column;
+  transform:scale(var(--chalkboard-scale, 1)); transform-origin:top center;
   border:5px solid #111;
   background-color:#2d4a3a;
   background-image:
@@ -330,8 +336,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
     radial-gradient(circle at 50% 90%, rgba(255,255,255,0.03) 0%, transparent 45%);
   box-shadow:inset 0 0 30px rgba(0,0,0,0.4);
 }
-@media (min-width:641px){ .chalkboard-panel{ width:calc(min(380px, 70%) * var(--chalkboard-scale, 1)); padding:18px 14px 14px 14px; } }
-@media (min-width:1024px){ .chalkboard-panel{ width:calc(min(440px, 44%) * var(--chalkboard-scale, 1)); padding:22px 18px 18px 18px; } }
+@media (min-width:641px){ .chalkboard-panel{ width:min(380px, 70%); padding:18px 14px 14px 14px; } }
+@media (min-width:1024px){ .chalkboard-panel{ width:min(440px, 44%); padding:22px 18px 18px 18px; } }
 .cb-miss-btn{
   position:absolute; top:8px; left:8px; z-index:5;
   background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.3); color:#f2f2ee;
@@ -466,7 +472,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .bottom-controls button.warn{color:color-mix(in srgb, var(--red) 75%, white);}
 
 .board-area{display:flex; justify-content:center; padding:8px 18px; position:relative;}
-.board-wrap{display:inline-block; position:relative; line-height:0;}
+.board-wrap{display:inline-block; position:relative; line-height:0; transform:scale(var(--dartboard-scale, 1)); transform-origin:center center;}
 .board-miss-btn{
   position:absolute; top:2px; left:20px; z-index:5;
   background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim);
@@ -474,8 +480,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   font-weight:700; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer;
 }
 .board-miss-btn:active{ transform:scale(0.95); }
-.dartboard-svg{ width:calc(min(100%, 320px, 48vh) * var(--dartboard-scale, 1)); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
-@media (min-width:641px){ .dartboard-svg{ width:calc(min(100%, 440px, 48vh) * var(--dartboard-scale, 1)); } }
+.dartboard-svg{ width:min(100%, 320px, 48vh); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
+@media (min-width:641px){ .dartboard-svg{ width:min(100%, 440px, 48vh); } }
 .precision-zoom-svg{ width:100%; max-width:320px; height:auto; touch-action:none; cursor:crosshair; background:var(--ink); border-radius:12px; }
 .precision-loupe{
   position:fixed; width:110px; height:110px; border-radius:50%;
@@ -487,7 +493,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   flex:1; background:linear-gradient(180deg,var(--brass),var(--brass-dark)); border:none; color:#241a06;
   font-weight:700; font-size:13px; border-radius:10px; padding:10px 4px; cursor:pointer;
 }
-@media (min-width:1024px){ .dartboard-svg{ width:calc(min(100%, 600px, 56vh) * var(--dartboard-scale, 1)); } }
+@media (min-width:1024px){ .dartboard-svg{ width:min(100%, 600px, 56vh); } }
 .confirm-banner{margin:0 18px 8px 18px; text-align:center; background:var(--felt-dark); border:1px solid var(--brass); border-radius:10px; padding:8px; font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--brass);}
 
 .modal-overlay{
@@ -629,7 +635,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-07-31 20:02 UTC';
+const BUILD_STAMP = '2026-08-01 00:33 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -747,6 +753,7 @@ let state = {
     dartboardPos: null,
     heatmapPos: null,
     chalkboardPos: null,
+    panelWidth: 230,
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -2330,12 +2337,18 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const needsWideMargin = ownerLabels && ownerLabels.length;
-  const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - 20;
+  const missRingWidth = 30;
+  const missRingRadius = rBezel + missRingWidth/2;
+  const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - (missRingWidth+16);
   const viewSize = canvas - cropMargin*2;
-  const missRing = `<circle cx="${cx}" cy="${cy}" r="${rBezel+10}" fill="none" stroke="#e8a488" stroke-width="2" stroke-dasharray="4 6" opacity="0.55" style="cursor:pointer;" onclick="${missHandler}"/>`;
+  const missRingBand = `<circle cx="${cx}" cy="${cy}" r="${missRingRadius}" fill="none" stroke="rgba(140,70,58,0.5)" stroke-width="${missRingWidth}" style="cursor:pointer;" onclick="${missHandler}"/>`;
+  const missLabels = [315, 75, 135, 225].map(angle=>{
+    const pos = polar(cx, cy, missRingRadius, angle);
+    return `<text x="${pos[0]}" y="${pos[1]}" fill="#f2ddd6" font-size="12" font-weight="700" letter-spacing="0.5" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
+  }).join('');
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
-    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}${missRing}
+    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}${missRingBand}${missLabels}
   </svg>`;
 }
 function handleBoardClick(evt){
@@ -4187,6 +4200,31 @@ function renderMoveHandle(settingsKey, elementId){
 function floatingStyle(pos){
   return pos ? `position:absolute; left:${pos.left}px; top:${pos.top}px; margin:0;` : '';
 }
+function startPanelResizeDrag(evt){
+  evt.preventDefault();
+  evt.stopPropagation();
+  const handle = evt.target;
+  handle.classList.add('dragging');
+  const root = document.documentElement;
+  const startWidth = state.settings.panelWidth || 230;
+  const startX = evt.clientX;
+  let liveWidth = startWidth;
+  function onMove(e){
+    const dx = startX - e.clientX;
+    liveWidth = Math.max(180, Math.min(420, startWidth + dx));
+    root.style.setProperty('--panel-width', liveWidth+'px');
+    root.style.setProperty('--panel-scale', (liveWidth/230));
+  }
+  function onUp(){
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+    handle.classList.remove('dragging');
+    state.settings.panelWidth = Math.round(liveWidth);
+    render();
+  }
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+}
 
 /* Checkout table */
 function openCheckoutTable(fromScreen, outRule){
@@ -4207,6 +4245,8 @@ function render(){
   document.documentElement.style.setProperty('--dartboard-scale', state.settings.dartboardScale||1);
   document.documentElement.style.setProperty('--chalkboard-scale', state.settings.chalkboardScale||1);
   document.documentElement.style.setProperty('--heatmap-scale', state.settings.heatmapScale||1);
+  document.documentElement.style.setProperty('--panel-width', (state.settings.panelWidth||230)+'px');
+  document.documentElement.style.setProperty('--panel-scale', (state.settings.panelWidth||230)/230);
   const app = document.getElementById('app');
   const appFooter = document.getElementById('app-footer');
   const sn = document.getElementById('sidenav');
@@ -5045,7 +5085,7 @@ function renderActiveShell(){
     <div class="game-title-center">${gname}</div>
     <div style="text-align:right;">${s.kind==='killer' ? '<div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:11px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div>' : ''}</div>
   </div>
-  ${renderEntryArea(s)}${FOOTER_MARKER}
+  ${renderEntryArea(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
   ${renderInstructionBox(s)}
   ${renderPlayerBoxes(s)}
@@ -5100,7 +5140,7 @@ function renderCallShotActiveShell(s){
     <div></div>
   </div>
   ${board}
-  ${targetChipRow()}${FOOTER_MARKER}
+  ${targetChipRow()}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderInstructionBox(s)}
   ${playerBoxes}
   <div class="panel-controls">
@@ -5899,9 +5939,14 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
   }
   const hitPointsArr2 = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr2.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
-  const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - 16;
+  const missRingWidth2 = 30;
+  const missRingRadius2 = (R_OVER_OUT+19) + missRingWidth2/2;
+  const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - (missRingWidth2+16);
   const viewSize2 = canvas - cropMargin2*2;
-  const missRing2 = missHandler ? `<circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+27}" fill="none" stroke="#e8a488" stroke-width="2" stroke-dasharray="4 6" opacity="0.55" style="cursor:pointer;" onclick="${missHandler}"/>` : '';
+  const missRing2 = missHandler ? `<circle cx="${cx}" cy="${cy}" r="${missRingRadius2}" fill="none" stroke="rgba(140,70,58,0.5)" stroke-width="${missRingWidth2}" style="cursor:pointer;" onclick="${missHandler}"/>${[315,75,135,225].map(angle=>{
+    const pos = polar(cx, cy, missRingRadius2, angle);
+    return `<text x="${pos[0]}" y="${pos[1]}" fill="#f2ddd6" font-size="12" font-weight="700" letter-spacing="0.5" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
+  }).join('')}` : '';
   return `<svg viewBox="${cropMargin2} ${cropMargin2} ${viewSize2} ${viewSize2}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
     <circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>
