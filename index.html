@@ -112,10 +112,6 @@ body{
   .device{ width:min(1200px, calc(100vw - 280px)); height:calc(100vh - 64px); height:calc(100dvh - 64px); max-height:calc(100vh - 64px); max-height:calc(100dvh - 64px); min-height:0; border-radius:0 24px 24px 0; margin:0; }
   .app-shell:has(.sidenav.collapsed) .device{ width:min(1400px, calc(100vw - 150px)); }
   .content{ max-width:900px; margin-left:auto; margin-right:auto; }
-  .content.content-grid{
-    max-width:none; display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr));
-    gap:14px; align-items:start;
-  }
   .app-shell.fullscreen-mode{ padding:0; }
   .app-shell.fullscreen-mode .device{ width:100vw; height:100vh; height:100dvh; max-height:100vh; max-height:100dvh; min-height:0; border-radius:0; }
   .app-shell.fullscreen-mode .content{ max-width:1100px; }
@@ -202,6 +198,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   color:var(--brass); text-transform:uppercase; padding:16px 18px 8px 18px;
 }
 .content{padding:0 18px 18px 18px; display:flex; flex-direction:column; gap:12px;}
+.content.content-grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr));
+  gap:14px; align-items:start;
+}
 
 .card{
   background:var(--felt-light);
@@ -257,6 +257,9 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .rule-block{background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:var(--radius); padding:14px 16px;}
 .rule-block h4{color:var(--brass); font-size:13px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:6px;}
 .rule-block p{margin:0; font-size:14px; line-height:1.5; color:var(--cream);}
+.rules-content .rule-block{ padding:18px 20px; }
+.rules-content .rule-block h4{ font-size:15px; }
+.rules-content .rule-block p{ font-size:17px; line-height:1.6; }
 
 .input, select{
   width:100%; background:var(--felt-dark); border:1px solid var(--felt-lighter); color:var(--cream);
@@ -638,7 +641,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-01 02:55 UTC';
+const BUILD_STAMP = '2026-08-01 03:52 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4582,7 +4585,7 @@ function renderRulesScreen(){
     <h1 style="color:var(--brass); font-size:19px;">${g.name}</h1>
     <div style="width:38px;"></div>
   </div>
-  <div class="content">
+  <div class="content rules-content">
     <div class="rule-block"><h4>Goal</h4><p>${g.goal}</p></div>
     <div class="rule-block"><h4>How to Score</h4><p>${g.score}</p></div>
     <div class="rule-block"><h4>How to Win</h4><p>${g.win}</p></div>
