@@ -167,6 +167,7 @@ body{
   .device.game-layout{ flex-direction:row; }
   .device.game-layout .screen{ flex:1; min-width:0; }
   .device.game-layout .screen-footer{ flex:none; width:var(--panel-width, 230px); height:auto; border-left:1px solid var(--felt-lighter); overflow-y:auto; padding:14px 12px; position:relative; zoom:var(--panel-scale, 1); }
+  .device.game-layout .dartboard-svg{ width:min(100%, 900px, 82vh); }
   .panel-resize-handle{
     position:absolute; top:0; left:-3px; width:8px; height:100%; cursor:ew-resize; z-index:8;
     background:transparent; touch-action:none;
@@ -360,6 +361,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   background:rgba(0,0,0,0.35); border-radius:6px; touch-action:none; user-select:none;
 }
 .resize-handle:hover{ color:var(--brass); background:rgba(0,0,0,0.5); }
+.miss-ring-band{ fill:none; stroke:rgba(160,166,178,0.22); stroke-width:30; cursor:pointer; transition:stroke 0.15s ease; }
+.miss-ring-band:hover{ stroke:rgba(160,166,178,0.42); }
 .move-handle{
   position:absolute; top:2px; right:2px; z-index:6; width:26px; height:26px; cursor:grab;
   display:flex; align-items:center; justify-content:center; color:var(--cream-dim); font-size:14px;
@@ -493,7 +496,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   flex:1; background:linear-gradient(180deg,var(--brass),var(--brass-dark)); border:none; color:#241a06;
   font-weight:700; font-size:13px; border-radius:10px; padding:10px 4px; cursor:pointer;
 }
-@media (min-width:1024px){ .dartboard-svg{ width:min(100%, 600px, 56vh); } }
+@media (min-width:1024px){ .dartboard-svg{ width:min(100%, 680px, 64vh); } }
 .confirm-banner{margin:0 18px 8px 18px; text-align:center; background:var(--felt-dark); border:1px solid var(--brass); border-radius:10px; padding:8px; font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--brass);}
 
 .modal-overlay{
@@ -635,7 +638,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-01 00:33 UTC';
+const BUILD_STAMP = '2026-08-01 00:42 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2341,14 +2344,10 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const missRingRadius = rBezel + missRingWidth/2;
   const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - (missRingWidth+16);
   const viewSize = canvas - cropMargin*2;
-  const missRingBand = `<circle cx="${cx}" cy="${cy}" r="${missRingRadius}" fill="none" stroke="rgba(140,70,58,0.5)" stroke-width="${missRingWidth}" style="cursor:pointer;" onclick="${missHandler}"/>`;
-  const missLabels = [315, 75, 135, 225].map(angle=>{
-    const pos = polar(cx, cy, missRingRadius, angle);
-    return `<text x="${pos[0]}" y="${pos[1]}" fill="#f2ddd6" font-size="12" font-weight="700" letter-spacing="0.5" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
-  }).join('');
+  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" stroke-width="${missRingWidth}" onclick="${missHandler}"/>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
-    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}${missRingBand}${missLabels}
+    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}${missRingBand}
   </svg>`;
 }
 function handleBoardClick(evt){
@@ -5943,10 +5942,7 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
   const missRingRadius2 = (R_OVER_OUT+19) + missRingWidth2/2;
   const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - (missRingWidth2+16);
   const viewSize2 = canvas - cropMargin2*2;
-  const missRing2 = missHandler ? `<circle cx="${cx}" cy="${cy}" r="${missRingRadius2}" fill="none" stroke="rgba(140,70,58,0.5)" stroke-width="${missRingWidth2}" style="cursor:pointer;" onclick="${missHandler}"/>${[315,75,135,225].map(angle=>{
-    const pos = polar(cx, cy, missRingRadius2, angle);
-    return `<text x="${pos[0]}" y="${pos[1]}" fill="#f2ddd6" font-size="12" font-weight="700" letter-spacing="0.5" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
-  }).join('')}` : '';
+  const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius2}" stroke-width="${missRingWidth2}" onclick="${missHandler}"/>` : '';
   return `<svg viewBox="${cropMargin2} ${cropMargin2} ${viewSize2} ${viewSize2}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
     <circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>
