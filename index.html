@@ -641,7 +641,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-01 03:52 UTC';
+const BUILD_STAMP = '2026-08-01 04:13 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1497,8 +1497,23 @@ function halveItDartValue(num, mult){
   return num;
 }
 function startHalveItSession(playerIds, opts){
+  opts = opts || {};
+  const preset = opts.halveitPreset || 'classic';
+  let seq;
+  if(preset==='full'){
+    seq = [20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,'B'];
+  } else if(preset==='custom' && opts.halveitTargets && opts.halveitTargets.length){
+    const nums = opts.halveitTargets.filter(t=>t!=='B').sort((a,b)=>b-a);
+    const hasBull = opts.halveitTargets.includes('B');
+    seq = hasBull ? [...nums,'B'] : nums;
+  } else {
+    seq = HALVE_IT_SEQUENCE.slice();
+  }
+  if(opts.halveitOrder==='random'){
+    for(let i=seq.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [seq[i],seq[j]]=[seq[j],seq[i]]; }
+  }
   return {
-    kind:'halveit', sequence: HALVE_IT_SEQUENCE.slice(),
+    kind:'halveit', sequence: seq,
     participants: playerIds.map(pid=>({playerId:pid, score:0, hitThisRound:false})),
     currentIdx:0, round:1, currentTurnDarts:[], turnHistory:[],
     complete:false, winnerId:null,
@@ -3529,6 +3544,7 @@ function proceedToOptions(){
     startScore: state.pendingGameId==='301'?301:501, inRule:'straight', outRule:'double', guidance:'beginner', variant:'standard',
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
+    halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence',
   };
   render();
 }
@@ -3541,6 +3557,15 @@ function launchCustomGame(){
   render();
 }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
+function toggleHalveitTarget(t){
+  const o = state.gameOptions;
+  if(!o.halveitTargets) o.halveitTargets = [];
+  const isBull = t==='B';
+  const idx = o.halveitTargets.indexOf(isBull ? 'B' : t);
+  if(idx>=0) o.halveitTargets.splice(idx,1);
+  else o.halveitTargets.push(isBull ? 'B' : t);
+  render();
+}
 /* ========================= CALL YOUR SHOT (standalone game) ========================= */
 function startCallShotSession(playerIds, opts){
   const mode = opts.callShotMode || 'single';
@@ -4746,7 +4771,31 @@ function renderGameOptions(){
       <p class="info-note">${id==='highscore' ? 'Every dart scores normally. Highest total after the rounds wins.' : 'Track your scoring and three-dart average over a fixed number of turns.'}</p>
     </div>`;
   } else if(id==='halveit'){
-    body = `<p class="info-note">Rounds target 20, 19, 18, 17, 16, 15, then Bull. Hit the round's target at least once to keep your points — miss entirely and your running score is cut in half.</p>`;
+    const nums20 = Array.from({length:20},(_,i)=>i+1);
+    const selectedTargets = o.halveitTargets || [];
+    body = `
+    <div>
+      <span class="field-label">Sequence</span>
+      <div class="chip-wrap">
+        ${chip('Classic (20&ndash;15 + Bull)','halveitPreset','classic')}
+        ${chip('Full Board (20&ndash;1 + Bull)','halveitPreset','full')}
+        ${chip('Custom','halveitPreset','custom')}
+      </div>
+    </div>
+    ${o.halveitPreset==='custom' ? `<div>
+      <span class="field-label">Targets (tap to select)</span>
+      <div class="numgrid" style="grid-template-columns:repeat(5,1fr);">
+        ${nums20.map(n=>`<div class="num-btn ${selectedTargets.includes(n)?'recommended':''}" onclick="toggleHalveitTarget(${n})">${n}</div>`).join('')}
+        <div class="num-btn wide" style="grid-column:span 5; ${selectedTargets.includes('B')?'border-color:var(--brass); color:var(--brass);':''}" onclick="toggleHalveitTarget('B')">Bull</div>
+      </div>
+      <p class="info-note">${selectedTargets.length} target${selectedTargets.length!==1?'s':''} selected. They'll be played from 20 down to 1, with Bull last, unless you turn on random order below.</p>
+    </div>` : ''}
+    <div>
+      <span class="field-label">Order</span>
+      <div class="chip-wrap">${chip('In Order','halveitOrder','sequence')}${chip('Random Order','halveitOrder','random')}</div>
+      <p class="info-note">${o.halveitOrder==='random' ? 'The target order is shuffled once at the start of the game.' : 'Targets go from 20 down to 1, with Bull last.'}</p>
+    </div>
+    <p class="info-note">Hit the round's target at least once to keep your points — miss it entirely across all 3 darts and your running score is cut in half.</p>`;
   } else if(id==='killer'){
     body = `
     <div>
