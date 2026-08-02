@@ -138,7 +138,13 @@ body{
   background:inherit;
 }
 .screen-footer:empty{ display:none; }
-.panel-controls{ display:flex; gap:8px; padding-top:12px; margin-top:auto; }
+.panel-controls{ display:flex; gap:8px; padding-top:12px; }
+.announcer-toggle-row{ margin-top:auto; padding-top:6px; }
+.announcer-toggle{
+  width:100%; border-radius:8px; padding:8px 0; text-align:center; font-size:11.5px; font-weight:600;
+  background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); cursor:pointer; letter-spacing:0.02em;
+}
+.announcer-toggle.on{ background:rgba(91,155,245,0.14); border-color:#5b9bf5; color:#8fc0ff; }
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
 .panel-controls .btn-leave{ background:rgba(160,60,50,0.16); border-color:rgba(200,120,110,0.3); color:#e8a488; }
@@ -654,7 +660,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-01 20:25 UTC';
+const BUILD_STAMP = '2026-08-02 02:55 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -738,6 +744,7 @@ let state = {
   confirmDeletePracticeId: null,
   celebration: null,
   celebrationTimer: null,
+  lastAnnouncedText: null,
   practiceRandomMode: 'sequence',
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
@@ -775,6 +782,10 @@ let state = {
     heatmapPos: null,
     chalkboardPos: null,
     panelWidth: 230,
+    announcerEnabled: false,
+    announcerVoice: '',
+    announcerRate: 0.85,
+    announcerPitch: 0.8,
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -3427,6 +3438,9 @@ document.addEventListener('fullscreenchange', function(){
     render();
   }
 });
+if(typeof speechSynthesis!=='undefined'){
+  speechSynthesis.onvoiceschanged = function(){ populateAnnouncerVoiceSelect(); };
+}
 function openRules(gameId){ state.rulesGameId = gameId; state.screen='rules'; render(); }
 function backFromRules(){ state.screen='home'; render(); }
 function defaultSelectedPlayerIds(){
@@ -3618,6 +3632,51 @@ function launchCustomGame(){
   render();
 }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
+let announcerVoicesCache = [];
+function populateAnnouncerVoiceSelect(){
+  const sel = document.getElementById('announcerVoiceSelect');
+  if(!sel || typeof speechSynthesis==='undefined') return;
+  const voices = speechSynthesis.getVoices();
+  if(!voices.length) return;
+  announcerVoicesCache = voices;
+  const englishFirst = voices.slice().sort((a,b)=>{
+    const aEn = a.lang.startsWith('en') ? 0 : 1, bEn = b.lang.startsWith('en') ? 0 : 1;
+    return aEn - bEn;
+  });
+  sel.innerHTML = englishFirst.map(v=>`<option value="${v.name}">${v.name} (${v.lang})</option>`).join('');
+  let toSelect = state.settings.announcerVoice;
+  if(!toSelect || !voices.some(v=>v.name===toSelect)){
+    const nathan = voices.find(v=>v.name.toLowerCase().includes('nathan'));
+    toSelect = nathan ? nathan.name : (englishFirst[0] ? englishFirst[0].name : '');
+    state.settings.announcerVoice = toSelect;
+  }
+  sel.value = toSelect;
+}
+function speakAnnouncerText(text){
+  if(typeof speechSynthesis==='undefined' || !text) return;
+  speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  const voices = announcerVoicesCache.length ? announcerVoicesCache : speechSynthesis.getVoices();
+  const chosen = voices.find(v=>v.name===state.settings.announcerVoice);
+  if(chosen) utter.voice = chosen;
+  utter.rate = state.settings.announcerRate||0.85;
+  utter.pitch = state.settings.announcerPitch||0.8;
+  speechSynthesis.speak(utter);
+}
+function testAnnouncerVoice(){
+  speakAnnouncerText("Scott is throwing for triple twenty.");
+}
+function toggleAnnouncer(){
+  state.settings.announcerEnabled = !state.settings.announcerEnabled;
+  if(!state.settings.announcerEnabled && typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
+  render();
+}
+function maybeAnnounce(text){
+  if(!state.settings.announcerEnabled) return;
+  if(state.lastAnnouncedText===text) return;
+  state.lastAnnouncedText = text;
+  speakAnnouncerText(text.replace(/<[^>]*>/g,''));
+}
 function toggleHalveitTarget(t){
   const o = state.gameOptions;
   if(!o.halveitTargets) o.halveitTargets = [];
@@ -4386,6 +4445,7 @@ function render(){
   app.innerHTML = footerSplit[0];
   if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
   if(state.screen==='precisionZoom') setupPrecisionZoomDrag();
+  if(state.screen==='gameplaySettings') populateAnnouncerVoiceSelect();
   persistState();
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
@@ -5012,6 +5072,22 @@ function renderGameplaySettings(){
       <input type="checkbox" ${s.boardConfirm?'checked':''} onchange="setSetting('boardConfirm', ${!s.boardConfirm})">
       Confirm dartboard taps before scoring
     </div>
+    <div>
+      <span class="field-label">Announcer Voice</span>
+      <select id="announcerVoiceSelect" onchange="setSetting('announcerVoice', this.value)" style="width:100%; padding:10px; border-radius:8px; background:var(--felt-light); color:var(--cream); border:1px solid var(--felt-lighter);"></select>
+      <p class="info-note">Announces the current turn's instructions out loud during games. Voices come from your device — download better ones through your system's accessibility settings for more natural results. Turn the announcer on or off per-game from a button next to Undo on the game screen.</p>
+    </div>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span class="field-label" style="width:70px; margin:0;">Rate</span>
+      <input type="range" min="0.5" max="1.6" step="0.05" value="${s.announcerRate}" onchange="setSetting('announcerRate', parseFloat(this.value))" style="flex:1;">
+      <span style="font-size:13px; color:var(--cream-dim); min-width:32px;">${s.announcerRate.toFixed(2)}</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span class="field-label" style="width:70px; margin:0;">Pitch</span>
+      <input type="range" min="0" max="2" step="0.05" value="${s.announcerPitch}" onchange="setSetting('announcerPitch', parseFloat(this.value))" style="flex:1;">
+      <span style="font-size:13px; color:var(--cream-dim); min-width:32px;">${s.announcerPitch.toFixed(2)}</span>
+    </div>
+    <button class="btn btn-secondary btn-full" onclick="testAnnouncerVoice()">Test Voice</button>
     <p class="info-note">These general play preferences apply everywhere darts get thrown — games, practice, and custom games alike.</p>
   </div>`;
 }
@@ -5076,10 +5152,12 @@ function renderPlayerBoxes(s){
   </div>`;
 }
 function renderInstructionBox(s){
+  const hint = renderTurnHint(s);
+  maybeAnnounce(hint);
   return `<div class="panel-zone-instruction">
     <div class="panel-instruction-box">
       <div class="pi-label">&#9679; NOW</div>
-      <div class="pi-text">${renderTurnHint(s)}</div>
+      <div class="pi-text">${hint}</div>
     </div>
   </div>`;
 }
@@ -5266,6 +5344,9 @@ function renderCallShotActiveShell(s){
   ${targetChipRow()}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderInstructionBox(s)}
   ${playerBoxes}
+  <div class="announcer-toggle-row">
+    <button class="announcer-toggle ${state.settings.announcerEnabled?'on':''}" onclick="toggleAnnouncer()">${state.settings.announcerEnabled?'\u{1F50A} Announcer On':'\u{1F507} Announcer Off'}</button>
+  </div>
   <div class="panel-controls">
     <button class="btn-undo" onclick="callShotUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
@@ -5676,7 +5757,11 @@ function renderNumberGrid(s){
   </div>`;
 }
 function renderBottomControls(s){
-  return `<div class="panel-controls">
+  const on = state.settings.announcerEnabled;
+  return `<div class="announcer-toggle-row">
+    <button class="announcer-toggle ${on?'on':''}" onclick="toggleAnnouncer()">${on?'\u{1F50A} Announcer On':'\u{1F507} Announcer Off'}</button>
+  </div>
+  <div class="panel-controls">
     <button class="btn-undo" onclick="doUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>`;
