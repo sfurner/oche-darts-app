@@ -660,7 +660,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-02 02:55 UTC';
+const BUILD_STAMP = '2026-08-02 03:04 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -3675,7 +3675,8 @@ function maybeAnnounce(text){
   if(!state.settings.announcerEnabled) return;
   if(state.lastAnnouncedText===text) return;
   state.lastAnnouncedText = text;
-  speakAnnouncerText(text.replace(/<[^>]*>/g,''));
+  const clean = text.replace(/<[^>]*>/g,'').replace(/\p{Extended_Pictographic}/gu,'').replace(/\s+/g,' ').trim();
+  speakAnnouncerText(clean);
 }
 function toggleHalveitTarget(t){
   const o = state.gameOptions;
@@ -4986,6 +4987,18 @@ function settingsTopbar(title){
     <div class="iconbtn" onclick="settingsBack()">&#8592;</div>
     <h1 style="color:var(--brass); font-size:19px;">${title}</h1>
     <div style="width:38px;"></div>
+  </div>
+  ${settingsSubNav()}`;
+}
+function settingsSubNav(){
+  const tabs = [
+    {id:'themeSettings', label:'Theme'},
+    {id:'gameplaySettings', label:'Gameplay'},
+    {id:'dartSettings', label:'Darts'},
+    {id:'playerSettings', label:'Players'},
+  ];
+  return `<div class="chip-wrap" style="padding:0 18px 12px 18px;">
+    ${tabs.map(t=>`<span class="chip ${state.screen===t.id?'selected':''}" onclick="state.screen='${t.id}'; render();">${t.label}</span>`).join('')}
   </div>`;
 }
 function renderThemeSettings(){
