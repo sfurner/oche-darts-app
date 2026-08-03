@@ -660,7 +660,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-03 03:18 UTC';
+const BUILD_STAMP = '2026-08-03 10:59 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -753,6 +753,8 @@ let state = {
   settingsReturnTo: null,
   practicePlayerId: null,
   practicePendingId: null,
+  blackoutSession: null,
+  blackoutBuilder: null,
   isFullscreen: false,
   confirmQuitGame: false,
   confirmQuitSessionType: null,
@@ -2138,6 +2140,8 @@ function svgPointFromClient(svg, clientX, clientY){
   return pt.matrixTransform(ctm);
 }
 function handlePrecisionFullBoardClick(evt){
+  const t = evt.target;
+  if(t.classList && t.classList.contains('miss-ring-band')) return;
   const svg = svgRootFromEvent(evt);
   if(!svg) return;
   const p = svgPointFromClient(svg, evt.clientX, evt.clientY);
@@ -2203,6 +2207,9 @@ function renderZoomBoardWedges(){
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
     const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
+    const even = i%2===0;
+    const dtFill = even? '#4A8A66' : '#A84545';
+    const singleFill = even? '#E8E1D0' : '#232D28';
     wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
     wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
     wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
@@ -2337,6 +2344,66 @@ function sectionUndoThrow(ps){
 function sectionOverallAvg(ps){
   return ps.allThrows.length ? Math.round(ps.allThrows.reduce((a,b)=>a+b,0)/ps.allThrows.length) : 0;
 }
+function blackoutSelectMiss(){
+  const bs = state.blackoutSession;
+  if(!bs) return;
+  bs.totalDarts++;
+  render();
+}
+function renderBlackoutBoard(s, hitPoint){
+  const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
+  const closedColor = '#101010';
+  const shape = s.def.zoneShape;
+  let wedges = '', labels = '';
+  for(let i=0;i<20;i++){
+    const num = BOARD_ORDER[i];
+    const key = String(num);
+    const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
+    const even = i%2===0;
+    const dtFill = even? '#4A8A66' : '#A84545';
+    const singleFill = even? '#E8E1D0' : '#232D28';
+    const z = s.zones[key];
+    const inPlay = !!z;
+    let innerSingleDone=false, tripleDone=false, outerSingleDone=false, doubleDone=false;
+    if(inPlay){
+      if(shape==='whole'){ innerSingleDone=tripleDone=outerSingleDone=doubleDone = z.whole.done; }
+      else if(shape==='traditional'){ innerSingleDone=outerSingleDone=z.single.done; tripleDone=z.triple.done; doubleDone=z.double.done; }
+      else { innerSingleDone=z.innerSingle.done; tripleDone=z.triple.done; outerSingleDone=z.outerSingle.done; doubleDone=z.double.done; }
+    }
+    const segAttrs = inPlay ? `class="board-seg" data-num="${num}"` : '';
+    const cursor = inPlay ? 'cursor:pointer;' : '';
+    wedges += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${innerSingleDone?closedColor:singleFill}" stroke="var(--ink)" stroke-width="1" ${segAttrs} data-seg="single" style="${cursor}"/>`;
+    wedges += `<path d="${wedgePath(cx,cy,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="${tripleDone?closedColor:dtFill}" stroke="var(--ink)" stroke-width="1" ${segAttrs} data-seg="triple" style="${cursor}"/>`;
+    wedges += `<path d="${wedgePath(cx,cy,R_TRIPLE_OUT,R_DOUBLE_IN,aStart,aEnd)}" fill="${outerSingleDone?closedColor:singleFill}" stroke="var(--ink)" stroke-width="1" ${segAttrs} data-seg="single" style="${cursor}"/>`;
+    wedges += `<path d="${wedgePath(cx,cy,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="${doubleDone?closedColor:dtFill}" stroke="var(--ink)" stroke-width="1" ${segAttrs} data-seg="double" style="${cursor}"/>`;
+    const lp = polar(cx,cy,R_NUMBER_LABEL,(aStart+aEnd)/2);
+    labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
+  }
+  const bz = s.zones['B'];
+  const bullInPlay = !!bz;
+  let innerBullDone=false, outerBullDone=false;
+  if(bullInPlay){
+    if(shape==='whole'){ innerBullDone=outerBullDone=bz.whole.done; }
+    else { innerBullDone=bz.inner.done; outerBullDone=bz.outer.done; }
+  }
+  const bullAttrs = bullInPlay ? `class="board-seg" data-num="B"` : '';
+  const bullCursor = bullInPlay ? 'cursor:pointer;' : '';
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerBullDone?closedColor:'#4A8A66'}" stroke="var(--ink)" ${bullAttrs} data-seg="single" style="${bullCursor}"/>`;
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerBullDone?closedColor:'#A84545'}" stroke="var(--ink)" ${bullAttrs} data-seg="bull" style="${bullCursor}"/>`;
+  const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
+  const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
+  const missOuterEdge = R_BEZEL + 22;
+  const missRingWidth = missOuterEdge - R_DOUBLE_OUT;
+  const missRingRadius = R_DOUBLE_OUT + missRingWidth/2;
+  const cropMargin = (canvas - R_BEZEL*2)/2 - 16;
+  const viewSize = canvas - cropMargin*2;
+  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" onclick="handleMissRingClick(event, ${JSON.stringify("blackoutSelectMiss()").replace(/"/g,'&quot;')})"/>`;
+  return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
+    <circle cx="${cx}" cy="${cy}" r="${R_BEZEL}" fill="var(--ink)"/>
+    ${missRingBand}
+    ${wedges}${labels}${hitMarker}
+  </svg>`;
+}
 function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, missHandler){
   missHandler = missHandler || 'recordMiss()';
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
@@ -2347,10 +2414,14 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   let labels = '';
   let highlightOverlay = '';
   let ownerOverlay = '';
-  const addHighlight = (d)=>{
-    highlightOverlay += `<path d="${d}" fill="#FFD23F" fill-opacity="0.32" stroke="#FFD23F" stroke-width="4" style="pointer-events:none;">
+  const addHighlight = (d, style)=>{
+    if(style==='booster'){
+      highlightOverlay += `<path d="${d}" fill="none" stroke="#5B9BF5" stroke-width="4" style="pointer-events:none;"/>`;
+    } else {
+      highlightOverlay += `<path d="${d}" fill="#FFD23F" fill-opacity="0.32" stroke="#FFD23F" stroke-width="4" style="pointer-events:none;">
       <animate attributeName="fill-opacity" values="0.18;0.48;0.18" dur="1.1s" repeatCount="indefinite"/>
     </path>`;
+    }
   };
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
@@ -2368,9 +2439,9 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
     highlights.forEach(th=>{
       if(th.num!=='B' && String(th.num)===String(num)){
         const seg = th.seg;
-        if(seg==='any'||seg==='single'){ addHighlight(wedgePath(cx,cy,rTripleOut,rDoubleIn,aStart,aEnd)); addHighlight(wedgePath(cx,cy,rBullOuter,rTripleIn,aStart,aEnd)); }
-        if(seg==='any'||seg==='double'){ addHighlight(wedgePath(cx,cy,rDoubleIn,rDoubleOut,aStart,aEnd)); }
-        if(seg==='any'||seg==='triple'){ addHighlight(wedgePath(cx,cy,rTripleIn,rTripleOut,aStart,aEnd)); }
+        if(seg==='any'||seg==='single'){ addHighlight(wedgePath(cx,cy,rTripleOut,rDoubleIn,aStart,aEnd),th.style); addHighlight(wedgePath(cx,cy,rBullOuter,rTripleIn,aStart,aEnd),th.style); }
+        if(seg==='any'||seg==='double'){ addHighlight(wedgePath(cx,cy,rDoubleIn,rDoubleOut,aStart,aEnd),th.style); }
+        if(seg==='any'||seg==='triple'){ addHighlight(wedgePath(cx,cy,rTripleIn,rTripleOut,aStart,aEnd),th.style); }
       }
     });
     if(ownerLabels && ownerLabels.length){
@@ -2402,14 +2473,16 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const needsWideMargin = ownerLabels && ownerLabels.length;
-  const missRingWidth = 22;
-  const missRingRadius = rBezel + missRingWidth/2;
-  const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - (missRingWidth+16);
+  const missOuterEdge = rBezel + 22;
+  const missRingWidth = missOuterEdge - rDoubleOut;
+  const missRingRadius = rDoubleOut + missRingWidth/2;
+  const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - 16;
   const viewSize = canvas - cropMargin*2;
-  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" onclick="${missHandler}"/>`;
+  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
-    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}${missRingBand}
+    ${missRingBand}
+    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}
   </svg>`;
 }
 function handleBoardClick(evt){
@@ -2460,6 +2533,12 @@ function commitBoardThrow(c){
   } else if(state.screen==='checkoutPracticeActive'){
     checkoutPracticeApplyDart(state.checkoutPractice, num, mult);
     checkCheckoutPracticeDone();
+    render();
+  } else if(state.screen==='blackoutActive'){
+    const bs = state.blackoutSession;
+    const wasComplete = bs.complete;
+    blackoutApplyDart(bs, num, mult, c.point);
+    if(bs.complete && !wasComplete) finishBlackoutSession();
     render();
   } else if(state.session){
     dispatchThrow(num, mult);
@@ -2607,6 +2686,11 @@ const BOT_TIMING = {
 };
 // Converts a real click/tap event on an SVG board into exact SVG-space coordinates, so hit
 // markers can be placed exactly where a dart landed rather than just "somewhere in this wedge."
+function handleMissRingClick(evt, handlerExpr){
+  evt.stopPropagation();
+  state.pendingHitPoint = svgPointFromEvent(evt);
+  (new Function(handlerExpr))();
+}
 function svgPointFromEvent(evt){
   const target = evt.target;
   const svg = (target.ownerSVGElement) || (target.closest ? target.closest('svg') : null);
@@ -3255,14 +3339,14 @@ function saveGameResults(){
     }
   });
   state.pendingGameReview = null;
-  state.session=null; state.practiceSession=null; state.checkoutPractice=null; state.sectionSession=null; state.precisionSession=null;
+  state.session=null; state.practiceSession=null; state.checkoutPractice=null; state.sectionSession=null; state.precisionSession=null; state.blackoutSession=null;
   state.screen = 'home';
-  state.navTab = (r.kind==='practice'||r.kind==='checkoutPractice'||r.kind==='section'||r.kind==='precisionNew') ? 'practice' : 'play';
+  state.navTab = (r.kind==='practice'||r.kind==='checkoutPractice'||r.kind==='section'||r.kind==='precisionNew'||r.kind==='blackout') ? 'practice' : 'play';
   render();
 }
 function discardGameResults(){
   state.pendingGameReview = null;
-  state.session=null; state.practiceSession=null; state.checkoutPractice=null; state.sectionSession=null; state.precisionSession=null;
+  state.session=null; state.practiceSession=null; state.checkoutPractice=null; state.sectionSession=null; state.precisionSession=null; state.blackoutSession=null;
   state.screen = 'home'; state.navTab='play';
   render();
 }
@@ -4133,6 +4217,58 @@ function checkCheckoutPracticeDone(){
 function backFromCheckoutPracticeResults(){ state.checkoutPractice=null; state.pendingGameReview=null; state.screen='home'; state.navTab='practice'; render(); }
 
 /* Section Trainer handlers */
+function openBlackoutSetup(){
+  ensurePracticePlayerDefault();
+  if(!state.practicePlayerId){ state.screen='practicePlayerNeeded'; render(); return; }
+  state.blackoutBuilder = {
+    preset:'freeforall', zoneShape:'whole', completionRule:'flexible',
+    targetMode:'full', targets: Array.from({length:20},(_,i)=>i+1).concat(['B']),
+  };
+  state.screen = 'blackoutSetup';
+  render();
+}
+function setBlackoutPreset(preset){
+  const b = state.blackoutBuilder;
+  b.preset = preset;
+  if(preset==='freeforall'){ b.zoneShape='whole'; b.completionRule='flexible'; }
+  else if(preset==='master'){ b.zoneShape='split'; b.completionRule='strict'; }
+  render();
+}
+function setBlackoutOption(key, val){
+  state.blackoutBuilder[key] = val;
+  state.blackoutBuilder.preset = 'custom';
+  render();
+}
+function toggleBlackoutTarget(t){
+  const b = state.blackoutBuilder;
+  const isBull = t==='B';
+  const idx = b.targets.indexOf(isBull?'B':t);
+  if(idx>=0) b.targets.splice(idx,1);
+  else b.targets.push(isBull?'B':t);
+  render();
+}
+function startBlackoutTrainer(){
+  const b = state.blackoutBuilder;
+  const def = {zoneShape:b.zoneShape, completionRule:b.completionRule, targets:b.targets.slice()};
+  state.blackoutSession = startBlackoutSession(state.practicePlayerId, def);
+  state.screen = 'blackoutActive';
+  render();
+}
+function finishBlackoutSession(){
+  const bs = state.blackoutSession;
+  const playerName = (state.players.find(p=>p.id===bs.playerId)||{}).name || 'You';
+  state.pendingGameReview = {
+    kind:'blackout', gameType:'blackout',
+    historyEntry: {
+      type:'Blackout', name:'Blackout ('+bs.def.targets.length+' sections)', date:new Date().toLocaleString(),
+      winner: playerName, detail: bs.totalDarts+' darts, '+(bs.completionTime||0)+'s',
+      participantIds:[bs.playerId], createdAt: Date.now(),
+    },
+    title:'Blackout Complete', players:[], gameType:'blackout', rawSession:null, extra:null,
+  };
+  state.screen = 'blackoutResults';
+  render();
+}
 function openSectionSetup(){
   ensurePracticePlayerDefault();
   if(!state.practicePlayerId){ state.screen='practicePlayerNeeded'; render(); return; }
@@ -4178,6 +4314,8 @@ function handleSectionBoardClick(evt){
   const t = evt.target;
   if(t.classList && t.classList.contains('section-zone')){
     sectionSelectZone(t.getAttribute('data-zone'));
+  } else if(t.classList && t.classList.contains('miss-ring-band')){
+    return;
   } else {
     sectionSelectZone('totalmiss');
   }
@@ -4445,6 +4583,9 @@ function render(){
     case 'active': html = renderActiveShell(); break;
     case 'win': html = renderWin(); break;
     case 'practicePlayerNeeded': html = renderPracticeNeedsPlayer(); break;
+    case 'blackoutSetup': html = renderBlackoutSetup(); break;
+    case 'blackoutActive': html = renderBlackoutActive(); break;
+    case 'blackoutResults': html = renderBlackoutResults(); break;
     case 'practicePlayerSetup': html = renderPracticePlayerSetup(); break;
     case 'practiceActive': html = renderPracticeActive(); break;
     case 'practiceResults': html = renderPracticeResults(); break;
@@ -4602,6 +4743,13 @@ function renderPracticeTab(){
       <div class="btn-row">
         <button class="btn btn-primary" onclick="openPrecisionSetup()">Start</button>
         <button class="btn btn-secondary" onclick="openPrecisionProgress()">View Progress</button>
+      </div>
+    </div>
+    <div class="card" style="border:1px solid var(--brass);">
+      <div class="card-row"><h3>Blackout</h3><span class="badge live">New</span></div>
+      <p class="desc">Every section of the board starts lit up. Close a section and it blacks out for good — clear the whole board to finish. Configurable from a quick, casual pass to a genuinely brutal challenge.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="openBlackoutSetup()">Start</button>
       </div>
     </div>
   </div>
@@ -5583,6 +5731,92 @@ function splitBullBtn(recommended, closed, compact){
     </div>
   </div>`;
 }
+function blackoutZonesForNumber(zoneShape){
+  if(zoneShape==='whole') return ['whole'];
+  if(zoneShape==='traditional') return ['single','double','triple'];
+  return ['innerSingle','triple','outerSingle','double'];
+}
+function blackoutZonesForBull(zoneShape){
+  if(zoneShape==='whole') return ['whole'];
+  return ['inner','outer'];
+}
+function blackoutMarkValue(zoneId, seg){
+  if(zoneId==='whole'){
+    if(seg==='triple') return 3;
+    if(seg==='double') return 2;
+    if(seg==='bull') return 2;
+    return 1;
+  }
+  if(zoneId==='double') return 2;
+  if(zoneId==='triple') return 3;
+  if(zoneId==='inner') return 2;
+  return 1;
+}
+function startBlackoutSession(playerId, def){
+  const zones = {};
+  def.targets.forEach(t=>{
+    const zoneIds = t==='B' ? blackoutZonesForBull(def.zoneShape) : blackoutZonesForNumber(def.zoneShape);
+    zones[t] = {};
+    zoneIds.forEach(zid=>{ zones[t][zid] = {count:0, done:false}; });
+  });
+  return {
+    kind:'blackout', def, zones, playerId, pools:{},
+    totalDarts:0, totalHits:0, startTime:Date.now(), complete:false, completionTime:null,
+  };
+}
+function blackoutResolveZone(s, num, seg, point){
+  const shape = s.def.zoneShape;
+  if(num==='B'){
+    if(shape==='whole') return 'whole';
+    return seg==='bull' ? 'inner' : 'outer';
+  }
+  if(shape==='whole') return 'whole';
+  if(shape==='traditional') return seg;
+  if(seg==='double') return 'double';
+  if(seg==='triple') return 'triple';
+  if(seg==='single'){
+    if(point){
+      const polar = boardPointToPolar(point.x, point.y);
+      return polar.radius < R_TRIPLE_IN ? 'innerSingle' : 'outerSingle';
+    }
+    return 'outerSingle';
+  }
+  return null;
+}
+function blackoutAllZonesDone(s, target){
+  return Object.values(s.zones[target]).every(z=>z.done);
+}
+function blackoutApplyDart(s, num, seg, point){
+  s.totalDarts++;
+  const target = String(num);
+  if(!s.zones[target]) return {matched:false};
+  const zoneId = blackoutResolveZone(s, num, seg, point);
+  if(!zoneId || !s.zones[target][zoneId]) return {matched:false};
+  const zone = s.zones[target][zoneId];
+  if(zone.done) return {matched:false, alreadyDone:true};
+  s.totalHits++;
+  let justClosedNumber = false;
+  if(s.def.completionRule==='strict'){
+    zone.count++;
+    if(zone.count>=3){
+      zone.done = true;
+      if(blackoutAllZonesDone(s, target)) justClosedNumber = true;
+    }
+  } else {
+    const markValue = blackoutMarkValue(zoneId, seg);
+    s.pools[target] = (s.pools[target]||0) + markValue;
+    if(s.pools[target] >= 3 && !blackoutAllZonesDone(s, target)){
+      Object.values(s.zones[target]).forEach(z=>{ z.done = true; });
+      justClosedNumber = true;
+    }
+  }
+  const allDone = Object.keys(s.zones).every(t=>blackoutAllZonesDone(s,t));
+  if(allDone && !s.complete){
+    s.complete = true;
+    s.completionTime = Math.round((Date.now()-s.startTime)/1000);
+  }
+  return {matched:true, zoneId, justClosedNumber};
+}
 function currentSessionPlayerId(s){
   if(!s || !s.participants) return null;
   const p = s.participants[s.currentIdx];
@@ -5651,7 +5885,7 @@ function getCurrentGameTargetHighlight(s){
     if(target===undefined) return null;
     const p = halveItCurrent(s);
     if(s.halveitBooster==='sequential' && p && p.hitThisRound){
-      return {num:20, seg:'any'};
+      return {num:20, seg:'any', style:'booster'};
     }
     return target==='B' ? {num:'B', seg:'any'} : {num:target, seg:'any'};
   }
@@ -5936,6 +6170,78 @@ function renderWin(){
 }
 
 /* ========================= RENDER: PRACTICE ========================= */
+function renderBlackoutSetup(){
+  const b = state.blackoutBuilder;
+  const chip = (label,key,val)=>`<span class="chip ${b[key]===val?'selected':''}" onclick="setBlackoutOption('${key}','${val}')">${label}</span>`;
+  const presetChip = (label,val)=>`<span class="chip ${b.preset===val?'selected':''}" onclick="setBlackoutPreset('${val}')">${label}</span>`;
+  const nums20 = Array.from({length:20},(_,i)=>i+1);
+  return `<div class="topbar"><div class="iconbtn" onclick="state.screen='home'; state.navTab='practice'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Blackout</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <div class="rule-block"><p>Every section on the board starts lit up. Close a section and it blacks out for good — clear the whole board to finish.</p></div>
+    <div>
+      <span class="field-label">Difficulty</span>
+      <div class="chip-wrap">${presetChip('Free-for-All','freeforall')}${presetChip('Master Blackout','master')}${presetChip('Custom','custom')}</div>
+    </div>
+    ${b.preset==='custom' ? `
+    <div>
+      <span class="field-label">Section Shape</span>
+      <div class="chip-wrap">
+        ${chip('Whole Number','zoneShape','whole')}
+        ${chip('Traditional (S/D/T)','zoneShape','traditional')}
+        ${chip('Split Inner/Outer','zoneShape','split')}
+      </div>
+      <p class="info-note">
+        ${b.zoneShape==='whole' ? 'Each number is one section — any hit anywhere on it counts toward closing it.' : ''}
+        ${b.zoneShape==='traditional' ? 'Each number has 3 sections: single, double, triple.' : ''}
+        ${b.zoneShape==='split' ? 'Each number has 4 sections: inner single, triple, outer single, double.' : ''}
+      </p>
+    </div>
+    <div>
+      <span class="field-label">Completion Rule</span>
+      <div class="chip-wrap">${chip('Flexible','completionRule','flexible')}${chip('Strict','completionRule','strict')}</div>
+      <p class="info-note">
+        ${b.completionRule==='flexible' ? 'A number closes once 3 total marks build up on it, any combination — a single triple can close it in one dart.' : 'Every section needs exactly 3 hits in that specific section. A number is only fully closed once all its sections are done.'}
+      </p>
+    </div>` : ''}
+    <div>
+      <span class="field-label">Sections In Play</span>
+      <div class="chip-wrap">${chip('Full Board','targetMode','full')}${chip('Custom','targetMode','custom')}</div>
+    </div>
+    ${b.targetMode==='custom' ? `<div class="numgrid" style="grid-template-columns:repeat(5,1fr);">
+      ${nums20.map(n=>`<div class="num-btn ${b.targets.includes(n)?'recommended':''}" onclick="toggleBlackoutTarget(${n})">${n}</div>`).join('')}
+      <div class="num-btn wide" style="grid-column:span 5; ${b.targets.includes('B')?'border-color:var(--brass); color:var(--brass);':''}" onclick="toggleBlackoutTarget('B')">Bull</div>
+    </div>` : ''}
+    <button class="btn btn-primary btn-full" onclick="startBlackoutTrainer()">Start Blackout</button>
+  </div>`;
+}
+function renderBlackoutActive(){
+  const bs = state.blackoutSession;
+  const totalSections = Object.values(bs.zones).reduce((a,z)=>a+Object.keys(z).length,0);
+  const doneSections = Object.values(bs.zones).reduce((a,z)=>a+Object.values(z).filter(zz=>zz.done).length,0);
+  const numbersClosed = Object.keys(bs.zones).filter(t=>blackoutAllZonesDone(bs,t)).length;
+  const totalNumbers = Object.keys(bs.zones).length;
+  return `<div class="active-top">
+    <div class="game-title">Blackout &middot; ${numbersClosed} of ${totalNumbers} sections closed</div>
+    <h2>Hit anywhere still lit to close it</h2>
+    <div class="objective-banner"><div class="big">${doneSections} of ${totalSections}</div><div class="small">${bs.totalDarts} darts thrown so far</div></div>
+  </div>
+  <div class="board-area"><div class="board-wrap">${renderBlackoutBoard(bs, (state.pendingBoard&&state.pendingBoard.point)||null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>
+  ${renderBoardConfirmLine({})}
+  <button class="btn btn-danger btn-full" onclick="state.blackoutSession=null; state.screen='home'; state.navTab='practice'; render();">Exit Blackout</button>`;
+}
+function renderBlackoutResults(){
+  const r = state.pendingGameReview;
+  return `<div class="topbar"><div class="brand"><span class="dot"></span><h1 style="color:var(--brass);">Blackout Complete</h1></div><div style="width:38px;"></div></div>
+  <div class="content">
+    <div class="rule-block" style="text-align:center; padding:28px 16px;">
+      <div style="font-size:48px; margin-bottom:10px;">&#9899;</div>
+      <h2 style="color:var(--brass); font-size:28px;">Board Cleared!</h2>
+      <p style="color:var(--cream-dim); font-size:15px; margin-top:8px;">${r.historyEntry.detail}</p>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="saveGameResults()">Save Results</button>
+    <button class="btn btn-danger btn-full" onclick="discardGameResults()">Exit Without Saving</button>
+  </div>`;
+}
 function renderPracticeNeedsPlayer(){
   return `<div class="topbar"><div class="iconbtn" onclick="state.screen='home'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Add a Player</h1><div style="width:38px;"></div></div>
   <div class="content">
@@ -6232,15 +6538,17 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
   }
   const hitPointsArr2 = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr2.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
-  const missRingWidth2 = 22;
-  const missRingRadius2 = (R_OVER_OUT+19) + missRingWidth2/2;
-  const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - (missRingWidth2+16);
+  const missOuterEdge2 = (R_OVER_OUT+19) + 22;
+  const missRingWidth2 = missOuterEdge2 - R_DOUBLE_OUT;
+  const missRingRadius2 = R_DOUBLE_OUT + missRingWidth2/2;
+  const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - 16;
   const viewSize2 = canvas - cropMargin2*2;
-  const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius2}" onclick="${missHandler}"/>` : '';
+  const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius2}" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>` : '';
   return `<svg viewBox="${cropMargin2} ${cropMargin2} ${viewSize2} ${viewSize2}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
     <circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>
-    ${wedges}${labels}${highlight}${hitMarker}${missRing2}
+    ${missRing2}
+    ${wedges}${labels}${highlight}${hitMarker}
   </svg>`;
 }
 function renderSectionSetup(){
