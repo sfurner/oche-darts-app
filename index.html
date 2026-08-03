@@ -660,7 +660,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-03 03:03 UTC';
+const BUILD_STAMP = '2026-08-03 03:18 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5649,6 +5649,10 @@ function getCurrentGameTargetHighlight(s){
   if(s.kind==='halveit'){
     const target = s.sequence[s.round-1];
     if(target===undefined) return null;
+    const p = halveItCurrent(s);
+    if(s.halveitBooster==='sequential' && p && p.hitThisRound){
+      return {num:20, seg:'any'};
+    }
     return target==='B' ? {num:'B', seg:'any'} : {num:target, seg:'any'};
   }
   if(s.kind==='killer'){
