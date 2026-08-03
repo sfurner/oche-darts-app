@@ -660,7 +660,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-02 03:04 UTC';
+const BUILD_STAMP = '2026-08-03 03:03 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -726,6 +726,8 @@ let state = {
   dartSetups: [],
   playerDartSelections: {}, // playerId -> dartSetupId|null
   playerDartPerformance: {}, // `${playerId}|${dartSetupId}` -> performance record
+  playerAttributePerformance: {}, // playerId -> {fieldKey: {fieldValue: {rating, count, totalThrows}}}
+  playerAccuracy: {}, // playerId -> {byTarget:{num:{attempts,hits}}, byDay:{'YYYY-MM-DD':{attempts,hits}}}
   pendingGameReview: null,
   savedGames: [],
   sectionEntryMode: 'quick', // 'quick' | 'section'
@@ -809,7 +811,7 @@ function nextId(){ return 'id' + (uid++); }
    (e.g. Supabase) — nothing else in the app touches storage directly. */
 const STORAGE_KEY = 'oche-darts-data-v1';
 const PERSISTENT_STATE_KEYS = [
-  'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance',
+  'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance', 'playerAttributePerformance', 'playerAccuracy',
   'savedGames', 'customPractices', 'customGames', 'history',
   'sectionSessions', 'precisionSessions', 'settings', 'playerSettings',
   'dartFieldOptions',
@@ -2468,6 +2470,14 @@ function commitBoardThrow(c){
 function dispatchThrow(num, segType){
   const s = state.session;
   if(!s) return;
+  const pid = currentSessionPlayerId(s);
+  const targets = accuracyTargetsFor(s);
+  dispatchThrowCore(num, segType);
+  if(pid && targets.length) recordAccuracyDart(pid, targets, num);
+}
+function dispatchThrowCore(num, segType){
+  const s = state.session;
+  if(!s) return;
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
@@ -2531,6 +2541,14 @@ function dispatchThrow(num, segType){
   render();
 }
 function recordMiss(){
+  const s = state.session;
+  if(!s) return;
+  const pid = currentSessionPlayerId(s);
+  const targets = accuracyTargetsFor(s);
+  recordMissCore();
+  if(pid && targets.length) recordAccuracyDart(pid, targets, null);
+}
+function recordMissCore(){
   const s = state.session;
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisMissPoint = state.pendingHitPoint || null;
@@ -3198,6 +3216,23 @@ function updateDartPerformance(playerId, dartSetupId, gameType, gameScore, throw
   const gameRatings = Object.values(rec.ratingsByGame).map(g=>g.rating);
   rec.overallRating = Math.round(gameRatings.reduce((a,b)=>a+b,0)/gameRatings.length);
   rec.confidenceLevel = confidenceForThrows(rec.totalThrows);
+  updateAttributePerformance(playerId, dartSetupId, gameScore, throwCount);
+}
+function updateAttributePerformance(playerId, dartSetupId, gameScore, throwCount){
+  const setup = state.dartSetups.find(d=>d.id===dartSetupId);
+  if(!setup) return;
+  if(!state.playerAttributePerformance[playerId]) state.playerAttributePerformance[playerId] = {};
+  const store = state.playerAttributePerformance[playerId];
+  allDartSelectFields().forEach(f=>{
+    const val = setup[f.key];
+    if(!val || val==='Unknown') return;
+    if(!store[f.key]) store[f.key] = {};
+    const bucket = store[f.key][val] || {rating:gameScore, count:0, totalThrows:0};
+    bucket.count++;
+    bucket.totalThrows += (throwCount||0);
+    bucket.rating = Math.round(((bucket.rating*(bucket.count-1)) + gameScore)/bucket.count);
+    store[f.key][val] = bucket;
+  });
 }
 function reviewSetPlayerDart(playerId, dartSetupId){
   if(!state.pendingGameReview) return;
@@ -5548,6 +5583,39 @@ function splitBullBtn(recommended, closed, compact){
     </div>
   </div>`;
 }
+function currentSessionPlayerId(s){
+  if(!s || !s.participants) return null;
+  const p = s.participants[s.currentIdx];
+  return p ? p.playerId : null;
+}
+function accuracyTargetsFor(s){
+  try{
+    const h = getCurrentGameTargetHighlight(s);
+    if(!h) return [];
+    const arr = Array.isArray(h) ? h : [h];
+    return arr.map(x=>String(x.num));
+  } catch(e){ return []; }
+}
+function dayKey(ts){
+  const d = new Date(ts);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function recordAccuracyDart(playerId, targets, hitNum){
+  if(!state.playerAccuracy[playerId]){
+    state.playerAccuracy[playerId] = {byTarget:{}, byDay:{}};
+  }
+  const rec = state.playerAccuracy[playerId];
+  const onTarget = hitNum!==null && targets.includes(String(hitNum));
+  targets.forEach(t=>{
+    if(!rec.byTarget[t]) rec.byTarget[t] = {attempts:0, hits:0};
+    rec.byTarget[t].attempts++;
+    if(onTarget && String(hitNum)===t) rec.byTarget[t].hits++;
+  });
+  const key = dayKey(Date.now());
+  if(!rec.byDay[key]) rec.byDay[key] = {attempts:0, hits:0};
+  rec.byDay[key].attempts++;
+  if(onTarget) rec.byDay[key].hits++;
+}
 function getCurrentGameTargetHighlight(s){
   if(s.kind==='x01'){
     if(s.guidance==='none') return null;
@@ -6884,6 +6952,81 @@ function setBotRating(id, rating){
   p.botRating = rating;
   render();
 }
+function renderAccuracyTrendChart(points){
+  const w = 280, h = 90, pad = 8;
+  const stepX = points.length>1 ? (w - pad*2) / (points.length-1) : 0;
+  const coords = points.map((p,i)=>({x: pad + i*stepX, y: pad + (1-p.pct/100)*(h-pad*2)}));
+  const path = coords.map((c,i)=>`${i===0?'M':'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+  const dots = coords.map(c=>`<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="2.5" fill="var(--brass)"/>`).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%; height:auto; display:block;">
+    <line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="var(--felt-lighter)" stroke-width="1"/>
+    <path d="${path}" fill="none" stroke="var(--brass)" stroke-width="2"/>
+    ${dots}
+  </svg>`;
+}
+function renderAccuracySection(playerId){
+  const acc = state.playerAccuracy[playerId];
+  if(!acc || !Object.keys(acc.byTarget).length){
+    return `<div class="section-label" style="padding-left:0;">Accuracy</div>
+    <div class="empty-state"><div class="glyph">&#127919;</div><h3>No accuracy data yet</h3><p>Play a real game (not practice) and this fills in automatically from here on.</p></div>`;
+  }
+  const targets = Object.entries(acc.byTarget).map(([num,d])=>({num, attempts:d.attempts, hits:d.hits, pct: d.attempts? Math.round((d.hits/d.attempts)*100):0}));
+  const totalAttempts = targets.reduce((a,t)=>a+t.attempts,0);
+  const totalHits = targets.reduce((a,t)=>a+t.hits,0);
+  const overallPct = totalAttempts ? Math.round((totalHits/totalAttempts)*100) : 0;
+  const meaningful = targets.filter(t=>t.attempts>=5);
+  const sorted = meaningful.slice().sort((a,b)=>b.pct-a.pct);
+  const best = sorted.slice(0,3);
+  const worst = sorted.slice(-3).reverse().filter(t=>!best.includes(t));
+  const days = Object.entries(acc.byDay).sort((a,b)=>a[0]<b[0]?-1:1);
+  let points = days.map(([d,v])=>({label:d, pct: v.attempts? Math.round((v.hits/v.attempts)*100):0}));
+  if(points.length > 20){
+    const bucketSize = Math.ceil(points.length/12);
+    const buckets = [];
+    for(let i=0;i<days.length;i+=bucketSize){
+      const slice = days.slice(i,i+bucketSize);
+      const attempts = slice.reduce((a,[,v])=>a+v.attempts,0);
+      const hits = slice.reduce((a,[,v])=>a+v.hits,0);
+      buckets.push({label:slice[0][0], pct: attempts?Math.round((hits/attempts)*100):0});
+    }
+    points = buckets;
+  }
+  return `<div class="section-label" style="padding-left:0;">Accuracy</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="val">${overallPct}%</div><div class="lab">Overall Accuracy</div></div>
+      <div class="stat-box"><div class="val">${totalAttempts}</div><div class="lab">Tracked Darts</div></div>
+    </div>
+    ${points.length>=2 ? `<div class="rule-block">${renderAccuracyTrendChart(points)}<p class="info-note" style="margin-top:6px;">Accuracy over time — hitting whatever the game recommends you aim at, from ${points[0].label} to today.</p></div>` : `<p class="info-note">The trend line needs a few more days of play before it shows anything meaningful.</p>`}
+    ${best.length ? `<div style="display:flex; gap:12px; margin-top:10px;">
+      <div style="flex:1;">
+        <span class="field-label">Best Targets</span>
+        ${best.map(t=>`<div class="co-row"><span class="co-route">${t.num==='B'?'Bull':t.num}</span><span class="co-score" style="color:#4a9e5c; font-size:13px;">${t.pct}%</span></div>`).join('')}
+      </div>
+      ${worst.length ? `<div style="flex:1;">
+        <span class="field-label">Needs Work</span>
+        ${worst.map(t=>`<div class="co-row"><span class="co-route">${t.num==='B'?'Bull':t.num}</span><span class="co-score" style="color:#c9563a; font-size:13px;">${t.pct}%</span></div>`).join('')}
+      </div>` : ''}
+    </div>` : `<p class="info-note">Best/worst targets will show once you've thrown at least 5 darts at a few different numbers.</p>`}`;
+}
+function renderEquipmentInsights(playerId){
+  const store = state.playerAttributePerformance[playerId];
+  if(!store || !Object.keys(store).length) return '';
+  const fieldLabels = {};
+  allDartSelectFields().forEach(f=>{ fieldLabels[f.key]=f.label; });
+  const sections = Object.entries(store).map(([fieldKey, values])=>{
+    const entries = Object.entries(values).filter(([,v])=>v.count>=2);
+    if(entries.length<2) return null;
+    const sorted = entries.sort((a,b)=>b[1].rating-a[1].rating);
+    return `<div style="margin-bottom:10px;">
+      <span class="field-label">${fieldLabels[fieldKey]||fieldKey}</span>
+      ${sorted.map(([val,d])=>`<div class="co-row"><span class="co-route">${val}</span><span class="co-score" style="font-size:13px;">${d.rating} <span style="color:var(--cream-dim); font-size:10px;">(${d.count} game${d.count!==1?'s':''})</span></span></div>`).join('')}
+    </div>`;
+  }).filter(Boolean);
+  if(!sections.length) return '';
+  return `<div class="section-label" style="padding-left:0;">Equipment Insights</div>
+    <p class="info-note">Comparing performance across every attribute you've tried, regardless of which exact setup it belonged to — needs at least two different values with a couple of games each before a comparison shows up.</p>
+    ${sections.join('')}`;
+}
 function renderPlayerDetail(){
   const p = state.players.find(x=>x.id===state.playerDetailId);
   if(!p) return renderPlayerManager();
@@ -6917,6 +7060,7 @@ function renderPlayerDetail(){
       <div class="stat-box"><div class="val">${stats.streak}</div><div class="lab">Current Streak</div></div>
     </div>
     ${stats.games.favorite? `<p style="color:var(--cream-dim); font-size:13px;">Favorite game: <strong style="color:var(--brass);">${stats.games.favorite}</strong></p>` : ''}
+    ${renderAccuracySection(p.id)}
     ${stats.entries.length? `<div class="section-label" style="padding-left:0;">Recent Games</div>
       ${stats.entries.slice(0,8).map(h=>`<div class="co-row"><span class="co-route">${h.name}</span><span class="${h.winner===p.name?'co-score':''}" style="font-size:12px; color:${h.winner===p.name?'var(--brass)':'var(--cream-dim)'};">${h.winner===p.name?'Won':h.winner}</span></div>`).join('')}` :
       '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No saved games yet</h3><p>Play and save a game with this player to start building stats.</p></div>'}
@@ -6935,6 +7079,7 @@ function renderPlayerDetail(){
         const d = state.dartSetups.find(x=>x.id===r.dartSetupId);
         return `<div class="co-row"><span class="co-route">${d?dartSetupDisplayName(d):'Unknown Setup'} <span style="font-size:10px; color:var(--cream-dim);">(${r.confidenceLevel})</span></span><span class="co-score" style="font-size:14px;">${r.overallRating}</span></div>`;
       }).join('')}` : ''}
+    ${renderEquipmentInsights(p.id)}
     <div class="section-label" style="padding-left:0;"></div>
     ${confirmingDelete ? `
       <div class="rule-block" style="border-color:var(--red);">
