@@ -370,8 +370,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   background:rgba(0,0,0,0.35); border-radius:6px; touch-action:none; user-select:none;
 }
 .resize-handle:hover{ color:var(--brass); background:rgba(0,0,0,0.5); }
-.miss-ring-band{ fill:none; stroke:rgba(140,146,158,0.07); stroke-width:22; cursor:pointer; transition:stroke 0.15s ease; }
-.miss-ring-band:hover{ stroke:rgba(140,146,158,0.24); }
+.miss-ring-band{ cursor:pointer; transition:filter 0.15s ease; }
+.miss-ring-band:hover{ filter:brightness(1.6); }
 .move-handle{
   position:absolute; top:2px; right:2px; z-index:6; width:26px; height:26px; cursor:grab;
   display:flex; align-items:center; justify-content:center; color:var(--cream-dim); font-size:14px;
@@ -660,7 +660,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-07 15:23 UTC';
+const BUILD_STAMP = '2026-08-07 16:15 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2393,15 +2393,14 @@ function renderBlackoutBoard(s, hitPoint){
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const missOuterEdge = R_BEZEL + 22;
-  const missRingWidth = missOuterEdge - R_DOUBLE_OUT;
-  const missRingRadius = R_DOUBLE_OUT + missRingWidth/2;
-  const cropMargin = (canvas - R_BEZEL*2)/2 - 16;
+  const cropMargin = (canvas - missOuterEdge*2)/2 - 10;
   const viewSize = canvas - cropMargin*2;
-  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" style="stroke-width:${missRingWidth}px;" onclick="handleMissRingClick(event, ${JSON.stringify("blackoutSelectMiss()").replace(/"/g,'&quot;')})"/>`;
+  const missLabelPos = polar(cx, cy, (R_DOUBLE_OUT+missOuterEdge)/2, 180);
+  const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
+  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, ${JSON.stringify("blackoutSelectMiss()").replace(/"/g,'&quot;')})"/>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
-    <circle cx="${cx}" cy="${cy}" r="${R_BEZEL}" fill="var(--ink)"/>
     ${missRingBand}
-    ${wedges}${labels}${hitMarker}
+    ${wedges}${labels}${hitMarker}${missLabel}
   </svg>`;
 }
 function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, missHandler){
@@ -2474,15 +2473,13 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const needsWideMargin = ownerLabels && ownerLabels.length;
   const missOuterEdge = rBezel + 22;
-  const missRingWidth = missOuterEdge - rDoubleOut;
-  const missRingRadius = rDoubleOut + missRingWidth/2;
-  const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - 16;
+  const cropMargin = needsWideMargin ? 0 : (canvas - missOuterEdge*2)/2 - 10;
   const viewSize = canvas - cropMargin*2;
-  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" style="stroke-width:${missRingWidth}px;" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>`;
+  const missLabelPos = polar(cx, cy, (rDoubleOut+missOuterEdge)/2, 180);
+  const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
-    <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
-    ${missRingBand}
-    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}
+    <circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>
+    ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}${missLabel}
   </svg>`;
 }
 function handleBoardClick(evt){
@@ -6539,16 +6536,17 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
   const hitPointsArr2 = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr2.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const missOuterEdge2 = (R_OVER_OUT+19) + 22;
-  const missRingWidth2 = missOuterEdge2 - R_DOUBLE_OUT;
-  const missRingRadius2 = R_DOUBLE_OUT + missRingWidth2/2;
-  const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - 16;
+  const cropMargin2 = missHandler ? (canvas - missOuterEdge2*2)/2 - 10 : (canvas - (R_OVER_OUT+19)*2)/2 - 16;
   const viewSize2 = canvas - cropMargin2*2;
-  const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius2}" style="stroke-width:${missRingWidth2}px;" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>` : '';
+  const missLabel2 = missHandler ? (()=>{
+    const pos = polar(cx, cy, (R_DOUBLE_OUT+missOuterEdge2)/2, 180);
+    return `<text x="${pos[0]}" y="${pos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
+  })() : '';
+  const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge2}" fill="var(--ink)" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>` : `<circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>`;
   return `<svg viewBox="${cropMargin2} ${cropMargin2} ${viewSize2} ${viewSize2}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
-    <circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>
     ${missRing2}
-    ${wedges}${labels}${highlight}${hitMarker}
+    ${wedges}${labels}${highlight}${hitMarker}${missLabel2}
   </svg>`;
 }
 function renderSectionSetup(){
