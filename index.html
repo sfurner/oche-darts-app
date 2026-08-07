@@ -139,12 +139,6 @@ body{
 }
 .screen-footer:empty{ display:none; }
 .panel-controls{ display:flex; gap:8px; padding-top:12px; }
-.announcer-toggle-row{ margin-top:auto; padding-top:6px; }
-.announcer-toggle{
-  width:100%; border-radius:8px; padding:8px 0; text-align:center; font-size:11.5px; font-weight:600;
-  background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); cursor:pointer; letter-spacing:0.02em;
-}
-.announcer-toggle.on{ background:rgba(91,155,245,0.14); border-color:#5b9bf5; color:#8fc0ff; }
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
 .panel-controls .btn-leave{ background:rgba(160,60,50,0.16); border-color:rgba(200,120,110,0.3); color:#e8a488; }
@@ -206,7 +200,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .content{padding:0 18px 18px 18px; display:flex; flex-direction:column; gap:12px;}
 .content.content-grid{
   display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr));
-  gap:14px; align-items:start;
+  gap:14px; align-items:stretch; justify-content:start; align-content:start;
 }
 
 .card{
@@ -217,6 +211,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   position:relative;
   overflow:hidden;
   box-shadow:0 3px 10px rgba(0,0,0,0.18);
+  display:flex; flex-direction:column;
 }
 .card::before{
   content:'';
@@ -235,7 +230,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .badge.soon{background:rgba(174,188,175,0.12); color:var(--cream-dim); border:1px solid var(--felt-lighter);}
 .meta-row{display:flex; gap:14px; font-size:11px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; margin-bottom:12px; flex-wrap:wrap;}
 .meta-row span{display:flex; align-items:center; gap:4px;}
-.btn-row{display:flex; gap:8px;}
+.btn-row{display:flex; gap:8px; margin-top:auto;}
 .btn{
   border:none; border-radius:10px; padding:10px 14px; font-family:'Inter',sans-serif;
   font-weight:600; font-size:13px; cursor:pointer; flex:1; text-align:center;
@@ -492,30 +487,6 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   font-weight:700; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer;
 }
 .board-miss-btn:active{ transform:scale(0.95); }
-.voice-input-widget{
-  position:fixed; right:18px; bottom:18px; z-index:60;
-  display:flex; flex-direction:row-reverse; align-items:center; gap:10px;
-}
-.voice-mic-btn{
-  width:56px; height:56px; border-radius:50%; flex-shrink:0;
-  background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream);
-  font-size:24px; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,0.4);
-  display:flex; align-items:center; justify-content:center; transition:transform 0.15s;
-}
-.voice-mic-btn:active{ transform:scale(0.92); }
-.voice-mic-btn.on{
-  background:var(--red); border-color:var(--red);
-  animation:voicePulse 1.4s ease-in-out infinite;
-}
-@keyframes voicePulse{
-  0%,100%{ box-shadow:0 4px 14px rgba(0,0,0,0.4), 0 0 0 0 rgba(200,60,60,0.55); }
-  50%{ box-shadow:0 4px 14px rgba(0,0,0,0.4), 0 0 0 10px rgba(200,60,60,0); }
-}
-.voice-status{
-  max-width:220px; background:var(--felt); border:1px solid var(--felt-lighter);
-  color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:11px;
-  padding:8px 12px; border-radius:10px; box-shadow:0 4px 14px rgba(0,0,0,0.4);
-}
 .dartboard-svg{ width:min(90vw, 320px, 48vh); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
 @media (min-width:641px){ .dartboard-svg{ width:min(85vw, 440px, 48vh); } }
 .precision-zoom-svg{ width:100%; max-width:320px; height:auto; touch-action:none; cursor:crosshair; background:var(--ink); border-radius:12px; }
@@ -684,7 +655,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-06 — Voice Input';
+const BUILD_STAMP = '2026-08-07 — Cleanup: removed voice/announcer, uniform cards, player groups';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -770,9 +741,6 @@ let state = {
   confirmDeletePracticeId: null,
   celebration: null,
   celebrationTimer: null,
-  lastAnnouncedText: null,
-  voiceListening: false,
-  voiceLastHeard: '',
   practiceRandomMode: 'sequence',
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
@@ -812,10 +780,6 @@ let state = {
     heatmapPos: null,
     chalkboardPos: null,
     panelWidth: 230,
-    announcerEnabled: false,
-    announcerVoice: '',
-    announcerRate: 0.85,
-    announcerPitch: 0.8,
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -2692,160 +2656,6 @@ function recordMissCore(){
   }
   render();
 }
-/* ========================= VOICE INPUT (spoken dart calls) =========================
-   Stopgap for calling darts out loud before the Autodarts camera integration is wired up.
-   Say things like "single seven", "double five", "triple twenty", "bull", "outer bull", "miss".
-   Feeds straight into the same dispatchThrow()/recordMiss() pipeline as tapping the board. */
-const VOICE_NUM_WORDS = {
-  one:1, won:1, two:2, to:2, too:2, three:3, four:4, for:4, fore:4, five:5,
-  six:6, seven:7, eight:8, ate:8, nine:9, ten:10, eleven:11, twelve:12,
-  thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17,
-  eighteen:18, nineteen:19, twenty:20
-};
-const VOICE_MULT_WORDS = {
-  single:'single', singles:'single',
-  double:'double', doubles:'double', dub:'double', dubs:'double',
-  triple:'triple', triples:'triple', treble:'triple', trebles:'triple', trip:'triple'
-};
-function voiceWordToNumber(w){
-  if(!w) return null;
-  if(/^\d+$/.test(w)) return parseInt(w,10);
-  return VOICE_NUM_WORDS[w] !== undefined ? VOICE_NUM_WORDS[w] : null;
-}
-function parseVoiceCommands(transcript){
-  const words = transcript.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(Boolean);
-  const commands = [];
-  for(let i=0;i<words.length;i++){
-    const w = words[i];
-    if(w==='miss' || w==='nothing' || (w==='no' && words[i+1]==='score')){
-      commands.push({type:'miss'});
-      if(w==='no') i++;
-      continue;
-    }
-    if(w==='bullseye' || w==='bully' || w==='fifty' || (w==='bulls' && words[i+1]==='eye')){
-      commands.push({type:'dart', num:'B', segType:'bull'});
-      if(w==='bulls') i++;
-      continue;
-    }
-    if(w==='outer' && words[i+1] && words[i+1].indexOf('bull')===0){
-      commands.push({type:'dart', num:'B', segType:'single'});
-      i++;
-      continue;
-    }
-    if(w==='bull'){
-      commands.push({type:'dart', num:'B', segType:'bull'});
-      continue;
-    }
-    if(w==='twenty' && words[i+1]==='five'){
-      commands.push({type:'dart', num:'B', segType:'single'});
-      i++;
-      continue;
-    }
-    const mult = VOICE_MULT_WORDS[w];
-    if(mult){
-      const num = voiceWordToNumber(words[i+1]);
-      if(num!==null && num>=1 && num<=20){
-        commands.push({type:'dart', num, segType:mult});
-        i++;
-      }
-      continue;
-    }
-    const bare = voiceWordToNumber(w);
-    if(bare!==null && bare>=1 && bare<=20){
-      commands.push({type:'dart', num:bare, segType:'single'});
-    }
-  }
-  return commands;
-}
-function applyVoiceCommands(commands){
-  const s = state.session;
-  if(!s || s.kind==='callshot') return;
-  let applied = 0;
-  for(const c of commands){
-    if(applied>=3) break;
-    if(!state.session || state.session!==s) break; // turn/game changed mid-batch, stop
-    if(c.type==='miss'){ recordMiss(); applied++; }
-    else if(c.type==='dart'){ dispatchThrow(c.num, c.segType); applied++; }
-  }
-}
-let voiceAudioCtx = null;
-function playListenChime(){
-  try{
-    if(!voiceAudioCtx) voiceAudioCtx = new (window.AudioContext||window.webkitAudioContext)();
-    const ctx = voiceAudioCtx;
-    if(ctx.state==='suspended') ctx.resume();
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sine'; o.frequency.value = 880;
-    g.gain.value = 0.0001;
-    o.connect(g); g.connect(ctx.destination);
-    const now = ctx.currentTime;
-    g.gain.exponentialRampToValueAtTime(0.16, now+0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, now+0.2);
-    o.start(now); o.stop(now+0.22);
-  } catch(e){ /* audio not available, ignore */ }
-}
-function voiceInputSupported(){
-  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-}
-let voiceRecognition = null;
-function startVoiceInput(){
-  const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!Ctor){
-    alert('Voice input needs a browser with speech recognition support (Chrome works best).');
-    return;
-  }
-  if(!voiceRecognition){
-    voiceRecognition = new Ctor();
-    voiceRecognition.lang = 'en-US';
-    voiceRecognition.continuous = false;
-    voiceRecognition.interimResults = false;
-    voiceRecognition.maxAlternatives = 1;
-    voiceRecognition.onresult = function(e){
-      const transcript = e.results[e.results.length-1][0].transcript;
-      state.voiceLastHeard = transcript;
-      const commands = parseVoiceCommands(transcript);
-      applyVoiceCommands(commands);
-      render();
-    };
-    voiceRecognition.onerror = function(e){
-      if(e.error==='not-allowed' || e.error==='service-not-allowed'){
-        state.voiceListening = false;
-        state.voiceLastHeard = 'Microphone permission denied';
-        render();
-      }
-      // 'no-speech' / 'aborted' etc. are routine — onend below just restarts listening
-    };
-    voiceRecognition.onend = function(){
-      if(state.voiceListening){
-        playListenChime();
-        try{ voiceRecognition.start(); }catch(e){}
-      }
-    };
-  }
-  state.voiceListening = true;
-  state.voiceLastHeard = '';
-  try{ voiceRecognition.start(); playListenChime(); }catch(e){}
-  render();
-}
-function stopVoiceInput(){
-  state.voiceListening = false;
-  if(voiceRecognition){ try{ voiceRecognition.stop(); }catch(e){} }
-  render();
-}
-function toggleVoiceInput(){
-  if(state.voiceListening) stopVoiceInput(); else startVoiceInput();
-}
-function escapeVoiceText(t){
-  return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function renderVoiceInputWidget(){
-  if(!voiceInputSupported()) return '';
-  const on = state.voiceListening;
-  return `<div class="voice-input-widget">
-    <button class="voice-mic-btn ${on?'on':''}" onclick="toggleVoiceInput()" title="${on?'Stop voice input':'Start voice input'}">${on?'&#9679;':'&#127908;'}</button>
-    ${on ? `<div class="voice-status">${state.voiceLastHeard ? 'Heard: &ldquo;'+escapeVoiceText(state.voiceLastHeard)+'&rdquo;' : 'Listening&hellip; try &ldquo;single 7, double 5&rdquo;'}</div>` : ''}
-  </div>`;
-}
 function finalizeBustThenAdvance(s){
   // score already reverted in x01ApplyDart (not applied), just end turn now
   x01EndTurn(s);
@@ -3737,9 +3547,6 @@ document.addEventListener('fullscreenchange', function(){
     render();
   }
 });
-if(typeof speechSynthesis!=='undefined'){
-  speechSynthesis.onvoiceschanged = function(){ populateAnnouncerVoiceSelect(); };
-}
 function openRules(gameId){ state.rulesGameId = gameId; state.screen='rules'; render(); }
 function backFromRules(){ state.screen='home'; render(); }
 function defaultSelectedPlayerIds(){
@@ -3931,52 +3738,6 @@ function launchCustomGame(){
   render();
 }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
-let announcerVoicesCache = [];
-function populateAnnouncerVoiceSelect(){
-  const sel = document.getElementById('announcerVoiceSelect');
-  if(!sel || typeof speechSynthesis==='undefined') return;
-  const voices = speechSynthesis.getVoices();
-  if(!voices.length) return;
-  announcerVoicesCache = voices;
-  const englishFirst = voices.slice().sort((a,b)=>{
-    const aEn = a.lang.startsWith('en') ? 0 : 1, bEn = b.lang.startsWith('en') ? 0 : 1;
-    return aEn - bEn;
-  });
-  sel.innerHTML = englishFirst.map(v=>`<option value="${v.name}">${v.name} (${v.lang})</option>`).join('');
-  let toSelect = state.settings.announcerVoice;
-  if(!toSelect || !voices.some(v=>v.name===toSelect)){
-    const nathan = voices.find(v=>v.name.toLowerCase().includes('nathan'));
-    toSelect = nathan ? nathan.name : (englishFirst[0] ? englishFirst[0].name : '');
-    state.settings.announcerVoice = toSelect;
-  }
-  sel.value = toSelect;
-}
-function speakAnnouncerText(text){
-  if(typeof speechSynthesis==='undefined' || !text) return;
-  speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  const voices = announcerVoicesCache.length ? announcerVoicesCache : speechSynthesis.getVoices();
-  const chosen = voices.find(v=>v.name===state.settings.announcerVoice);
-  if(chosen) utter.voice = chosen;
-  utter.rate = state.settings.announcerRate||0.85;
-  utter.pitch = state.settings.announcerPitch||0.8;
-  speechSynthesis.speak(utter);
-}
-function testAnnouncerVoice(){
-  speakAnnouncerText("Scott is throwing for triple twenty.");
-}
-function toggleAnnouncer(){
-  state.settings.announcerEnabled = !state.settings.announcerEnabled;
-  if(!state.settings.announcerEnabled && typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
-  render();
-}
-function maybeAnnounce(text){
-  if(!state.settings.announcerEnabled) return;
-  if(state.lastAnnouncedText===text) return;
-  state.lastAnnouncedText = text;
-  const clean = text.replace(/<[^>]*>/g,'').replace(/\p{Extended_Pictographic}/gu,'').replace(/\s+/g,' ').trim();
-  speakAnnouncerText(clean);
-}
 function toggleHalveitTarget(t){
   const o = state.gameOptions;
   if(!o.halveitTargets) o.halveitTargets = [];
@@ -4801,12 +4562,7 @@ function render(){
   const footerSplit = html.split(FOOTER_MARKER);
   app.innerHTML = footerSplit[0];
   if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
-  if(state.voiceListening && state.screen!=='active'){
-    state.voiceListening = false;
-    if(voiceRecognition){ try{ voiceRecognition.stop(); }catch(e){} }
-  }
   if(state.screen==='precisionZoom') setupPrecisionZoomDrag();
-  if(state.screen==='gameplaySettings') populateAnnouncerVoiceSelect();
   persistState();
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
@@ -5112,11 +4868,14 @@ function renderRulesScreen(){
 function renderPlayerSetup(){
   const g = state.pendingCustomGame ? null : GAMES.find(x=>x.id===state.pendingGameId);
   const titleName = state.pendingCustomGame ? state.pendingCustomGame.name : g.name;
-  const permanentPlayers = state.players.filter(p=>!p.isGuest);
+  const permanentPlayers = state.players.filter(p=>!p.isGuest && !p.isBot);
   const guestPlayers = state.players.filter(p=>p.isGuest);
+  const botPlayers = state.players.filter(p=>p.isBot);
   function playerRow(p, idx){
     const dartId = state.playerDartSelections[p.id];
     const dart = dartId ? state.dartSetups.find(x=>x.id===dartId) : null;
+    const badgeLabel = p.isBot ? 'Bot' : (p.isGuest ? 'Guest &middot; tap to make permanent' : 'Permanent');
+    const badgeClass = p.isBot ? 'live' : (p.isGuest ? 'soon' : 'live');
     return `<div class="player-row" style="flex-direction:column; align-items:stretch; gap:8px;">
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <div style="display:flex; align-items:center; gap:10px;">
@@ -5124,7 +4883,7 @@ function renderPlayerSetup(){
             <div>${p.name}</div>
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
-            <span class="badge ${p.isGuest?'soon':'live'}" style="cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')" title="Tap to switch">${p.isGuest?'Guest &middot; tap to make permanent':'Permanent'}</span>
+            <span class="badge ${badgeClass}" ${p.isBot?'':`style="cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')" title="Tap to switch"`}>${badgeLabel}</span>
             <input type="checkbox" ${state.selectedPlayerIds.includes(p.id)?'checked':''} onchange="togglePlayerSelect('${p.id}')" style="width:20px;height:20px;">
           </div>
         </div>
@@ -5141,9 +4900,10 @@ function renderPlayerSetup(){
   </div>
   <div class="subtitle">${titleName} &middot; select players or add a guest</div>
   <div class="content">
-    <span class="field-label">Your Players</span>
+    <span class="field-label">Permanent Players</span>
     ${permanentPlayers.length ? permanentPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">No permanent players yet. Add a guest below, then tap "Guest" on their row to make them permanent.</p>'}
     ${guestPlayers.length ? `<span class="field-label" style="margin-top:8px;">Guests</span>${guestPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('')}` : ''}
+    ${botPlayers.length ? `<span class="field-label" style="margin-top:8px;">Bots</span>${botPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('')}` : ''}
     <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first. Tap a player's avatar to change their emoji.</p>
     <div style="display:flex; gap:8px;">
       <input class="input" id="newPlayerName" placeholder="Add a guest by name" onkeydown="if(event.key==='Enter')addGuestPlayer()">
@@ -5452,22 +5212,6 @@ function renderGameplaySettings(){
       <input type="checkbox" ${s.boardConfirm?'checked':''} onchange="setSetting('boardConfirm', ${!s.boardConfirm})">
       Confirm dartboard taps before scoring
     </div>
-    <div>
-      <span class="field-label">Announcer Voice</span>
-      <select id="announcerVoiceSelect" onchange="setSetting('announcerVoice', this.value)" style="width:100%; padding:10px; border-radius:8px; background:var(--felt-light); color:var(--cream); border:1px solid var(--felt-lighter);"></select>
-      <p class="info-note">Announces the current turn's instructions out loud during games. Voices come from your device — download better ones through your system's accessibility settings for more natural results. Turn the announcer on or off per-game from a button next to Undo on the game screen.</p>
-    </div>
-    <div style="display:flex; align-items:center; gap:12px;">
-      <span class="field-label" style="width:70px; margin:0;">Rate</span>
-      <input type="range" min="0.5" max="1.6" step="0.05" value="${s.announcerRate}" onchange="setSetting('announcerRate', parseFloat(this.value))" style="flex:1;">
-      <span style="font-size:13px; color:var(--cream-dim); min-width:32px;">${s.announcerRate.toFixed(2)}</span>
-    </div>
-    <div style="display:flex; align-items:center; gap:12px;">
-      <span class="field-label" style="width:70px; margin:0;">Pitch</span>
-      <input type="range" min="0" max="2" step="0.05" value="${s.announcerPitch}" onchange="setSetting('announcerPitch', parseFloat(this.value))" style="flex:1;">
-      <span style="font-size:13px; color:var(--cream-dim); min-width:32px;">${s.announcerPitch.toFixed(2)}</span>
-    </div>
-    <button class="btn btn-secondary btn-full" onclick="testAnnouncerVoice()">Test Voice</button>
     <p class="info-note">These general play preferences apply everywhere darts get thrown — games, practice, and custom games alike.</p>
   </div>`;
 }
@@ -5533,7 +5277,6 @@ function renderPlayerBoxes(s){
 }
 function renderInstructionBox(s){
   const hint = renderTurnHint(s);
-  maybeAnnounce(hint);
   return `<div class="panel-zone-instruction">
     <div class="panel-instruction-box">
       <div class="pi-label">&#9679; NOW</div>
@@ -5672,7 +5415,6 @@ function renderActiveShell(){
   ${renderPlayerBoxes(s)}
   <div class="panel-zone-tips">${renderCheckoutOptionsLine(s)}${renderTipsSection(s)}</div>
   ${renderBottomControls(s)}
-  ${renderVoiceInputWidget()}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
 function renderCallShotActiveShell(s){
@@ -5725,9 +5467,6 @@ function renderCallShotActiveShell(s){
   ${targetChipRow()}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderInstructionBox(s)}
   ${playerBoxes}
-  <div class="announcer-toggle-row">
-    <button class="announcer-toggle ${state.settings.announcerEnabled?'on':''}" onclick="toggleAnnouncer()">${state.settings.announcerEnabled?'\u{1F50A} Announcer On':'\u{1F507} Announcer Off'}</button>
-  </div>
   <div class="panel-controls">
     <button class="btn-undo" onclick="callShotUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
@@ -6101,7 +5840,7 @@ function killerOwnerLabels(s){
     const pl = state.players.find(x=>x.id===p.playerId);
     const text = pl ? pl.name : '???';
     const color = p.eliminated ? 'rgba(242,236,220,0.35)' : (p===me ? '#CC9A3D' : KILLER_COLORS[idx % KILLER_COLORS.length]);
-    return { num: p.number, text: p===me ? text+' (you)' : text, color };
+    return { num: p.number, text: text, color };
   });
 }
 function renderEntryArea(s){
@@ -6146,7 +5885,7 @@ function renderBoardConfirmLine(s){
     ? (['grid','board','chalkboard'].includes(state.settings.cricketEntryMethod) ? state.settings.cricketEntryMethod : 'chalkboard')
     : state.settings.entryMethod;
   if(method!=='board') return '';
-  return `${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
+  return `${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : ''}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function renderNumberGrid(s){
@@ -6261,11 +6000,7 @@ function renderNumberGrid(s){
   </div>`;
 }
 function renderBottomControls(s){
-  const on = state.settings.announcerEnabled;
-  return `<div class="announcer-toggle-row">
-    <button class="announcer-toggle ${on?'on':''}" onclick="toggleAnnouncer()">${on?'\u{1F50A} Announcer On':'\u{1F507} Announcer Off'}</button>
-  </div>
-  <div class="panel-controls">
+  return `<div class="panel-controls">
     <button class="btn-undo" onclick="doUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>`;
@@ -6553,7 +6288,7 @@ function renderPracticeBoard(ps){
   const target = practiceCurrentTarget(ps);
   const highlight = target!==undefined ? {num:target, seg: ps.def.requiredMultiplier || 'any'} : null;
   return `<div class="board-area">${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || ps.lastHitPoint, null, "practiceSelectNumber('miss')")}</div>
-  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
+  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : ''}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function practiceBestWorst(ps){
@@ -6647,7 +6382,7 @@ function renderCheckoutPracticeBoard(cp){
   const route = findCheckout(cp.currentScore, dartsLeft, 'double');
   const highlight = route && route.length ? parseThrowLabel(route[0]) : null;
   return `<div class="board-area">${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || cp.lastHitPoint, null, "checkoutPracticeSelectNumber('miss')")}</div>
-  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
+  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : ''}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function renderCheckoutPracticeResults(){
