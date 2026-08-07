@@ -139,6 +139,12 @@ body{
 }
 .screen-footer:empty{ display:none; }
 .panel-controls{ display:flex; gap:8px; padding-top:12px; }
+.announcer-toggle-row{ margin-top:auto; padding-top:6px; }
+.announcer-toggle{
+  width:100%; border-radius:8px; padding:8px 0; text-align:center; font-size:11.5px; font-weight:600;
+  background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); cursor:pointer; letter-spacing:0.02em;
+}
+.announcer-toggle.on{ background:rgba(91,155,245,0.14); border-color:#5b9bf5; color:#8fc0ff; }
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
 .panel-controls .btn-leave{ background:rgba(160,60,50,0.16); border-color:rgba(200,120,110,0.3); color:#e8a488; }
@@ -197,25 +203,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.14em;
   color:var(--brass); text-transform:uppercase; padding:16px 18px 8px 18px;
 }
-.player-section-header{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:20px 0 10px 0; margin-top:2px; border-bottom:1px solid var(--felt-lighter);
-}
-.player-section-header:first-of-type{ margin-top:0; padding-top:2px; }
-.player-section-header h2{
-  font-size:22px; font-weight:700; color:var(--brass); letter-spacing:0.01em; margin:0;
-}
-.player-section-add-btn{
-  width:34px; height:34px; border-radius:9px; border:1px solid var(--felt-lighter);
-  background:var(--felt-light); color:var(--cream); font-size:19px; cursor:pointer;
-  display:flex; align-items:center; justify-content:center; flex-shrink:0; line-height:1;
-}
-.player-section-add-btn:active{ transform:scale(0.92); }
-.player-section-list{ display:flex; flex-direction:column; gap:10px; margin-top:10px; }
 .content{padding:0 18px 18px 18px; display:flex; flex-direction:column; gap:12px;}
 .content.content-grid{
   display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr));
-  gap:14px; align-items:stretch; justify-content:start; align-content:start;
+  gap:14px; align-items:start;
 }
 
 .card{
@@ -226,7 +217,6 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   position:relative;
   overflow:hidden;
   box-shadow:0 3px 10px rgba(0,0,0,0.18);
-  display:flex; flex-direction:column;
 }
 .card::before{
   content:'';
@@ -245,7 +235,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .badge.soon{background:rgba(174,188,175,0.12); color:var(--cream-dim); border:1px solid var(--felt-lighter);}
 .meta-row{display:flex; gap:14px; font-size:11px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; margin-bottom:12px; flex-wrap:wrap;}
 .meta-row span{display:flex; align-items:center; gap:4px;}
-.btn-row{display:flex; gap:8px; margin-top:auto;}
+.btn-row{display:flex; gap:8px;}
 .btn{
   border:none; border-radius:10px; padding:10px 14px; font-family:'Inter',sans-serif;
   font-weight:600; font-size:13px; cursor:pointer; flex:1; text-align:center;
@@ -382,7 +372,6 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .resize-handle:hover{ color:var(--brass); background:rgba(0,0,0,0.5); }
 .miss-ring-band{ fill:none; stroke:rgba(140,146,158,0.07); stroke-width:22; cursor:pointer; transition:stroke 0.15s ease; }
 .miss-ring-band:hover{ stroke:rgba(140,146,158,0.24); }
-.miss-label{ font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:700; letter-spacing:0.25em; fill:rgba(180,190,196,0.5); pointer-events:none; }
 .move-handle{
   position:absolute; top:2px; right:2px; z-index:6; width:26px; height:26px; cursor:grab;
   display:flex; align-items:center; justify-content:center; color:var(--cream-dim); font-size:14px;
@@ -671,7 +660,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '8/7/2026, 5:20 PM';
+const BUILD_STAMP = '2026-08-07 15:23 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -751,14 +740,13 @@ let state = {
   playerDetailId: null,
   confirmDeletePlayerId: null,
   addingBot: false,
-  addingManagedPermanent: false,
-  addingManagedGuest: false,
   newBotRating: 5,
   dartSettingsAddingFor: null,
   confirmDeleteCustomGameId: null,
   confirmDeletePracticeId: null,
   celebration: null,
   celebrationTimer: null,
+  lastAnnouncedText: null,
   practiceRandomMode: 'sequence',
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
@@ -798,6 +786,10 @@ let state = {
     heatmapPos: null,
     chalkboardPos: null,
     panelWidth: 230,
+    announcerEnabled: false,
+    announcerVoice: '',
+    announcerRate: 0.85,
+    announcerPitch: 0.8,
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -1896,20 +1888,6 @@ const R_BULL_INNER=11, R_BULL_OUTER=24, R_TRIPLE_IN=106, R_TRIPLE_OUT=122, R_DOU
 const R_DOUBLE_OUT = R_DOUBLE_IN + (R_TRIPLE_OUT-R_TRIPLE_IN); // double ring width == triple ring width
 const R_BEZEL = R_DOUBLE_OUT+32, R_OVER_OUT = R_DOUBLE_OUT+22;
 const R_NUMBER_LABEL = R_DOUBLE_OUT+16;
-const R_MISS_RING_OUTER = R_BEZEL+46;
-const R_MISS_LABEL = (R_BEZEL+R_MISS_RING_OUTER)/2;
-function missLabelsSVG(cx,cy){
-  const pos = [
-    {angle:0, rot:0},   // top
-    {angle:90, rot:90}, // right (reads top-to-bottom)
-    {angle:180, rot:0}, // bottom
-    {angle:270, rot:-90}, // left (reads bottom-to-top)
-  ];
-  return pos.map(p=>{
-    const pt = polar(cx,cy,R_MISS_LABEL,p.angle);
-    return `<text x="${pt[0]}" y="${pt[1]}" class="miss-label" text-anchor="middle" dominant-baseline="middle" transform="rotate(${p.rot} ${pt[0]} ${pt[1]})">MISS</text>`;
-  }).join('');
-}
 function polar(cx,cy,r,angleDeg){
   const rad = angleDeg*Math.PI/180;
   return [ (cx + r*Math.sin(rad)).toFixed(2), (cy - r*Math.cos(rad)).toFixed(2) ];
@@ -2414,18 +2392,16 @@ function renderBlackoutBoard(s, hitPoint){
   wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerBullDone?closedColor:'#A84545'}" stroke="var(--ink)" ${bullAttrs} data-seg="bull" style="${bullCursor}"/>`;
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
-  const missOuterEdge = R_MISS_RING_OUTER;
+  const missOuterEdge = R_BEZEL + 22;
   const missRingWidth = missOuterEdge - R_DOUBLE_OUT;
   const missRingRadius = R_DOUBLE_OUT + missRingWidth/2;
-  const cropMargin = (canvas - R_MISS_RING_OUTER*2)/2 - 16;
+  const cropMargin = (canvas - R_BEZEL*2)/2 - 16;
   const viewSize = canvas - cropMargin*2;
-  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" onclick="handleMissRingClick(event, ${JSON.stringify("blackoutSelectMiss()").replace(/"/g,'&quot;')})"/>`;
+  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" style="stroke-width:${missRingWidth}px;" onclick="handleMissRingClick(event, ${JSON.stringify("blackoutSelectMiss()").replace(/"/g,'&quot;')})"/>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
-    <circle cx="${cx}" cy="${cy}" r="${R_MISS_RING_OUTER}" fill="var(--felt-dark)"/>
     <circle cx="${cx}" cy="${cy}" r="${R_BEZEL}" fill="var(--ink)"/>
     ${missRingBand}
     ${wedges}${labels}${hitMarker}
-    ${missLabelsSVG(cx,cy)}
   </svg>`;
 }
 function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, missHandler){
@@ -2497,19 +2473,16 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const needsWideMargin = ownerLabels && ownerLabels.length;
-  const missOuterEdge = R_MISS_RING_OUTER;
+  const missOuterEdge = rBezel + 22;
   const missRingWidth = missOuterEdge - rDoubleOut;
   const missRingRadius = rDoubleOut + missRingWidth/2;
-  const cropMargin = needsWideMargin ? 0 : (canvas - R_MISS_RING_OUTER*2)/2 - 16;
+  const cropMargin = needsWideMargin ? 0 : (canvas - rBezel*2)/2 - 16;
   const viewSize = canvas - cropMargin*2;
-  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>`;
-  const outerTrimRing = `<circle cx="${cx}" cy="${cy}" r="${R_MISS_RING_OUTER}" fill="var(--felt-dark)"/>`;
+  const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius}" style="stroke-width:${missRingWidth}px;" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
-    ${outerTrimRing}
     <circle cx="${cx}" cy="${cy}" r="${rBezel}" fill="var(--ink)"/>
     ${missRingBand}
     ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}
-    ${missLabelsSVG(cx,cy)}
   </svg>`;
 }
 function handleBoardClick(evt){
@@ -3584,6 +3557,9 @@ document.addEventListener('fullscreenchange', function(){
     render();
   }
 });
+if(typeof speechSynthesis!=='undefined'){
+  speechSynthesis.onvoiceschanged = function(){ populateAnnouncerVoiceSelect(); };
+}
 function openRules(gameId){ state.rulesGameId = gameId; state.screen='rules'; render(); }
 function backFromRules(){ state.screen='home'; render(); }
 function defaultSelectedPlayerIds(){
@@ -3688,7 +3664,6 @@ function addManagedPlayer(){
   const p = {id:nextId(), name, isGuest:false, createdAt:Date.now(), emoji:pickPlayerEmoji()};
   state.players.push(p);
   input.value='';
-  state.addingManagedPermanent = false;
   render();
 }
 function startEditPlayerName(id){ state.playerNameEdit = id; render(); }
@@ -3776,6 +3751,52 @@ function launchCustomGame(){
   render();
 }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
+let announcerVoicesCache = [];
+function populateAnnouncerVoiceSelect(){
+  const sel = document.getElementById('announcerVoiceSelect');
+  if(!sel || typeof speechSynthesis==='undefined') return;
+  const voices = speechSynthesis.getVoices();
+  if(!voices.length) return;
+  announcerVoicesCache = voices;
+  const englishFirst = voices.slice().sort((a,b)=>{
+    const aEn = a.lang.startsWith('en') ? 0 : 1, bEn = b.lang.startsWith('en') ? 0 : 1;
+    return aEn - bEn;
+  });
+  sel.innerHTML = englishFirst.map(v=>`<option value="${v.name}">${v.name} (${v.lang})</option>`).join('');
+  let toSelect = state.settings.announcerVoice;
+  if(!toSelect || !voices.some(v=>v.name===toSelect)){
+    const nathan = voices.find(v=>v.name.toLowerCase().includes('nathan'));
+    toSelect = nathan ? nathan.name : (englishFirst[0] ? englishFirst[0].name : '');
+    state.settings.announcerVoice = toSelect;
+  }
+  sel.value = toSelect;
+}
+function speakAnnouncerText(text){
+  if(typeof speechSynthesis==='undefined' || !text) return;
+  speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  const voices = announcerVoicesCache.length ? announcerVoicesCache : speechSynthesis.getVoices();
+  const chosen = voices.find(v=>v.name===state.settings.announcerVoice);
+  if(chosen) utter.voice = chosen;
+  utter.rate = state.settings.announcerRate||0.85;
+  utter.pitch = state.settings.announcerPitch||0.8;
+  speechSynthesis.speak(utter);
+}
+function testAnnouncerVoice(){
+  speakAnnouncerText("Scott is throwing for triple twenty.");
+}
+function toggleAnnouncer(){
+  state.settings.announcerEnabled = !state.settings.announcerEnabled;
+  if(!state.settings.announcerEnabled && typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
+  render();
+}
+function maybeAnnounce(text){
+  if(!state.settings.announcerEnabled) return;
+  if(state.lastAnnouncedText===text) return;
+  state.lastAnnouncedText = text;
+  const clean = text.replace(/<[^>]*>/g,'').replace(/\p{Extended_Pictographic}/gu,'').replace(/\s+/g,' ').trim();
+  speakAnnouncerText(clean);
+}
 function toggleHalveitTarget(t){
   const o = state.gameOptions;
   if(!o.halveitTargets) o.halveitTargets = [];
@@ -4601,6 +4622,7 @@ function render(){
   app.innerHTML = footerSplit[0];
   if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
   if(state.screen==='precisionZoom') setupPrecisionZoomDrag();
+  if(state.screen==='gameplaySettings') populateAnnouncerVoiceSelect();
   persistState();
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
@@ -4906,14 +4928,11 @@ function renderRulesScreen(){
 function renderPlayerSetup(){
   const g = state.pendingCustomGame ? null : GAMES.find(x=>x.id===state.pendingGameId);
   const titleName = state.pendingCustomGame ? state.pendingCustomGame.name : g.name;
-  const permanentPlayers = state.players.filter(p=>!p.isGuest && !p.isBot);
+  const permanentPlayers = state.players.filter(p=>!p.isGuest);
   const guestPlayers = state.players.filter(p=>p.isGuest);
-  const botPlayers = state.players.filter(p=>p.isBot);
   function playerRow(p, idx){
     const dartId = state.playerDartSelections[p.id];
     const dart = dartId ? state.dartSetups.find(x=>x.id===dartId) : null;
-    const badgeLabel = p.isBot ? 'Bot' : (p.isGuest ? 'Guest &middot; tap to make permanent' : 'Permanent');
-    const badgeClass = p.isBot ? 'live' : (p.isGuest ? 'soon' : 'live');
     return `<div class="player-row" style="flex-direction:column; align-items:stretch; gap:8px;">
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <div style="display:flex; align-items:center; gap:10px;">
@@ -4921,7 +4940,7 @@ function renderPlayerSetup(){
             <div>${p.name}</div>
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
-            <span class="badge ${badgeClass}" ${p.isBot?'':`style="cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')" title="Tap to switch"`}>${badgeLabel}</span>
+            <span class="badge ${p.isGuest?'soon':'live'}" style="cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')" title="Tap to switch">${p.isGuest?'Guest &middot; tap to make permanent':'Permanent'}</span>
             <input type="checkbox" ${state.selectedPlayerIds.includes(p.id)?'checked':''} onchange="togglePlayerSelect('${p.id}')" style="width:20px;height:20px;">
           </div>
         </div>
@@ -4938,10 +4957,9 @@ function renderPlayerSetup(){
   </div>
   <div class="subtitle">${titleName} &middot; select players or add a guest</div>
   <div class="content">
-    <span class="field-label">Permanent Players</span>
+    <span class="field-label">Your Players</span>
     ${permanentPlayers.length ? permanentPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">No permanent players yet. Add a guest below, then tap "Guest" on their row to make them permanent.</p>'}
     ${guestPlayers.length ? `<span class="field-label" style="margin-top:8px;">Guests</span>${guestPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('')}` : ''}
-    ${botPlayers.length ? `<span class="field-label" style="margin-top:8px;">Bots</span>${botPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('')}` : ''}
     <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first. Tap a player's avatar to change their emoji.</p>
     <div style="display:flex; gap:8px;">
       <input class="input" id="newPlayerName" placeholder="Add a guest by name" onkeydown="if(event.key==='Enter')addGuestPlayer()">
@@ -5250,6 +5268,22 @@ function renderGameplaySettings(){
       <input type="checkbox" ${s.boardConfirm?'checked':''} onchange="setSetting('boardConfirm', ${!s.boardConfirm})">
       Confirm dartboard taps before scoring
     </div>
+    <div>
+      <span class="field-label">Announcer Voice</span>
+      <select id="announcerVoiceSelect" onchange="setSetting('announcerVoice', this.value)" style="width:100%; padding:10px; border-radius:8px; background:var(--felt-light); color:var(--cream); border:1px solid var(--felt-lighter);"></select>
+      <p class="info-note">Announces the current turn's instructions out loud during games. Voices come from your device — download better ones through your system's accessibility settings for more natural results. Turn the announcer on or off per-game from a button next to Undo on the game screen.</p>
+    </div>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span class="field-label" style="width:70px; margin:0;">Rate</span>
+      <input type="range" min="0.5" max="1.6" step="0.05" value="${s.announcerRate}" onchange="setSetting('announcerRate', parseFloat(this.value))" style="flex:1;">
+      <span style="font-size:13px; color:var(--cream-dim); min-width:32px;">${s.announcerRate.toFixed(2)}</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span class="field-label" style="width:70px; margin:0;">Pitch</span>
+      <input type="range" min="0" max="2" step="0.05" value="${s.announcerPitch}" onchange="setSetting('announcerPitch', parseFloat(this.value))" style="flex:1;">
+      <span style="font-size:13px; color:var(--cream-dim); min-width:32px;">${s.announcerPitch.toFixed(2)}</span>
+    </div>
+    <button class="btn btn-secondary btn-full" onclick="testAnnouncerVoice()">Test Voice</button>
     <p class="info-note">These general play preferences apply everywhere darts get thrown — games, practice, and custom games alike.</p>
   </div>`;
 }
@@ -5315,6 +5349,7 @@ function renderPlayerBoxes(s){
 }
 function renderInstructionBox(s){
   const hint = renderTurnHint(s);
+  maybeAnnounce(hint);
   return `<div class="panel-zone-instruction">
     <div class="panel-instruction-box">
       <div class="pi-label">&#9679; NOW</div>
@@ -5505,6 +5540,9 @@ function renderCallShotActiveShell(s){
   ${targetChipRow()}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderInstructionBox(s)}
   ${playerBoxes}
+  <div class="announcer-toggle-row">
+    <button class="announcer-toggle ${state.settings.announcerEnabled?'on':''}" onclick="toggleAnnouncer()">${state.settings.announcerEnabled?'\u{1F50A} Announcer On':'\u{1F507} Announcer Off'}</button>
+  </div>
   <div class="panel-controls">
     <button class="btn-undo" onclick="callShotUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
@@ -5878,7 +5916,7 @@ function killerOwnerLabels(s){
     const pl = state.players.find(x=>x.id===p.playerId);
     const text = pl ? pl.name : '???';
     const color = p.eliminated ? 'rgba(242,236,220,0.35)' : (p===me ? '#CC9A3D' : KILLER_COLORS[idx % KILLER_COLORS.length]);
-    return { num: p.number, text: text, color };
+    return { num: p.number, text: p===me ? text+' (you)' : text, color };
   });
 }
 function renderEntryArea(s){
@@ -5923,7 +5961,7 @@ function renderBoardConfirmLine(s){
     ? (['grid','board','chalkboard'].includes(state.settings.cricketEntryMethod) ? state.settings.cricketEntryMethod : 'chalkboard')
     : state.settings.entryMethod;
   if(method!=='board') return '';
-  return `${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : ''}
+  return `${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function renderNumberGrid(s){
@@ -6038,7 +6076,11 @@ function renderNumberGrid(s){
   </div>`;
 }
 function renderBottomControls(s){
-  return `<div class="panel-controls">
+  const on = state.settings.announcerEnabled;
+  return `<div class="announcer-toggle-row">
+    <button class="announcer-toggle ${on?'on':''}" onclick="toggleAnnouncer()">${on?'\u{1F50A} Announcer On':'\u{1F507} Announcer Off'}</button>
+  </div>
+  <div class="panel-controls">
     <button class="btn-undo" onclick="doUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>`;
@@ -6326,7 +6368,7 @@ function renderPracticeBoard(ps){
   const target = practiceCurrentTarget(ps);
   const highlight = target!==undefined ? {num:target, seg: ps.def.requiredMultiplier || 'any'} : null;
   return `<div class="board-area">${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || ps.lastHitPoint, null, "practiceSelectNumber('miss')")}</div>
-  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : ''}
+  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function practiceBestWorst(ps){
@@ -6420,7 +6462,7 @@ function renderCheckoutPracticeBoard(cp){
   const route = findCheckout(cp.currentScore, dartsLeft, 'double');
   const highlight = route && route.length ? parseThrowLabel(route[0]) : null;
   return `<div class="board-area">${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || cp.lastHitPoint, null, "checkoutPracticeSelectNumber('miss')")}</div>
-  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : ''}
+  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function renderCheckoutPracticeResults(){
@@ -6501,7 +6543,7 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
   const missRingRadius2 = R_DOUBLE_OUT + missRingWidth2/2;
   const cropMargin2 = (canvas - (R_OVER_OUT+19)*2)/2 - 16;
   const viewSize2 = canvas - cropMargin2*2;
-  const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius2}" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>` : '';
+  const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missRingRadius2}" style="stroke-width:${missRingWidth2}px;" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>` : '';
   return `<svg viewBox="${cropMargin2} ${cropMargin2} ${viewSize2} ${viewSize2}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
     <circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>
@@ -7182,44 +7224,16 @@ function renderPlayerManager(){
       <span class="badge ${p.isBot?'live':p.isGuest?'soon':'live'}">${p.isBot?'Bot':p.isGuest?'Guest':'Permanent'}</span>
     </div>`;
   }
-  return `<div class="section-label">Players</div>
-  <div class="content">
-    <div class="player-section-header">
-      <h2>Permanent</h2>
-      <button class="player-section-add-btn" onclick="toggleAddManagedPermanent()" title="Add permanent player">+</button>
+  return `<div class="section-label">Permanent Players</div>
+  <div class="content content-grid">
+    ${permanentPlayers.length ? permanentPlayers.map((p)=>row(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">None yet — add one below.</p>'}
+    ${botPlayers.length ? `<span class="field-label" style="margin-top:8px;">Bot Opponents</span>${botPlayers.map((p)=>row(p, state.players.indexOf(p))).join('')}` : ''}
+    ${guestPlayers.length ? `<span class="field-label" style="margin-top:8px;">Guests</span>${guestPlayers.map((p)=>row(p, state.players.indexOf(p))).join('')}` : ''}
+    <div style="display:flex; gap:8px;">
+      <input class="input" id="newManagedPlayerName" placeholder="Add a new player" onkeydown="if(event.key==='Enter')addManagedPlayer()">
+      <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="addManagedPlayer()">Add</button>
     </div>
-    ${state.addingManagedPermanent ? `
-      <div class="rule-block">
-        <div style="display:flex; gap:8px;">
-          <input class="input" id="newManagedPlayerName" placeholder="Player name" onkeydown="if(event.key==='Enter')addManagedPlayer()">
-          <button class="btn btn-primary" style="flex:none; padding:10px 16px;" onclick="addManagedPlayer()">Add</button>
-        </div>
-      </div>
-    ` : ''}
-    <div class="player-section-list">
-      ${permanentPlayers.length ? permanentPlayers.map((p)=>row(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">None yet — tap + to add one.</p>'}
-    </div>
-
-    <div class="player-section-header">
-      <h2>Guests</h2>
-      <button class="player-section-add-btn" onclick="toggleAddManagedGuest()" title="Add guest player">+</button>
-    </div>
-    ${state.addingManagedGuest ? `
-      <div class="rule-block">
-        <div style="display:flex; gap:8px;">
-          <input class="input" id="newManagedGuestName" placeholder="Guest name" onkeydown="if(event.key==='Enter')addManagedGuestPlayer()">
-          <button class="btn btn-primary" style="flex:none; padding:10px 16px;" onclick="addManagedGuestPlayer()">Add</button>
-        </div>
-      </div>
-    ` : ''}
-    <div class="player-section-list">
-      ${guestPlayers.length ? guestPlayers.map((p)=>row(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">No guests right now.</p>'}
-    </div>
-
-    <div class="player-section-header">
-      <h2>Bots</h2>
-      <button class="player-section-add-btn" onclick="state.addingBot=true; state.newBotRating=5; render();" title="Add bot opponent">+</button>
-    </div>
+    <p class="info-note">Tap any player to edit their name and avatar, or see their stats.</p>
     ${state.addingBot ? `
       <div class="rule-block">
         <h4>New Bot Opponent</h4>
@@ -7232,25 +7246,8 @@ function renderPlayerManager(){
           <button class="btn btn-secondary" onclick="state.addingBot=false; render();">Cancel</button>
         </div>
       </div>
-    ` : ''}
-    <div class="player-section-list">
-      ${botPlayers.length ? botPlayers.map((p)=>row(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">No bot opponents yet.</p>'}
-    </div>
-
-    <p class="info-note">Tap any player to edit their name and avatar, or see their stats.</p>
+    ` : `<button class="btn btn-secondary btn-full" onclick="state.addingBot=true; state.newBotRating=5; render();">+ Add Bot Opponent</button>`}
   </div>`;
-}
-function toggleAddManagedPermanent(){ state.addingManagedPermanent = !state.addingManagedPermanent; render(); }
-function toggleAddManagedGuest(){ state.addingManagedGuest = !state.addingManagedGuest; render(); }
-function addManagedGuestPlayer(){
-  const input = document.getElementById('newManagedGuestName');
-  if(!input) return;
-  const name = input.value.trim();
-  if(!name) return;
-  const p = {id:nextId(), name, isGuest:true, createdAt:Date.now(), emoji:pickPlayerEmoji()};
-  state.players.push(p);
-  state.addingManagedGuest = false;
-  render();
 }
 function addBotPlayer(){
   const input = document.getElementById('newBotName');
