@@ -492,6 +492,30 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   font-weight:700; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer;
 }
 .board-miss-btn:active{ transform:scale(0.95); }
+.voice-input-widget{
+  position:fixed; right:18px; bottom:18px; z-index:60;
+  display:flex; flex-direction:row-reverse; align-items:center; gap:10px;
+}
+.voice-mic-btn{
+  width:56px; height:56px; border-radius:50%; flex-shrink:0;
+  background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream);
+  font-size:24px; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,0.4);
+  display:flex; align-items:center; justify-content:center; transition:transform 0.15s;
+}
+.voice-mic-btn:active{ transform:scale(0.92); }
+.voice-mic-btn.on{
+  background:var(--red); border-color:var(--red);
+  animation:voicePulse 1.4s ease-in-out infinite;
+}
+@keyframes voicePulse{
+  0%,100%{ box-shadow:0 4px 14px rgba(0,0,0,0.4), 0 0 0 0 rgba(200,60,60,0.55); }
+  50%{ box-shadow:0 4px 14px rgba(0,0,0,0.4), 0 0 0 10px rgba(200,60,60,0); }
+}
+.voice-status{
+  max-width:220px; background:var(--felt); border:1px solid var(--felt-lighter);
+  color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:11px;
+  padding:8px 12px; border-radius:10px; box-shadow:0 4px 14px rgba(0,0,0,0.4);
+}
 .dartboard-svg{ width:min(90vw, 320px, 48vh); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
 @media (min-width:641px){ .dartboard-svg{ width:min(85vw, 440px, 48vh); } }
 .precision-zoom-svg{ width:100%; max-width:320px; height:auto; touch-action:none; cursor:crosshair; background:var(--ink); border-radius:12px; }
@@ -747,6 +771,8 @@ let state = {
   celebration: null,
   celebrationTimer: null,
   lastAnnouncedText: null,
+  voiceListening: false,
+  voiceLastHeard: '',
   practiceRandomMode: 'sequence',
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
@@ -2665,6 +2691,160 @@ function recordMissCore(){
     last._num = null; last._segType = 'miss';
   }
   render();
+}
+/* ========================= VOICE INPUT (spoken dart calls) =========================
+   Stopgap for calling darts out loud before the Autodarts camera integration is wired up.
+   Say things like "single seven", "double five", "triple twenty", "bull", "outer bull", "miss".
+   Feeds straight into the same dispatchThrow()/recordMiss() pipeline as tapping the board. */
+const VOICE_NUM_WORDS = {
+  one:1, won:1, two:2, to:2, too:2, three:3, four:4, for:4, fore:4, five:5,
+  six:6, seven:7, eight:8, ate:8, nine:9, ten:10, eleven:11, twelve:12,
+  thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17,
+  eighteen:18, nineteen:19, twenty:20
+};
+const VOICE_MULT_WORDS = {
+  single:'single', singles:'single',
+  double:'double', doubles:'double', dub:'double', dubs:'double',
+  triple:'triple', triples:'triple', treble:'triple', trebles:'triple', trip:'triple'
+};
+function voiceWordToNumber(w){
+  if(!w) return null;
+  if(/^\d+$/.test(w)) return parseInt(w,10);
+  return VOICE_NUM_WORDS[w] !== undefined ? VOICE_NUM_WORDS[w] : null;
+}
+function parseVoiceCommands(transcript){
+  const words = transcript.toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(Boolean);
+  const commands = [];
+  for(let i=0;i<words.length;i++){
+    const w = words[i];
+    if(w==='miss' || w==='nothing' || (w==='no' && words[i+1]==='score')){
+      commands.push({type:'miss'});
+      if(w==='no') i++;
+      continue;
+    }
+    if(w==='bullseye' || w==='bully' || w==='fifty' || (w==='bulls' && words[i+1]==='eye')){
+      commands.push({type:'dart', num:'B', segType:'bull'});
+      if(w==='bulls') i++;
+      continue;
+    }
+    if(w==='outer' && words[i+1] && words[i+1].indexOf('bull')===0){
+      commands.push({type:'dart', num:'B', segType:'single'});
+      i++;
+      continue;
+    }
+    if(w==='bull'){
+      commands.push({type:'dart', num:'B', segType:'bull'});
+      continue;
+    }
+    if(w==='twenty' && words[i+1]==='five'){
+      commands.push({type:'dart', num:'B', segType:'single'});
+      i++;
+      continue;
+    }
+    const mult = VOICE_MULT_WORDS[w];
+    if(mult){
+      const num = voiceWordToNumber(words[i+1]);
+      if(num!==null && num>=1 && num<=20){
+        commands.push({type:'dart', num, segType:mult});
+        i++;
+      }
+      continue;
+    }
+    const bare = voiceWordToNumber(w);
+    if(bare!==null && bare>=1 && bare<=20){
+      commands.push({type:'dart', num:bare, segType:'single'});
+    }
+  }
+  return commands;
+}
+function applyVoiceCommands(commands){
+  const s = state.session;
+  if(!s || s.kind==='callshot') return;
+  let applied = 0;
+  for(const c of commands){
+    if(applied>=3) break;
+    if(!state.session || state.session!==s) break; // turn/game changed mid-batch, stop
+    if(c.type==='miss'){ recordMiss(); applied++; }
+    else if(c.type==='dart'){ dispatchThrow(c.num, c.segType); applied++; }
+  }
+}
+let voiceAudioCtx = null;
+function playListenChime(){
+  try{
+    if(!voiceAudioCtx) voiceAudioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const ctx = voiceAudioCtx;
+    if(ctx.state==='suspended') ctx.resume();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    g.gain.value = 0.0001;
+    o.connect(g); g.connect(ctx.destination);
+    const now = ctx.currentTime;
+    g.gain.exponentialRampToValueAtTime(0.16, now+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, now+0.2);
+    o.start(now); o.stop(now+0.22);
+  } catch(e){ /* audio not available, ignore */ }
+}
+function voiceInputSupported(){
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+let voiceRecognition = null;
+function startVoiceInput(){
+  const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!Ctor){
+    alert('Voice input needs a browser with speech recognition support (Chrome works best).');
+    return;
+  }
+  if(!voiceRecognition){
+    voiceRecognition = new Ctor();
+    voiceRecognition.lang = 'en-US';
+    voiceRecognition.continuous = false;
+    voiceRecognition.interimResults = false;
+    voiceRecognition.maxAlternatives = 1;
+    voiceRecognition.onresult = function(e){
+      const transcript = e.results[e.results.length-1][0].transcript;
+      state.voiceLastHeard = transcript;
+      const commands = parseVoiceCommands(transcript);
+      applyVoiceCommands(commands);
+      render();
+    };
+    voiceRecognition.onerror = function(e){
+      if(e.error==='not-allowed' || e.error==='service-not-allowed'){
+        state.voiceListening = false;
+        state.voiceLastHeard = 'Microphone permission denied';
+        render();
+      }
+      // 'no-speech' / 'aborted' etc. are routine — onend below just restarts listening
+    };
+    voiceRecognition.onend = function(){
+      if(state.voiceListening){
+        playListenChime();
+        try{ voiceRecognition.start(); }catch(e){}
+      }
+    };
+  }
+  state.voiceListening = true;
+  state.voiceLastHeard = '';
+  try{ voiceRecognition.start(); playListenChime(); }catch(e){}
+  render();
+}
+function stopVoiceInput(){
+  state.voiceListening = false;
+  if(voiceRecognition){ try{ voiceRecognition.stop(); }catch(e){} }
+  render();
+}
+function toggleVoiceInput(){
+  if(state.voiceListening) stopVoiceInput(); else startVoiceInput();
+}
+function escapeVoiceText(t){
+  return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function renderVoiceInputWidget(){
+  if(!voiceInputSupported()) return '';
+  const on = state.voiceListening;
+  return `<div class="voice-input-widget">
+    <button class="voice-mic-btn ${on?'on':''}" onclick="toggleVoiceInput()" title="${on?'Stop voice input':'Start voice input'}">${on?'&#9679;':'&#127908;'}</button>
+    ${on ? `<div class="voice-status">${state.voiceLastHeard ? 'Heard: &ldquo;'+escapeVoiceText(state.voiceLastHeard)+'&rdquo;' : 'Listening&hellip; try &ldquo;single 7, double 5&rdquo;'}</div>` : ''}
+  </div>`;
 }
 function finalizeBustThenAdvance(s){
   // score already reverted in x01ApplyDart (not applied), just end turn now
@@ -4621,6 +4801,10 @@ function render(){
   const footerSplit = html.split(FOOTER_MARKER);
   app.innerHTML = footerSplit[0];
   if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
+  if(state.voiceListening && state.screen!=='active'){
+    state.voiceListening = false;
+    if(voiceRecognition){ try{ voiceRecognition.stop(); }catch(e){} }
+  }
   if(state.screen==='precisionZoom') setupPrecisionZoomDrag();
   if(state.screen==='gameplaySettings') populateAnnouncerVoiceSelect();
   persistState();
@@ -5488,6 +5672,7 @@ function renderActiveShell(){
   ${renderPlayerBoxes(s)}
   <div class="panel-zone-tips">${renderCheckoutOptionsLine(s)}${renderTipsSection(s)}</div>
   ${renderBottomControls(s)}
+  ${renderVoiceInputWidget()}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
 function renderCallShotActiveShell(s){
