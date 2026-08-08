@@ -659,7 +659,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-08 05:12 UTC';
+const BUILD_STAMP = '2026-08-08 05:35 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2389,7 +2389,7 @@ function renderBlackoutBoard(s, hitPoint){
   const missOuterEdge = R_BEZEL + 22;
   const cropMargin = (canvas - missOuterEdge*2)/2 - 10;
   const viewSize = canvas - cropMargin*2;
-  const missLabelPos = polar(cx, cy, (R_DOUBLE_OUT+missOuterEdge)/2, 180);
+  const missLabelPos = polar(cx, cy, missOuterEdge-8, 180);
   const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
   const missRingBand = `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, ${JSON.stringify("blackoutSelectMiss()").replace(/"/g,'&quot;')})"/>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
@@ -2469,7 +2469,7 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const missOuterEdge = rBezel + 22;
   const cropMargin = needsWideMargin ? 0 : (canvas - missOuterEdge*2)/2 - 10;
   const viewSize = canvas - cropMargin*2;
-  const missLabelPos = polar(cx, cy, (rDoubleOut+missOuterEdge)/2, 180);
+  const missLabelPos = polar(cx, cy, missOuterEdge-8, 180);
   const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>
@@ -2756,7 +2756,7 @@ function botChooseX01Target(s){
 // below, since its target system is fundamentally different — zones, not num+multiplier).
 function botChooseGenericTarget(s){
   if(s.kind==='x01') return botChooseX01Target(s);
-  const highlighted = getCurrentGameTargetHighlight(s);
+  const highlighted = getCurrentGameTargetHighlightRaw(s);
   if(highlighted) return highlighted;
   if(s.kind==='killer'){
     // Already a killer with no single obvious target (getCurrentGameTargetHighlight only
@@ -2946,26 +2946,26 @@ function numRange(start,end,step,decimals,suffix){
   }
   return arr;
 }
-const BRAND_OPTIONS = ['Red Dragon','Target','Winmau','Harrows','Unicorn','Mission','Shot','Bottelsen','Viper','One80','Designa','Cuesoul','L Style','Condor','Custom','Other','Unknown'];
+const BRAND_OPTIONS = ['Red Dragon','Target','Winmau','Harrows','Unicorn','Mission','Shot','Bottelsen','Viper','One80','Designa','Cuesoul','L Style','Condor','Other','Unknown'];
 const DART_FIELD_SCHEMA = [
   { key:'identity', label:'Dart Identity', fields:[
     {key:'brand', label:'Brand', type:'select', options:BRAND_OPTIONS},
     {key:'model', label:'Model', type:'text'},
   ]},
   { key:'barrel', label:'Barrel', fields:[
-    {key:'barrelWeight', label:'Barrel Weight', type:'select', options:[...numRange(16,30,1,1,' g'),'Custom','Unknown']},
-    {key:'barrelLength', label:'Barrel Length', type:'select', options:[...numRange(35,60,1,0,' mm'),'Custom','Unknown']},
+    {key:'barrelWeight', label:'Barrel Weight', type:'select', options:[...numRange(16,30,1,1,' g'),'Unknown']},
+    {key:'barrelLength', label:'Barrel Length', type:'select', options:[...numRange(35,60,1,0,' mm'),'Unknown']},
     {key:'barrelMaterial', label:'Barrel Material', type:'select', options:['Brass','Nickel Silver','Tungsten','Titanium','Stainless Steel','Aluminum','Other','Unknown']},
-    {key:'barrelDiameter', label:'Barrel Diameter', type:'select', options:[...numRange(5.5,8.0,0.1,1,' mm'),'Custom','Unknown']},
+    {key:'barrelDiameter', label:'Barrel Diameter', type:'select', options:[...numRange(5.5,8.0,0.1,1,' mm'),'Unknown']},
     {key:'barrelProfile', label:'Barrel Shape', type:'select', options:['Straight','Parallel','Torpedo','Bomb','Front Tapered','Rear Tapered','Double Tapered','Scalloped','Concave','Bulbous','Other','Unknown']},
     {key:'gripStyle', label:'Grip Style', type:'select', options:['Ring Grip','Knurled','Razor Grip','Shark Grip','Scalloped Grip','Pixel Grip','Axial Cut Grip','Smooth','Mixed Grip','Other','Unknown']},
   ]},
   { key:'tip', label:'Tip', fields:[
     {key:'tipType', label:'Tip Type', type:'select', options:['Standard Steel Point','Swiss Point','Replaceable Point','Conversion Point','Soft Tip','Specialist Grip Point','Other','Unknown']},
-    {key:'tipLength', label:'Tip Length', type:'select', options:['22 mm','24 mm','26 mm','28 mm','30 mm','32 mm','34 mm','36 mm','38 mm','40 mm','42 mm','45 mm','Custom','Unknown']},
+    {key:'tipLength', label:'Tip Length', type:'select', options:['22 mm','24 mm','26 mm','28 mm','30 mm','32 mm','34 mm','36 mm','38 mm','40 mm','42 mm','45 mm','Unknown']},
   ]},
   { key:'shaftFlight', label:'Shaft & Flight', fields:[
-    {key:'shaftLength', label:'Shaft Length', type:'select', options:['19 mm','22 mm','24 mm','26 mm','28 mm','30 mm','32 mm','35 mm','38 mm','41 mm','45 mm','48 mm','50 mm','Custom','Unknown']},
+    {key:'shaftLength', label:'Shaft Length', type:'select', options:['19 mm','22 mm','24 mm','26 mm','28 mm','30 mm','32 mm','35 mm','38 mm','41 mm','45 mm','48 mm','50 mm','Unknown']},
     {key:'shaftMaterial', label:'Shaft Material', type:'select', options:['Nylon','Polycarbonate','Aluminum','Carbon Fiber','Titanium','Composite','Integrated Molded System','Other','Unknown']},
     {key:'flightShape', label:'Flight Shape', type:'select', options:['No. 2 Standard','No. 6 Small Standard','Slim','Pear','Kite','Teardrop','Shape','Vapor','Fantail','Lantern','Rocket','Vortex','Delta','Other','Unknown']},
   ]},
@@ -2983,7 +2983,7 @@ function initDartFieldOptions(){
   });
 }
 // Fallback catch-alls always stay pinned at the end, in this order, regardless of how the rest sorts.
-const DART_OPTION_SENTINELS = ['Custom','Other','Unknown'];
+const DART_OPTION_SENTINELS = ['Other','Unknown'];
 function sortDartOptionList(arr){
   const sentinels = [], rest = [];
   arr.forEach(v=>{ (DART_OPTION_SENTINELS.includes(v) ? sentinels : rest).push(v); });
@@ -3211,7 +3211,7 @@ function addFieldOption(category){
   render();
 }
 function removeFieldOption(category, value){
-  if(DART_OPTION_SENTINELS.includes(value)) return; // Custom/Other/Unknown are structural fallbacks, not removable
+  if(DART_OPTION_SENTINELS.includes(value)) return; // Other/Unknown are structural fallbacks, not removable
   state.dartFieldOptions[category] = state.dartFieldOptions[category].filter(v=>v!==value);
   render();
 }
@@ -5555,7 +5555,7 @@ function renderTurnHint(s){
   const darts = s.currentTurnDarts;
   if(darts.length===0){
     if((s.kind==='killer' || s.kind==='halveit') && s.lastTurnSummary) return s.lastTurnSummary;
-    const t = s.kind==='x01' ? botChooseX01Target(s) : getCurrentGameTargetHighlight(s);
+    const t = s.kind==='x01' ? botChooseX01Target(s) : getCurrentGameTargetHighlightRaw(s);
     const label = turnHintTargetLabel(t);
     return label ? `${name} is throwing for ${label}.` : `${name} is up.`;
   }
@@ -5745,7 +5745,7 @@ function currentSessionPlayerId(s){
 }
 function accuracyTargetsFor(s){
   try{
-    const h = getCurrentGameTargetHighlight(s);
+    const h = getCurrentGameTargetHighlightRaw(s);
     if(!h) return [];
     const arr = Array.isArray(h) ? h : [h];
     return arr.map(x=>String(x.num));
@@ -5772,6 +5772,11 @@ function recordAccuracyDart(playerId, targets, hitNum){
   if(onTarget) rec.byDay[key].hits++;
 }
 function getCurrentGameTargetHighlight(s){
+  const result = getCurrentGameTargetHighlightRaw(s);
+  if(Array.isArray(result) && result.length > 8) return null;
+  return result;
+}
+function getCurrentGameTargetHighlightRaw(s){
   if(s.kind==='x01'){
     if(s.guidance==='none') return null;
     const p = x01Current(s);
@@ -5837,7 +5842,7 @@ function killerOwnerLabels(s){
     const pl = state.players.find(x=>x.id===p.playerId);
     const text = pl ? pl.name : '???';
     const color = p.eliminated ? 'rgba(242,236,220,0.35)' : (p===me ? '#CC9A3D' : KILLER_COLORS[idx % KILLER_COLORS.length]);
-    return { num: p.number, text: p===me ? text+' (you)' : text, color };
+    return { num: p.number, text, color };
   });
 }
 function renderEntryArea(s){
@@ -6459,7 +6464,7 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
   const cropMargin2 = missHandler ? (canvas - missOuterEdge2*2)/2 - 10 : (canvas - (R_OVER_OUT+19)*2)/2 - 16;
   const viewSize2 = canvas - cropMargin2*2;
   const missLabel2 = missHandler ? (()=>{
-    const pos = polar(cx, cy, (R_DOUBLE_OUT+missOuterEdge2)/2, 180);
+    const pos = polar(cx, cy, missOuterEdge2-8, 180);
     return `<text x="${pos[0]}" y="${pos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
   })() : '';
   const missRing2 = missHandler ? `<circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge2}" fill="var(--ink)" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>` : `<circle cx="${cx}" cy="${cy}" r="${R_OVER_OUT+19}" fill="var(--ink)"/>`;
@@ -7046,7 +7051,6 @@ function renderDartSelectField(f){
       ${opts.map(o=>`<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
       <option value="__addnew__">+ Add New&hellip;</option>
     </select>
-    ${val==='Custom' ? `<input class="input" id="db-${f.key}-custom" placeholder="Enter custom ${f.label.toLowerCase()}" value="${b[f.key+'Custom']||''}" style="margin-top:6px;" oninput="dbSetText('${f.key}Custom', this.value)">` : ''}
   </div>`;
 }
 function renderDartTextField(key, label, placeholder){
@@ -7087,7 +7091,7 @@ function renderDartBuilder(){
       <span class="field-label">Notes (optional)</span>
       <input class="input" id="dbNotes" placeholder="Anything worth remembering" value="${b.notes}" oninput="dbSetText('notes', this.value)">
     </div>
-    <p class="info-note">Selecting "Custom" opens a field for your own value. Selecting "Unknown" just leaves it blank rather than guessing. Want to add your own preset values to any list? Do that from the Darts tab's settings.</p>
+    <p class="info-note">Selecting "Unknown" just leaves it blank rather than guessing. Want to add your own preset values to any list? Use "+ Add New…" right in the dropdown, or from the Darts tab's settings.</p>
     <button class="btn btn-primary btn-full" onclick="saveDartBuilder()">Save Setup</button>
     <button class="btn btn-secondary btn-full" onclick="cancelDartBuilder()">Cancel</button>
   </div>`;
