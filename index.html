@@ -138,13 +138,7 @@ body{
   background:inherit;
 }
 .screen-footer:empty{ display:none; }
-.panel-controls{ display:flex; gap:8px; padding-top:12px; }
-.announcer-toggle-row{ margin-top:auto; padding-top:6px; }
-.announcer-toggle{
-  width:100%; border-radius:8px; padding:8px 0; text-align:center; font-size:11.5px; font-weight:600;
-  background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); cursor:pointer; letter-spacing:0.02em;
-}
-.announcer-toggle.on{ background:rgba(91,155,245,0.14); border-color:#5b9bf5; color:#8fc0ff; }
+.panel-controls{ display:flex; gap:8px; padding-top:12px; margin-top:auto; }
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
 .panel-controls .btn-leave{ background:rgba(160,60,50,0.16); border-color:rgba(200,120,110,0.3); color:#e8a488; }
@@ -273,24 +267,29 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 }
 .field-label{font-size:12px; color:var(--cream-dim); margin-bottom:6px; display:block; font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:0.06em;}
 .chip{
-  display:inline-flex; align-items:center; padding:7px 12px; border-radius:20px;
+  display:flex; align-items:center; justify-content:center; padding:9px 10px; border-radius:8px;
   border:1px solid var(--felt-lighter); background:var(--felt-dark); color:var(--cream-dim); font-size:13px; cursor:pointer;
-  margin:3px 4px 3px 0;
+  flex:1 1 90px; min-width:0; text-align:center; line-height:1.25;
 }
 .chip.selected{background:rgba(204,154,61,0.18); border-color:var(--brass); color:var(--brass);}
-.chip-wrap{display:flex; flex-wrap:wrap;}
+.chip-wrap{display:flex; flex-wrap:wrap; gap:6px;}
 .checkout-options{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 18px 8px 18px; }
 .checkout-options-label{ font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:0.05em; margin-right:2px; }
 .checkout-options .chip{ font-family:'JetBrains Mono',monospace; font-size:12px; }
 
 .player-row{
-  display:flex; align-items:center; justify-content:space-between; padding:10px 12px;
+  display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
   background:var(--felt-dark); border:1px solid var(--felt-lighter); border-radius:10px; margin-bottom:8px;
 }
 .player-avatar{
-  width:38px;height:38px;border-radius:50%; display:flex;align-items:center;justify-content:center;
-  font-weight:700; font-size:19px; color:#1a1206; flex-shrink:0;
+  width:44px;height:44px;border-radius:50%; display:flex;align-items:center;justify-content:center;
+  font-weight:700; font-size:20px; color:#1a1206; flex-shrink:0;
 }
+.big-section-header{
+  font-family:'Oswald',sans-serif; font-size:20px; font-weight:700; color:var(--brass); letter-spacing:0.03em;
+  margin:18px 0 10px 0; border-bottom:2px solid var(--felt-lighter); padding-bottom:6px;
+}
+.big-section-header:first-child{ margin-top:0; }
 
 .active-top{padding:10px 18px 6px 18px;}
 .active-top .game-title{font-size:11px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:0.1em;}
@@ -660,7 +659,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-07 16:15 UTC';
+const BUILD_STAMP = '2026-08-08 05:12 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -746,7 +745,6 @@ let state = {
   confirmDeletePracticeId: null,
   celebration: null,
   celebrationTimer: null,
-  lastAnnouncedText: null,
   practiceRandomMode: 'sequence',
   playerNameEdit: null,
   playerSettings: { guestRetentionHours: 12 },
@@ -786,10 +784,6 @@ let state = {
     heatmapPos: null,
     chalkboardPos: null,
     panelWidth: 230,
-    announcerEnabled: false,
-    announcerVoice: '',
-    announcerRate: 0.85,
-    announcerPitch: 0.8,
   },
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
@@ -3554,9 +3548,6 @@ document.addEventListener('fullscreenchange', function(){
     render();
   }
 });
-if(typeof speechSynthesis!=='undefined'){
-  speechSynthesis.onvoiceschanged = function(){ populateAnnouncerVoiceSelect(); };
-}
 function openRules(gameId){ state.rulesGameId = gameId; state.screen='rules'; render(); }
 function backFromRules(){ state.screen='home'; render(); }
 function defaultSelectedPlayerIds(){
@@ -3748,52 +3739,6 @@ function launchCustomGame(){
   render();
 }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
-let announcerVoicesCache = [];
-function populateAnnouncerVoiceSelect(){
-  const sel = document.getElementById('announcerVoiceSelect');
-  if(!sel || typeof speechSynthesis==='undefined') return;
-  const voices = speechSynthesis.getVoices();
-  if(!voices.length) return;
-  announcerVoicesCache = voices;
-  const englishFirst = voices.slice().sort((a,b)=>{
-    const aEn = a.lang.startsWith('en') ? 0 : 1, bEn = b.lang.startsWith('en') ? 0 : 1;
-    return aEn - bEn;
-  });
-  sel.innerHTML = englishFirst.map(v=>`<option value="${v.name}">${v.name} (${v.lang})</option>`).join('');
-  let toSelect = state.settings.announcerVoice;
-  if(!toSelect || !voices.some(v=>v.name===toSelect)){
-    const nathan = voices.find(v=>v.name.toLowerCase().includes('nathan'));
-    toSelect = nathan ? nathan.name : (englishFirst[0] ? englishFirst[0].name : '');
-    state.settings.announcerVoice = toSelect;
-  }
-  sel.value = toSelect;
-}
-function speakAnnouncerText(text){
-  if(typeof speechSynthesis==='undefined' || !text) return;
-  speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  const voices = announcerVoicesCache.length ? announcerVoicesCache : speechSynthesis.getVoices();
-  const chosen = voices.find(v=>v.name===state.settings.announcerVoice);
-  if(chosen) utter.voice = chosen;
-  utter.rate = state.settings.announcerRate||0.85;
-  utter.pitch = state.settings.announcerPitch||0.8;
-  speechSynthesis.speak(utter);
-}
-function testAnnouncerVoice(){
-  speakAnnouncerText("Scott is throwing for triple twenty.");
-}
-function toggleAnnouncer(){
-  state.settings.announcerEnabled = !state.settings.announcerEnabled;
-  if(!state.settings.announcerEnabled && typeof speechSynthesis!=='undefined') speechSynthesis.cancel();
-  render();
-}
-function maybeAnnounce(text){
-  if(!state.settings.announcerEnabled) return;
-  if(state.lastAnnouncedText===text) return;
-  state.lastAnnouncedText = text;
-  const clean = text.replace(/<[^>]*>/g,'').replace(/\p{Extended_Pictographic}/gu,'').replace(/\s+/g,' ').trim();
-  speakAnnouncerText(clean);
-}
 function toggleHalveitTarget(t){
   const o = state.gameOptions;
   if(!o.halveitTargets) o.halveitTargets = [];
@@ -4619,7 +4564,6 @@ function render(){
   app.innerHTML = footerSplit[0];
   if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
   if(state.screen==='precisionZoom') setupPrecisionZoomDrag();
-  if(state.screen==='gameplaySettings') populateAnnouncerVoiceSelect();
   persistState();
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
@@ -4932,9 +4876,9 @@ function renderPlayerSetup(){
     const dart = dartId ? state.dartSetups.find(x=>x.id===dartId) : null;
     return `<div class="player-row" style="flex-direction:column; align-items:stretch; gap:8px;">
         <div style="display:flex; align-items:center; justify-content:space-between;">
-          <div style="display:flex; align-items:center; gap:10px;">
+          <div style="display:flex; align-items:center; gap:12px;">
             <div class="player-avatar" style="background:${playerColor(p,idx)}; cursor:pointer;" onclick="openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
-            <div>${p.name}</div>
+            <div style="font-size:16px; font-weight:600;">${p.name}</div>
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
             <span class="badge ${p.isGuest?'soon':'live'}" style="cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')" title="Tap to switch">${p.isGuest?'Guest &middot; tap to make permanent':'Permanent'}</span>
@@ -4954,9 +4898,9 @@ function renderPlayerSetup(){
   </div>
   <div class="subtitle">${titleName} &middot; select players or add a guest</div>
   <div class="content">
-    <span class="field-label">Your Players</span>
+    <div class="big-section-header">Your Players</div>
     ${permanentPlayers.length ? permanentPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">No permanent players yet. Add a guest below, then tap "Guest" on their row to make them permanent.</p>'}
-    ${guestPlayers.length ? `<span class="field-label" style="margin-top:8px;">Guests</span>${guestPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('')}` : ''}
+    ${guestPlayers.length ? `<div class="big-section-header">Guests</div>${guestPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('')}` : ''}
     <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first. Tap a player's avatar to change their emoji.</p>
     <div style="display:flex; gap:8px;">
       <input class="input" id="newPlayerName" placeholder="Add a guest by name" onkeydown="if(event.key==='Enter')addGuestPlayer()">
@@ -5265,22 +5209,6 @@ function renderGameplaySettings(){
       <input type="checkbox" ${s.boardConfirm?'checked':''} onchange="setSetting('boardConfirm', ${!s.boardConfirm})">
       Confirm dartboard taps before scoring
     </div>
-    <div>
-      <span class="field-label">Announcer Voice</span>
-      <select id="announcerVoiceSelect" onchange="setSetting('announcerVoice', this.value)" style="width:100%; padding:10px; border-radius:8px; background:var(--felt-light); color:var(--cream); border:1px solid var(--felt-lighter);"></select>
-      <p class="info-note">Announces the current turn's instructions out loud during games. Voices come from your device — download better ones through your system's accessibility settings for more natural results. Turn the announcer on or off per-game from a button next to Undo on the game screen.</p>
-    </div>
-    <div style="display:flex; align-items:center; gap:12px;">
-      <span class="field-label" style="width:70px; margin:0;">Rate</span>
-      <input type="range" min="0.5" max="1.6" step="0.05" value="${s.announcerRate}" onchange="setSetting('announcerRate', parseFloat(this.value))" style="flex:1;">
-      <span style="font-size:13px; color:var(--cream-dim); min-width:32px;">${s.announcerRate.toFixed(2)}</span>
-    </div>
-    <div style="display:flex; align-items:center; gap:12px;">
-      <span class="field-label" style="width:70px; margin:0;">Pitch</span>
-      <input type="range" min="0" max="2" step="0.05" value="${s.announcerPitch}" onchange="setSetting('announcerPitch', parseFloat(this.value))" style="flex:1;">
-      <span style="font-size:13px; color:var(--cream-dim); min-width:32px;">${s.announcerPitch.toFixed(2)}</span>
-    </div>
-    <button class="btn btn-secondary btn-full" onclick="testAnnouncerVoice()">Test Voice</button>
     <p class="info-note">These general play preferences apply everywhere darts get thrown — games, practice, and custom games alike.</p>
   </div>`;
 }
@@ -5346,7 +5274,6 @@ function renderPlayerBoxes(s){
 }
 function renderInstructionBox(s){
   const hint = renderTurnHint(s);
-  maybeAnnounce(hint);
   return `<div class="panel-zone-instruction">
     <div class="panel-instruction-box">
       <div class="pi-label">&#9679; NOW</div>
@@ -5537,9 +5464,6 @@ function renderCallShotActiveShell(s){
   ${targetChipRow()}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderInstructionBox(s)}
   ${playerBoxes}
-  <div class="announcer-toggle-row">
-    <button class="announcer-toggle ${state.settings.announcerEnabled?'on':''}" onclick="toggleAnnouncer()">${state.settings.announcerEnabled?'\u{1F50A} Announcer On':'\u{1F507} Announcer Off'}</button>
-  </div>
   <div class="panel-controls">
     <button class="btn-undo" onclick="callShotUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
@@ -5958,7 +5882,7 @@ function renderBoardConfirmLine(s){
     ? (['grid','board','chalkboard'].includes(state.settings.cricketEntryMethod) ? state.settings.cricketEntryMethod : 'chalkboard')
     : state.settings.entryMethod;
   if(method!=='board') return '';
-  return `${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
+  return `${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} selected — tap again to confirm</div>` : ''}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function renderNumberGrid(s){
@@ -6073,11 +5997,7 @@ function renderNumberGrid(s){
   </div>`;
 }
 function renderBottomControls(s){
-  const on = state.settings.announcerEnabled;
-  return `<div class="announcer-toggle-row">
-    <button class="announcer-toggle ${on?'on':''}" onclick="toggleAnnouncer()">${on?'\u{1F50A} Announcer On':'\u{1F507} Announcer Off'}</button>
-  </div>
-  <div class="panel-controls">
+  return `<div class="panel-controls">
     <button class="btn-undo" onclick="doUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>`;
@@ -6365,7 +6285,7 @@ function renderPracticeBoard(ps){
   const target = practiceCurrentTarget(ps);
   const highlight = target!==undefined ? {num:target, seg: ps.def.requiredMultiplier || 'any'} : null;
   return `<div class="board-area">${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || ps.lastHitPoint, null, "practiceSelectNumber('miss')")}</div>
-  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
+  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : ''}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function practiceBestWorst(ps){
@@ -6459,7 +6379,7 @@ function renderCheckoutPracticeBoard(cp){
   const route = findCheckout(cp.currentScore, dartsLeft, 'double');
   const highlight = route && route.length ? parseThrowLabel(route[0]) : null;
   return `<div class="board-area">${renderDartboardSVG(state.pendingBoard, highlight, (state.pendingBoard && state.pendingBoard.point) || cp.lastHitPoint, null, "checkoutPracticeSelectNumber('miss')")}</div>
-  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : '<div class="confirm-banner" style="opacity:0.6;">Tap a segment to score</div>'}
+  ${state.pendingBoard ? `<div class="confirm-banner">${state.pendingBoard.label} — tap again to confirm</div>` : ''}
   ${state.pendingBoard ? `<div style="padding:0 18px 8px 18px;"><button class="btn btn-danger btn-full" onclick="cancelPending()">Cancel</button></div>` : ''}`;
 }
 function renderCheckoutPracticeResults(){
@@ -7077,8 +6997,8 @@ function renderDartPicker(){
 function renderDartManager(){
   const active = state.dartSetups.filter(d=>!d.archived);
   const archived = state.dartSetups.filter(d=>d.archived);
-  return `<div class="section-label">Your dart setups</div>
-  <div class="content content-grid">
+  return `<div class="content">
+  <div class="big-section-header">Your Dart Setups</div>
     ${active.length===0 ? '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No dart setups yet</h3><p>Add your first setup to start tracking performance by dart.</p></div>' : ''}
     ${active.map(d=>`
       <div class="card">
@@ -7099,7 +7019,7 @@ function renderDartManager(){
       </div>
     `).join('')}
     <button class="btn btn-primary btn-full" onclick="openDartBuilder(null)">+ Add New Dart Setup</button>
-    ${archived.length? `<div class="section-label" style="padding-left:0;">Archived</div>
+    ${archived.length? `<div class="big-section-header">Archived</div>
       ${archived.map(d=>`<div class="card" style="opacity:0.6;"><h3 style="font-size:15px;">${dartSetupDisplayName(d)}</h3>
         <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="toggleDartArchived('${d.id}')">Restore</button></div>`).join('')}` : ''}
   </div>`;
@@ -7215,19 +7135,19 @@ function renderPlayerManager(){
   const botPlayers = state.players.filter(p=>p.isBot);
   function row(p,idx){
     return `<div class="player-row" style="cursor:pointer;" onclick="openPlayerDetail('${p.id}')">
-      <div style="display:flex; align-items:center; gap:10px;">
+      <div style="display:flex; align-items:center; gap:12px;">
         <div class="player-avatar" style="background:${playerColor(p,idx)}; cursor:pointer;" onclick="event.stopPropagation(); openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
-        <div>${p.name}${p.isBot?` <span style="color:var(--cream-dim); font-size:12px;">&middot; ${BOT_RATING_LABELS[p.botRating]||''} (${p.botRating}/10)</span>`:''}</div>
+        <div style="font-size:16px; font-weight:600;">${p.name}${p.isBot?` <span style="color:var(--cream-dim); font-size:12px; font-weight:400;">&middot; ${BOT_RATING_LABELS[p.botRating]||''} (${p.botRating}/10)</span>`:''}</div>
       </div>
       <span class="badge ${p.isBot?'live':p.isGuest?'soon':'live'}">${p.isBot?'Bot':p.isGuest?'Guest':'Permanent'}</span>
     </div>`;
   }
-  return `<div class="section-label">Permanent Players</div>
-  <div class="content content-grid">
+  return `<div class="content">
+    <div class="big-section-header">Permanent Players</div>
     ${permanentPlayers.length ? permanentPlayers.map((p)=>row(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">None yet — add one below.</p>'}
-    ${botPlayers.length ? `<span class="field-label" style="margin-top:8px;">Bot Opponents</span>${botPlayers.map((p)=>row(p, state.players.indexOf(p))).join('')}` : ''}
-    ${guestPlayers.length ? `<span class="field-label" style="margin-top:8px;">Guests</span>${guestPlayers.map((p)=>row(p, state.players.indexOf(p))).join('')}` : ''}
-    <div style="display:flex; gap:8px;">
+    ${botPlayers.length ? `<div class="big-section-header">Bot Opponents</div>${botPlayers.map((p)=>row(p, state.players.indexOf(p))).join('')}` : ''}
+    ${guestPlayers.length ? `<div class="big-section-header">Guests</div>${guestPlayers.map((p)=>row(p, state.players.indexOf(p))).join('')}` : ''}
+    <div style="display:flex; gap:8px; margin-top:18px;">
       <input class="input" id="newManagedPlayerName" placeholder="Add a new player" onkeydown="if(event.key==='Enter')addManagedPlayer()">
       <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="addManagedPlayer()">Add</button>
     </div>
