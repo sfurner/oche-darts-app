@@ -659,7 +659,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-08 05:35 UTC';
+const BUILD_STAMP = '2026-08-09 18:09 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2011,258 +2011,6 @@ function pickRandomSectionTarget(){
   return SECTION_TARGET_ZONES[Math.floor(Math.random()*SECTION_TARGET_ZONES.length)].id;
 }
 
-/* ========================= PRECISION TRAINER: SESSION ENGINE ========================= */
-function startPrecisionSession(turnsTotal, fixedTarget){
-  return {
-    turnsTotal, turnsCompleted:0,
-    fixedTarget: fixedTarget || null,
-    currentTarget: fixedTarget || pickRandomSectionTarget(),
-    dartsThisTurn: [], turnHistory: [], allThrows: [],
-    startTime: Date.now(), complete:false, dartCounter:0,
-  };
-}
-function precisionApplyThrow(ps, px, py){
-  const targetZone = sectionZoneById(ps.currentTarget);
-  const targetPoint = { x: targetZone.x, y: targetZone.y }; // board-space center of the target zone
-  const targetNorm = boardToNormalized(targetPoint.x, targetPoint.y);
-  const landedNorm = boardToNormalized(px, py);
-  const result = scoreForPoint(px, py);
-  const horizontalError = landedNorm.x - targetNorm.x;
-  const verticalError = landedNorm.y - targetNorm.y;
-  const distance = Math.sqrt(horizontalError*horizontalError + verticalError*verticalError);
-  ps.dartCounter++;
-  const throwRecord = {
-    turnNumber: ps.turnsCompleted+1, dartNumber: ps.dartCounter,
-    targetZoneId: ps.currentTarget, targetX: targetNorm.x, targetY: targetNorm.y,
-    landedX: landedNorm.x, landedY: landedNorm.y,
-    horizontalError, verticalError, distance, distanceMm: boardDistanceToMm(distance),
-    number: result.number, ring: result.ring, score: result.score,
-    label: pointLabel(result.number, result.ring),
-  };
-  ps.dartsThisTurn.push(throwRecord);
-  ps.allThrows.push(throwRecord);
-  if(ps.dartsThisTurn.length>=3){
-    ps.turnHistory.push({darts: ps.dartsThisTurn.slice(), target: ps.currentTarget});
-    ps.dartsThisTurn = [];
-    ps.turnsCompleted++;
-    if(ps.turnsCompleted>=ps.turnsTotal){
-      ps.complete = true;
-      ps.completionTime = Math.round((Date.now()-ps.startTime)/1000);
-    } else {
-      ps.currentTarget = ps.fixedTarget || pickRandomSectionTarget();
-    }
-  }
-  return throwRecord;
-}
-function precisionUndoLastThrow(ps){
-  if(ps.dartsThisTurn.length>0){
-    ps.dartsThisTurn.pop();
-    ps.allThrows.pop();
-    ps.dartCounter--;
-    return true;
-  } else if(ps.turnHistory.length>0){
-    const last = ps.turnHistory.pop();
-    ps.turnsCompleted--;
-    ps.currentTarget = last.target;
-    ps.dartsThisTurn = last.darts.slice(0,2);
-    ps.allThrows.pop();
-    ps.dartCounter--;
-    ps.complete = false;
-    return true;
-  }
-  return false;
-}
-function precisionAvgDistanceMm(ps){
-  if(!ps.allThrows.length) return 0;
-  return Math.round(ps.allThrows.reduce((a,t)=>a+t.distanceMm,0)/ps.allThrows.length);
-}
-function precisionGroupingMm(throws){
-  if(throws.length<2) return 0;
-  const avgX = throws.reduce((a,t)=>a+t.landedX,0)/throws.length;
-  const avgY = throws.reduce((a,t)=>a+t.landedY,0)/throws.length;
-  const maxDist = Math.max(...throws.map(t=>Math.sqrt((t.landedX-avgX)**2+(t.landedY-avgY)**2)));
-  return boardDistanceToMm(maxDist*2); // diameter of the tightest circle containing the group
-}
-function precisionTightestGroup(ps){
-  if(ps.allThrows.length<3) return null;
-  let best = null, bestSize = Infinity;
-  for(let i=0;i<=ps.allThrows.length-3;i++){
-    const group = ps.allThrows.slice(i,i+3);
-    const size = precisionGroupingMm(group);
-    if(size<bestSize){ bestSize=size; best=group; }
-  }
-  return {group:best, sizeMm:bestSize};
-}
-
-/* ========================= PRECISION TRAINER: navigation & zoom/drag/loupe ========================= */
-function openPrecisionSetup(){
-  ensurePracticePlayerDefault();
-  if(!state.practicePlayerId){ state.screen='practicePlayerNeeded'; render(); return; }
-  state.precisionSetupMode = 'random';
-  state.precisionSetupFocusZone = null;
-  state.screen = 'precisionSetup';
-  render();
-}
-function setPrecisionTurns(n){ state.precisionSetupTurns = n; render(); }
-function setPrecisionSetupMode(mode){ state.precisionSetupMode = mode; render(); }
-function selectPrecisionFocusZone(zoneId){ state.precisionSetupFocusZone = zoneId; render(); }
-function handlePrecisionSetupBoardClick(evt){
-  const t = evt.target;
-  if(t.classList && t.classList.contains('section-zone')){
-    selectPrecisionFocusZone(t.getAttribute('data-zone'));
-  }
-}
-function startPrecisionTrainer(){
-  if(state.precisionSetupMode==='focus' && !state.precisionSetupFocusZone) return;
-  state.precisionPlayerId = state.practicePlayerId;
-  const fixedTarget = state.precisionSetupMode==='focus' ? state.precisionSetupFocusZone : null;
-  state.precisionSession = startPrecisionSession(state.precisionSetupTurns, fixedTarget);
-  state.precisionZoom = null;
-  state.screen = 'precisionActive';
-  render();
-}
-function svgRootFromEvent(evt){
-  const el = evt.target;
-  if(el.ownerSVGElement) return el.ownerSVGElement;
-  if(el.tagName && el.tagName.toLowerCase()==='svg') return el;
-  return el.closest ? el.closest('svg') : null;
-}
-function svgPointFromClient(svg, clientX, clientY){
-  const pt = svg.createSVGPoint();
-  pt.x = clientX; pt.y = clientY;
-  const ctm = svg.getScreenCTM().inverse();
-  return pt.matrixTransform(ctm);
-}
-function handlePrecisionFullBoardClick(evt){
-  const t = evt.target;
-  if(t.classList && t.classList.contains('miss-ring-band')) return;
-  const svg = svgRootFromEvent(evt);
-  if(!svg) return;
-  const p = svgPointFromClient(svg, evt.clientX, evt.clientY);
-  openPrecisionZoom(p.x, p.y);
-}
-function openPrecisionZoom(px, py){
-  state.precisionZoom = { tapX:px, tapY:py, markerX:px, markerY:py };
-  state.screen = 'precisionZoom';
-  render();
-}
-function cancelPrecisionZoom(){
-  state.precisionZoom = null;
-  state.screen = 'precisionActive';
-  render();
-}
-function confirmPrecisionDart(){
-  const z = state.precisionZoom;
-  if(!z) return;
-  const ps = state.precisionSession;
-  const throwRecord = precisionApplyThrow(ps, z.markerX, z.markerY);
-  state.lastPrecisionThrow = throwRecord;
-  state.precisionZoom = null;
-  if(ps.complete){ finishPrecisionSession(); }
-  else { state.screen = 'precisionActive'; }
-  render();
-}
-function precisionUndo(){
-  const ps = state.precisionSession;
-  if(!ps) return;
-  precisionUndoLastThrow(ps);
-  state.screen = 'precisionActive';
-  render();
-}
-function exitPrecisionEarly(){ requestQuitSession('precisionNew'); }
-function finishPrecisionSession(){
-  const ps = state.precisionSession;
-  const avgMm = precisionAvgDistanceMm(ps);
-  const summary = {
-    date: new Date().toLocaleString(), createdAt: Date.now(), avgDistanceMm: avgMm,
-    turns: ps.turnsTotal, throws: ps.allThrows.slice(), playerId: state.precisionPlayerId,
-  };
-  state.pendingGameReview = {
-    kind:'precisionNew', gameType:'precisionNew',
-    historyEntry: {
-      type:'Precision Trainer', name:'Precision Trainer ('+ps.turnsTotal+' turns)', date:summary.date,
-      winner:(state.players.find(p=>p.id===state.precisionPlayerId)||{}).name || 'You',
-      detail:'Average miss distance: '+avgMm+'mm',
-      participantIds:[state.precisionPlayerId], createdAt: Date.now()
-    },
-    players:[{playerId: state.precisionPlayerId, name:(state.players.find(p=>p.id===state.precisionPlayerId)||{}).name||'You',
-      dartSetupId: state.playerDartSelections[state.precisionPlayerId]||null, throwCount: ps.allThrows.length}],
-    extra: {precisionSummary: summary}, rawSession: ps,
-  };
-  state.screen = 'precisionResults';
-}
-function backFromPrecisionResults(){ state.precisionSession=null; state.pendingGameReview=null; state.screen='home'; state.navTab='practice'; render(); }
-function openPrecisionProgress(){ state.precisionProgressReturn = state.screen; state.screen='precisionProgress'; render(); }
-function closePrecisionProgress(){ state.screen = state.precisionProgressReturn || 'home'; render(); }
-
-/* Shared zoomed-board rendering (used for both the main zoom view and the magnifying loupe) */
-function renderZoomBoardWedges(){
-  let wedges = '';
-  for(let i=0;i<20;i++){
-    const num = BOARD_ORDER[i];
-    const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
-    const even = i%2===0;
-    const dtFill = even? '#4A8A66' : '#A84545';
-    const singleFill = even? '#E8E1D0' : '#232D28';
-    wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
-    wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
-    wedges += `<path d="${wedgePath(BOARD_CX,BOARD_CY,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="0.6"/>`;
-  }
-  wedges += `<circle cx="${BOARD_CX}" cy="${BOARD_CY}" r="${R_BULL_OUTER}" fill="#4A8A66" stroke="var(--ink)" stroke-width="0.6"/>`;
-  wedges += `<circle cx="${BOARD_CX}" cy="${BOARD_CY}" r="${R_BULL_INNER}" fill="#A84545" stroke="var(--ink)" stroke-width="0.6"/>`;
-  return wedges;
-}
-function renderZoomBoardSVG(centerX, centerY, viewSize, markerX, markerY, markerId, targetPoint){
-  const wedges = renderZoomBoardWedges();
-  const markerR = Math.max(2, viewSize*0.035);
-  const targetMarker = targetPoint ? `<circle cx="${targetPoint.x.toFixed(2)}" cy="${targetPoint.y.toFixed(2)}" r="${(markerR*0.9).toFixed(2)}" fill="none" stroke="#FFD23F" stroke-width="${Math.max(1,viewSize*0.012).toFixed(2)}" stroke-dasharray="${(viewSize*0.02).toFixed(2)} ${(viewSize*0.015).toFixed(2)}"/>` : '';
-  return `<svg viewBox="${(centerX-viewSize/2).toFixed(2)} ${(centerY-viewSize/2).toFixed(2)} ${viewSize} ${viewSize}" class="precision-zoom-svg" ${markerId==='precisionMarkerDot'?'id="precisionZoomSvg"':''}>
-    ${wedges}
-    ${targetMarker}
-    <circle id="${markerId}" cx="${markerX.toFixed(2)}" cy="${markerY.toFixed(2)}" r="${markerR.toFixed(2)}" fill="#FF3B3B" stroke="white" stroke-width="${Math.max(1,viewSize*0.015).toFixed(2)}"/>
-  </svg>`;
-}
-function setupPrecisionZoomDrag(){
-  const svg = document.getElementById('precisionZoomSvg');
-  const loupe = document.getElementById('precisionLoupe');
-  const marker = document.getElementById('precisionMarkerDot');
-  if(!svg || !state.precisionZoom) return;
-  const targetZone = state.precisionSession ? sectionZoneById(state.precisionSession.currentTarget) : null;
-  function moveTo(clientX, clientY){
-    const p = svgPointFromClient(svg, clientX, clientY);
-    state.precisionZoom.markerX = p.x;
-    state.precisionZoom.markerY = p.y;
-    if(marker){ marker.setAttribute('cx', p.x.toFixed(2)); marker.setAttribute('cy', p.y.toFixed(2)); }
-    if(loupe){
-      loupe.style.display = 'block';
-      loupe.style.left = Math.max(4,(clientX - 55)) + 'px';
-      loupe.style.top = Math.max(4,(clientY - 150)) + 'px';
-      loupe.innerHTML = renderZoomBoardSVG(p.x, p.y, 46, p.x, p.y, 'loupeMarker', targetZone?{x:targetZone.x,y:targetZone.y}:null);
-    }
-  }
-  function onMove(evt){ evt.preventDefault(); moveTo(evt.clientX, evt.clientY); }
-  function onTouchMove(evt){ evt.preventDefault(); const t=evt.touches[0]; moveTo(t.clientX, t.clientY); }
-  function onUp(){
-    document.removeEventListener('pointermove', onMove);
-    document.removeEventListener('pointerup', onUp);
-    document.removeEventListener('touchmove', onTouchMove);
-    document.removeEventListener('touchend', onUp);
-    if(loupe) loupe.style.display='none';
-    confirmPrecisionDart();
-  }
-  function onDown(evt){
-    evt.preventDefault();
-    const t = evt.touches ? evt.touches[0] : evt;
-    moveTo(t.clientX, t.clientY);
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
-    document.addEventListener('touchmove', onTouchMove, {passive:false});
-    document.addEventListener('touchend', onUp);
-  }
-  svg.addEventListener('pointerdown', onDown);
-  svg.addEventListener('touchstart', onDown, {passive:false});
-}
-
 /* ========================= SECTION TRAINER: SESSION ENGINE ========================= */
 function startSectionSession(turnsTotal, fixedTarget){
   return {
@@ -2467,7 +2215,7 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const needsWideMargin = ownerLabels && ownerLabels.length;
   const missOuterEdge = rBezel + 22;
-  const cropMargin = needsWideMargin ? 0 : (canvas - missOuterEdge*2)/2 - 10;
+  const cropMargin = needsWideMargin ? -95 : (canvas - missOuterEdge*2)/2 - 10;
   const viewSize = canvas - cropMargin*2;
   const missLabelPos = polar(cx, cy, missOuterEdge-8, 180);
   const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
@@ -2486,17 +2234,7 @@ function handleBoardClick(evt){
   if(seg==='bullouter'){ label='Outer Bull (25)'; }
   else if(seg==='bullinner'){ label='Bull (50)'; }
   else { label = (seg==='single'?'Single ':seg==='double'?'Double ':'Triple ')+num; }
-  const candidate = {num, seg, label, point};
-  if(!state.settings.boardConfirm){
-    commitBoardThrow(candidate);
-    return;
-  }
-  if(state.pendingBoard && state.pendingBoard.num===num && state.pendingBoard.seg===seg){
-    commitBoardThrow(candidate);
-  } else {
-    state.pendingBoard = candidate;
-    render();
-  }
+  commitBoardThrow({num, seg, label, point});
 }
 function commitBoardThrow(c){
   state.pendingBoard = null;
@@ -3606,7 +3344,7 @@ function randomizePlayerEmoji(id){
   render();
 }
 
-/* Shared "who's practicing" picker — used by all single-player modes (practice routines, Checkout Practice, Section Trainer, Precision Trainer) */
+/* Shared "who's practicing" picker — used by all single-player modes (practice routines, Checkout Practice, Section Trainer) */
 function ensurePracticePlayerDefault(){
   if(state.practicePlayerId && state.players.some(p=>p.id===state.practicePlayerId)) return;
   state.practicePlayerId = state.players.length ? state.players[0].id : null;
@@ -3675,7 +3413,7 @@ function confirmDeletePlayer(id){
   state.confirmDeletePlayerId = null;
   openPlayerManager();
 }
-const PRACTICE_HISTORY_TYPES = ['Practice','Section Trainer','Precision Trainer'];
+const PRACTICE_HISTORY_TYPES = ['Practice','Section Trainer'];
 function isPracticeHistoryType(type){ return PRACTICE_HISTORY_TYPES.includes(type); }
 function playerStatsFor(id){
   const allEntries = state.history.filter(h=>h.participantIds && h.participantIds.includes(id));
@@ -4098,7 +3836,6 @@ function confirmQuitSession(){
   if(t==='practice') state.practiceSession = null;
   else if(t==='checkoutPractice') state.checkoutPractice = null;
   else if(t==='section') state.sectionSession = null;
-  else if(t==='precisionNew'){ state.precisionSession = null; state.precisionZoom = null; }
   state.screen = 'home'; state.navTab = 'practice';
   render();
 }
@@ -4544,11 +4281,6 @@ function render(){
     case 'sectionActive': html = renderSectionActive(); break;
     case 'sectionResults': html = renderSectionResults(); break;
     case 'sectionProgress': html = renderSectionProgress(); break;
-    case 'precisionSetup': html = renderPrecisionSetup(); break;
-    case 'precisionActive': html = renderPrecisionActive(); break;
-    case 'precisionZoom': html = renderPrecisionZoomScreen(); break;
-    case 'precisionResults': html = renderPrecisionResults(); break;
-    case 'precisionProgress': html = renderPrecisionProgress(); break;
     case 'customBuilder': html = renderCustomBuilder(); break;
     case 'customGameBuilder': html = renderCustomGameBuilder(); break;
     case 'themeSettings': html = renderThemeSettings(); break;
@@ -4563,7 +4295,6 @@ function render(){
   const footerSplit = html.split(FOOTER_MARKER);
   app.innerHTML = footerSplit[0];
   if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
-  if(state.screen==='precisionZoom') setupPrecisionZoomDrag();
   persistState();
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
@@ -4676,14 +4407,6 @@ function renderPracticeTab(){
       <div class="btn-row">
         <button class="btn btn-primary" onclick="openSectionSetup()">Start</button>
         <button class="btn btn-secondary" onclick="openSectionProgress()">View Progress</button>
-      </div>
-    </div>
-    <div class="card" style="border:1px solid var(--brass);">
-      <div class="card-row"><h3>Precision Trainer</h3><span class="badge live">New</span></div>
-      <p class="desc">Same idea, deeper detail: tap where your dart landed, then drag to fine-tune the exact spot in a zoomed view before confirming. Tracks true grouping, miss direction, and distance in millimeters — answers "where exactly did it land, and how close was it?"</p>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="openPrecisionSetup()">Start</button>
-        <button class="btn btn-secondary" onclick="openPrecisionProgress()">View Progress</button>
       </div>
     </div>
     <div class="card" style="border:1px solid var(--brass);">
@@ -4813,7 +4536,7 @@ function renderStatsHub(){
     </div>
     <div class="card" onclick="openPracticeHistoryList()">
       <h3>Practice History</h3>
-      <p class="desc">Every saved practice routine, Section Trainer, and Precision Trainer session. ${practiceEntries.length} saved.</p>
+      <p class="desc">Every saved practice routine and Section Trainer session. ${practiceEntries.length} saved.</p>
     </div>
     <p class="info-note">Guest players' games clear 12 hours after they're played, unless that guest is switched to permanent first.</p>
   </div>`;
@@ -4838,7 +4561,7 @@ function renderPracticeHistoryList(){
   const visible = state.history.filter(isHistoryEntryVisible).filter(h=>isPracticeHistoryType(h.type));
   return `<div class="topbar"><div class="iconbtn" onclick="state.navTab='stats'; state.screen='home'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Practice History</h1><div style="width:38px;"></div></div>
   <div class="content">
-    ${visible.length===0 ? '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No practice sessions yet</h3><p>Run a practice routine, Section Trainer, or Precision Trainer session and save it to see it show up here.</p></div>' :
+    ${visible.length===0 ? '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No practice sessions yet</h3><p>Run a practice routine or Section Trainer session and save it to see it show up here.</p></div>' :
     visible.map(h=>`
       <div class="card">
         <div class="card-row"><h3 style="font-size:16px;">${h.name}</h3><span class="badge live">${h.type}</span></div>
@@ -5205,10 +4928,6 @@ function renderGameplaySettings(){
       <input type="checkbox" ${s.autoEndTurn?'checked':''} onchange="setSetting('autoEndTurn', ${!s.autoEndTurn})">
       Automatically end turn after three darts
     </div>
-    <div class="checkbox-row">
-      <input type="checkbox" ${s.boardConfirm?'checked':''} onchange="setSetting('boardConfirm', ${!s.boardConfirm})">
-      Confirm dartboard taps before scoring
-    </div>
     <p class="info-note">These general play preferences apply everywhere darts get thrown — games, practice, and custom games alike.</p>
   </div>`;
 }
@@ -5430,18 +5149,16 @@ function renderCallShotActiveShell(s){
   };
   let board = '';
   if(actorIsBot){
-    board = `<div class="board-area" style="pointer-events:none; opacity:0.85;">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))), undefined, s.turnHitPoints)}</div>
+    board = `<div class="board-area" style="pointer-events:none; opacity:0.85;"><div class="board-wrap">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))), undefined, s.turnHitPoints)}</div></div>
     <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is acting — no input needed</div>`;
   } else if(s.stage==='callselect'){
-    board = `<div class="board-area">${renderSectionBoardSVG(null, 'callShotBoardClickForCall')}</div>
+    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(null, 'callShotBoardClickForCall')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>
     <div class="confirm-banner" style="opacity:0.7;">Tap the exact single, double, triple, or bull you want to call</div>`;
   } else if(s.mode==='natural' && s.calledTargets.length===0){
-    board = `<div class="board-area">${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}</div>
-    <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
+    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
   } else {
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
-    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>
-    <div class="confirm-banner" style="opacity:0.7;">Tap exactly where your dart landed</div>`;
+    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
   }
   const playerBoxes = `<div class="panel-zone-players">
     <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:10px; letter-spacing:0.04em;">PLAYERS</div>
@@ -5840,7 +5557,8 @@ function killerOwnerLabels(s){
   const me = killerCurrent(s);
   return s.participants.map((p,idx)=>{
     const pl = state.players.find(x=>x.id===p.playerId);
-    const text = pl ? pl.name : '???';
+    let text = pl ? pl.name : '???';
+    if(text.length > 11) text = text.slice(0,10)+'…';
     const color = p.eliminated ? 'rgba(242,236,220,0.35)' : (p===me ? '#CC9A3D' : KILLER_COLORS[idx % KILLER_COLORS.length]);
     return { num: p.number, text, color };
   });
@@ -6524,7 +6242,7 @@ function renderSectionActive(){
     </div>
   </div>
   <div class="board-area">${renderSectionBoardSVG(ps.currentTarget, undefined, undefined, "sectionSelectZone('totalmiss')")}</div>
-  <div class="confirm-banner" style="opacity:0.7;">Tap the section where your dart landed</div>${FOOTER_MARKER}
+  ${FOOTER_MARKER}
   <div class="turn-area"><div class="turn-darts">
     ${[0,1,2].map(i=> ps.dartsThisTurn[i] ? `<span class="dart-chip">${ps.dartsThisTurn[i].score}</span>` : `<span class="dart-chip empty">—</span>`).join('')}
   </div></div>
@@ -6616,171 +6334,6 @@ function renderSectionProgress(){
     ${renderSectionLineChart(sessions)}
     ${sessions.length? `<div class="section-label" style="padding-left:0;">History</div>
     ${sessions.slice().reverse().map(s=>`<div class="co-row"><span class="co-route">${s.date} &middot; ${s.turns} turns</span><span class="co-score" style="font-size:14px;">${s.avgScore}</span></div>`).join('')}` : '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No sessions yet</h3><p>Play a round of Section Trainer to start tracking your improvement.</p></div>'}
-  </div>`;
-}
-
-/* ========================= RENDER: PRECISION TRAINER (coordinate-based) ========================= */
-function renderPrecisionSetup(){
-  const opts = [10,20,30,50];
-  const mode = state.precisionSetupMode;
-  const focusZone = state.precisionSetupFocusZone;
-  return `<div class="topbar"><div class="iconbtn" onclick="state.screen='home'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Precision Trainer</h1><div style="width:38px;"></div></div>
-  <div class="content">
-    <div class="rule-block"><h4>How It Works</h4><p>A zone lights up on the board. Tap roughly where your dart landed, and the view zooms in — drag the marker to the exact spot; letting go locks it in. This records the real landing point, not just which section it was in, so you get true grouping and miss-direction data instead of just a hit/miss score.</p></div>
-    ${renderPracticePlayerChips()}
-    <div>
-      <span class="field-label">Target Selection</span>
-      <div class="chip-wrap">
-        <span class="chip ${mode==='random'?'selected':''}" onclick="setPrecisionSetupMode('random')">Randomize Each Turn</span>
-        <span class="chip ${mode==='focus'?'selected':''}" onclick="setPrecisionSetupMode('focus')">Focus on One Section</span>
-      </div>
-    </div>
-    ${mode==='focus' ? `
-    <div>
-      <span class="field-label">Pick Your Section</span>
-      <div class="board-area">${renderSectionBoardSVG(focusZone, 'handlePrecisionSetupBoardClick')}</div>
-      <div class="confirm-banner" style="${focusZone?'':'opacity:0.6;'}">${focusZone ? 'Selected: '+sectionZoneLabel(focusZone) : 'Tap a section on the board to select it'}</div>
-    </div>
-    ` : ''}
-    <div>
-      <span class="field-label">Session Length</span>
-      <div class="chip-wrap">
-        ${opts.map(n=>`<span class="chip ${state.precisionSetupTurns===n?'selected':''}" onclick="setPrecisionTurns(${n})">${n} turns</span>`).join('')}
-      </div>
-      <p class="info-note">Precision Entry takes a bit longer per dart than Section Trainer, so 10-20 turns is a comfortable session length to start.</p>
-    </div>
-    <button class="btn btn-primary btn-full" ${(mode==='focus' && !focusZone) || !state.practicePlayerId ? 'disabled' : ''} onclick="startPrecisionTrainer()">Begin</button>
-  </div>`;
-}
-function renderPrecisionActive(){
-  const ps = state.precisionSession;
-  const targetZone = sectionZoneById(ps.currentTarget);
-  const targetLabel = sectionZoneLabel(ps.currentTarget);
-  const avgMm = precisionAvgDistanceMm(ps);
-  const last = state.lastPrecisionThrow;
-  return `<div class="active-top">
-    <div class="game-title">Precision Trainer &middot; Turn ${ps.turnsCompleted+1} of ${ps.turnsTotal}</div>
-    <h2>Aim for: ${targetLabel}</h2>
-    <div class="objective-banner">
-      <div class="big">Avg Miss: ${avgMm} mm</div>
-      <div class="small">${ps.dartsThisTurn.length} of 3 darts this turn${last?(' — last: '+last.label+' ('+last.distanceMm+'mm off)'):''}</div>
-    </div>
-  </div>
-  <div class="board-area">${renderSectionBoardSVG(ps.currentTarget, 'handlePrecisionFullBoardClick', undefined, 'handleFullBoardTotalMiss()')}</div>
-  <div class="confirm-banner" style="opacity:0.7;">Tap roughly where your dart landed — you'll fine-tune it next</div>${FOOTER_MARKER}
-  <div class="turn-area"><div class="turn-darts">
-    ${[0,1,2].map(i=> ps.dartsThisTurn[i] ? `<span class="dart-chip">${ps.dartsThisTurn[i].distanceMm}mm</span>` : `<span class="dart-chip empty">—</span>`).join('')}
-  </div></div>
-  <div class="bottom-controls">
-    <button onclick="precisionUndo()">Undo</button>
-    <button class="warn" onclick="exitPrecisionEarly()">Quit</button>
-  </div>
-  ${renderQuitSessionModal()}`;
-}
-function handleFullBoardTotalMiss(){
-  // A total miss still needs a board-space point for the math; place it just past the doubles wire, straight up, as a neutral placeholder the player can drag from.
-  openPrecisionZoom(BOARD_CX, BOARD_CY - (R_DOUBLE_OUT + 15));
-}
-function renderPrecisionZoomScreen(){
-  const z = state.precisionZoom;
-  const ps = state.precisionSession;
-  const targetZone = sectionZoneById(ps.currentTarget);
-  const preview = scoreForPoint(z.markerX, z.markerY);
-  return `<div class="active-top">
-    <div class="game-title">Fine-Tune Placement</div>
-    <h2>Aim for: ${sectionZoneLabel(ps.currentTarget)}</h2>
-    <div class="objective-banner"><div class="small">Tap the exact spot to lock it in — or drag the marker first and let go when it's right. Gold dashes mark your target.</div></div>
-  </div>
-  <div class="board-area">${renderZoomBoardSVG(z.tapX, z.tapY, 130, z.markerX, z.markerY, 'precisionMarkerDot', {x:targetZone.x, y:targetZone.y})}</div>
-  <div class="confirm-banner">Currently: ${pointLabel(preview.number, preview.ring)}</div>
-  <div id="precisionLoupe" class="precision-loupe" style="display:none;"></div>
-  <div class="bottom-controls">
-    <button class="warn" onclick="cancelPrecisionZoom()">Cancel</button>
-  </div>`;
-}
-function renderPrecisionResults(){
-  const ps = state.precisionSession;
-  const review = state.pendingGameReview;
-  const avgMm = precisionAvgDistanceMm(ps);
-  const avgH = ps.allThrows.length ? Math.round(boardDistanceToMm(Math.abs(ps.allThrows.reduce((a,t)=>a+t.horizontalError,0)/ps.allThrows.length))) : 0;
-  const avgV = ps.allThrows.length ? Math.round(boardDistanceToMm(Math.abs(ps.allThrows.reduce((a,t)=>a+t.verticalError,0)/ps.allThrows.length))) : 0;
-  const vBiasSign = ps.allThrows.reduce((a,t)=>a+t.verticalError,0) >= 0 ? 'high' : 'low';
-  const hBiasSign = ps.allThrows.reduce((a,t)=>a+t.horizontalError,0) >= 0 ? 'right' : 'left';
-  const groupSize = precisionGroupingMm(ps.allThrows);
-  const tightest = precisionTightestGroup(ps);
-  return `<div class="topbar"><div class="brand"><span class="dot"></span><h1 style="color:var(--brass);">Session Complete</h1></div><div style="width:38px;"></div></div>
-  <div class="content">
-    <div class="rule-block" style="text-align:center;">
-      <div style="font-size:40px; font-family:'Oswald',sans-serif; color:var(--brass);">${avgMm}mm</div>
-      <div style="color:var(--cream-dim); font-size:13px;">Average Miss Distance (lower is better)</div>
-    </div>
-    <div class="stat-grid">
-      <div class="stat-box"><div class="val">${avgH}mm ${hBiasSign}</div><div class="lab">Horizontal Bias</div></div>
-      <div class="stat-box"><div class="val">${avgV}mm ${vBiasSign}</div><div class="lab">Vertical Bias</div></div>
-      <div class="stat-box"><div class="val">${groupSize}mm</div><div class="lab">Overall Grouping</div></div>
-      <div class="stat-box"><div class="val">${tightest?tightest.sizeMm+'mm':'—'}</div><div class="lab">Tightest 3-Dart Group</div></div>
-    </div>
-    <div class="section-label" style="padding-left:0;">Dart Dispersion</div>
-    ${renderDispersionPlot(ps.allThrows)}
-    <p class="info-note">Each dot is one dart, plotted relative to its own target's center (center of the plot). Brighter dots are more recent throws.</p>
-    ${review ? `<span class="field-label">Dart Used</span>${review.players.map(rp=>playerDartRow(rp,'precisionResults')).join('')}` : ''}
-    <button class="btn btn-secondary btn-full" onclick="openPrecisionProgress()">View Progress Over Time</button>
-    <button class="btn btn-primary btn-full" onclick="saveGameResults()">Save Results</button>
-    <button class="btn btn-danger btn-full" onclick="discardGameResults()">Exit Without Saving</button>
-  </div>`;
-}
-function renderDispersionPlot(throws){
-  const size = 260, cx = size/2, cy = size/2, scale = 100; // 1 normalized unit = 100px, so a whole-board-width miss is visible
-  const n = throws.length;
-  const dots = throws.map((t,i)=>{
-    const dx = t.landedX - t.targetX, dy = t.landedY - t.targetY;
-    const x = cx + dx*scale, y = cy - dy*scale;
-    const recency = n>1 ? i/(n-1) : 1;
-    const opacity = (0.25 + recency*0.65).toFixed(2);
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="#FF3B3B" fill-opacity="${opacity}" stroke="white" stroke-width="0.5"/>`;
-  }).join('');
-  return `<svg viewBox="0 0 ${size} ${size}" style="width:100%; max-width:280px; display:block; margin:0 auto; background:var(--felt); border-radius:12px; border:1px solid var(--felt-lighter);">
-    <line x1="${cx}" y1="0" x2="${cx}" y2="${size}" stroke="var(--felt-lighter)" stroke-width="1"/>
-    <line x1="0" y1="${cy}" x2="${size}" y2="${cy}" stroke="var(--felt-lighter)" stroke-width="1"/>
-    <circle cx="${cx}" cy="${cy}" r="6" fill="none" stroke="#FFD23F" stroke-width="2"/>
-    ${dots}
-  </svg>`;
-}
-function renderPrecisionLineChartMm(sessions){
-  const w=340,h=140,pad=24;
-  if(sessions.length===0) return '<p style="color:var(--cream-dim); font-size:13px; text-align:center; padding:20px 0;">No sessions yet — play a round to start your chart.</p>';
-  const n = sessions.length;
-  const maxMm = Math.max(...sessions.map(s=>s.avgDistanceMm), 40);
-  const stepX = n>1 ? (w-2*pad)/(n-1) : 0;
-  const points = sessions.map((s,i)=>{
-    const x = pad + i*stepX;
-    const y = h-pad-(1-s.avgDistanceMm/maxMm)*(h-2*pad);
-    return [x.toFixed(1), y.toFixed(1)];
-  });
-  const pathD = points.map((p,i)=> (i===0?'M':'L')+p[0]+' '+p[1]).join(' ');
-  const dots = points.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="var(--brass)"/>`).join('');
-  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%; height:auto;">
-    <line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="var(--felt-lighter)" stroke-width="1"/>
-    <path d="${pathD}" fill="none" stroke="var(--brass)" stroke-width="2"/>
-    ${dots}
-  </svg>`;
-}
-function renderPrecisionProgress(){
-  const sessions = state.precisionSessions;
-  const latest = sessions[sessions.length-1];
-  const prev = sessions[sessions.length-2];
-  const delta = latest && prev ? latest.avgDistanceMm-prev.avgDistanceMm : null;
-  return `<div class="topbar"><div class="iconbtn" onclick="closePrecisionProgress()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Your Progress</h1><div style="width:38px;"></div></div>
-  <div class="content">
-    ${latest? `<div class="rule-block" style="text-align:center;">
-      <div style="font-size:32px; font-family:'Oswald',sans-serif; color:var(--brass);">${latest.avgDistanceMm}mm</div>
-      <div style="color:var(--cream-dim); font-size:13px;">Most Recent Session${delta!==null?` (${delta<=0?'':'+'}${delta}mm vs previous, lower is better)`:''}</div>
-    </div>` : ''}
-    <div class="section-label" style="padding-left:0;">Average Miss Distance by Session</div>
-    <p class="info-note" style="margin-top:0;">Lower is better.</p>
-    ${renderPrecisionLineChartMm(sessions)}
-    ${sessions.length? `<div class="section-label" style="padding-left:0;">History</div>
-    ${sessions.slice().reverse().map(s=>`<div class="co-row"><span class="co-route">${s.date} &middot; ${s.turns} turns</span><span class="co-score" style="font-size:14px;">${s.avgDistanceMm}mm</span></div>`).join('')}` : '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No sessions yet</h3><p>Play a round of Precision Trainer to start tracking your improvement.</p></div>'}
   </div>`;
 }
 
