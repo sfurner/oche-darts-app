@@ -659,7 +659,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-09 18:09 UTC';
+const BUILD_STAMP = '2026-08-09 22:32 UTC';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2145,7 +2145,8 @@ function renderBlackoutBoard(s, hitPoint){
     ${wedges}${labels}${hitMarker}${missLabel}
   </svg>`;
 }
-function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, missHandler){
+function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, missHandler, clickHandler){
+  clickHandler = clickHandler || 'handleBoardClick';
   missHandler = missHandler || 'recordMiss()';
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
   const rDoubleOut=R_DOUBLE_OUT, rDoubleIn=R_DOUBLE_IN, rTripleOut=R_TRIPLE_OUT, rTripleIn=R_TRIPLE_IN, rBullOuter=R_BULL_OUTER, rBullInner=R_BULL_INNER;
@@ -2219,7 +2220,7 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const viewSize = canvas - cropMargin*2;
   const missLabelPos = polar(cx, cy, missOuterEdge-8, 180);
   const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
-  return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
+  return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="${clickHandler}(event)">
     <circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, ${JSON.stringify(missHandler).replace(/"/g,'&quot;')})"/>
     ${wedges}${labels}${highlightOverlay}${hitMarker}${ownerOverlay}${missLabel}
   </svg>`;
@@ -3503,6 +3504,30 @@ function startCallShotSession(playerIds, opts){
 }
 // Outside of Practice, an "inner single" and "outer single" are the same shot — both just Single N.
 // This collapses the two distance-based single zones into one canonical id so calling/matching treats them as equal.
+function callShotZoneIdFromNumSeg(num, seg){
+  if(num==='B') return seg==='bullinner' ? 'bull-inner' : 'bull-outer';
+  return `${num}-${seg}`;
+}
+function callShotHighlightFromZoneId(zoneId){
+  if(!zoneId) return null;
+  if(zoneId==='bull-inner') return {num:'B', seg:'bull'};
+  if(zoneId==='bull-outer') return {num:'B', seg:'single'};
+  const idx = zoneId.lastIndexOf('-');
+  return {num: parseInt(zoneId.slice(0,idx),10), seg: zoneId.slice(idx+1)};
+}
+function callShotDartboardClickForCall(evt){
+  const t = evt.target;
+  if(!t.classList || !t.classList.contains('board-seg')) return;
+  const zoneId = callShotZoneIdFromNumSeg(t.getAttribute('data-num'), t.getAttribute('data-seg'));
+  callShotSelectTarget(zoneId);
+}
+function callShotDartboardClickForAttempt(evt){
+  const t = evt.target;
+  if(!t.classList || !t.classList.contains('board-seg')) return;
+  const zoneId = callShotZoneIdFromNumSeg(t.getAttribute('data-num'), t.getAttribute('data-seg'));
+  state.pendingHitPoint = svgPointFromEvent(evt) || null;
+  callShotRegisterDart(zoneId);
+}
 function callShotCanonicalZone(zoneId){
   if(!zoneId || zoneId==='totalmiss' || zoneId==='bull-outer' || zoneId==='bull-inner') return zoneId;
   if(zoneId.endsWith('-inner') || zoneId.endsWith('-outer')){
@@ -3559,8 +3584,7 @@ function callShotRegisterDart(hitZoneId){
   if(thisPoint) s.turnHitPoints.push(thisPoint);
   // Natural Call mode: the caller's single establishing dart defines the target on the spot.
   if(s.mode==='natural' && s.stage==='callattempt' && s.calledTargets.length===0){
-    const zone = hitZoneId ? sectionZoneById(hitZoneId) : null;
-    if(zone && zone.isTarget){
+    if(hitZoneId){
       s.calledTargets = [callShotCanonicalZone(hitZoneId)];
       callShotResolveAttempt(s, true);
     } else {
@@ -5149,16 +5173,15 @@ function renderCallShotActiveShell(s){
   };
   let board = '';
   if(actorIsBot){
-    board = `<div class="board-area" style="pointer-events:none; opacity:0.85;"><div class="board-wrap">${renderSectionBoardSVG(s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i))), undefined, s.turnHitPoints)}</div></div>
-    <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is acting — no input needed</div>`;
+    const targetZoneId = s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i)));
+    board = `<div class="board-area" style="pointer-events:none; opacity:0.85;"><div class="board-wrap">${renderDartboardSVG(null, callShotHighlightFromZoneId(targetZoneId), s.turnHitPoints)}</div></div>`;
   } else if(s.stage==='callselect'){
-    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(null, 'callShotBoardClickForCall')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>
-    <div class="confirm-banner" style="opacity:0.7;">Tap the exact single, double, triple, or bull you want to call</div>`;
+    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(null, null, null, null, undefined, 'callShotDartboardClickForCall')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
   } else if(s.mode==='natural' && s.calledTargets.length===0){
-    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(null, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
+    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(null, null, s.turnHitPoints, null, 'callShotAttemptThrow(false)', 'callShotDartboardClickForAttempt')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
   } else {
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
-    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderSectionBoardSVG(currentTargetId, 'callShotBoardClickForAttempt', s.turnHitPoints, 'callShotAttemptThrow(false)')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
+    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(null, callShotHighlightFromZoneId(currentTargetId), s.turnHitPoints, null, 'callShotAttemptThrow(false)', 'callShotDartboardClickForAttempt')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
   }
   const playerBoxes = `<div class="panel-zone-players">
     <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:10px; letter-spacing:0.04em;">PLAYERS</div>
