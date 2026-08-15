@@ -670,7 +670,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '8/14/2026, 11:30 PM';
+const BUILD_STAMP = '8/14/2026, 11:40 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5016,7 +5016,7 @@ function renderGameplaySettings(){
    integration's coordinator.py, which does the same thing this way. */
 let boardManagerPollTimer = null;
 let boardManagerLastThrowCount = 0;
-let boardManagerLastStatus = null;
+let boardManagerLastEvent = null;
 
 function boardManagerUrl(){
   const host = (state.settings.boardManagerHost || '').trim();
@@ -5031,7 +5031,7 @@ function connectBoardManager(){
   state.dartsCallerStatus = 'connecting';
   render();
   boardManagerLastThrowCount = 0;
-  boardManagerLastStatus = null;
+  boardManagerLastEvent = null;
   pollBoardManagerOnce(url, /*isFirst*/ true);
   boardManagerPollTimer = setInterval(()=>pollBoardManagerOnce(url, false), 300);
 }
@@ -5060,7 +5060,7 @@ function pollBoardManagerOnce(url, isFirst){
 
 function handleBoardManagerState(data){
   const throws = Array.isArray(data.throws) ? data.throws : [];
-  const status = data.status || data.event || null;
+  const eventText = data.event || null;
   if(throws.length !== boardManagerLastThrowCount){
     console.log('Oche: poll saw throws.length change', boardManagerLastThrowCount, '->', throws.length, JSON.stringify(data));
   }
@@ -5075,14 +5075,16 @@ function handleBoardManagerState(data){
   // resync our count, no need to treat this as new darts.
   boardManagerLastThrowCount = throws.length;
 
-  // Takeout finished is the camera-confirmed "turn is over" signal —
-  // covers bounce-outs/no-scores that never produced a throw entry.
-  if(status !== boardManagerLastStatus){
-    if(status === 'Takeout finished' || status === 'Takeout Finished'){
+  // Takeout finished is the camera-confirmed "turn is over" signal — covers
+  // bounce-outs/no-scores that never produced a throw entry. Confirmed from
+  // a real captured response: this shows up specifically in data.event
+  // ("Takeout finished"), not data.status (which stayed "Throw" throughout).
+  if(eventText !== boardManagerLastEvent){
+    if(eventText === 'Takeout finished'){
       forceEndCurrentTurnFromTakeout();
       boardManagerLastThrowCount = 0; // board will report a fresh empty throws[] for the next player
     }
-    boardManagerLastStatus = status;
+    boardManagerLastEvent = eventText;
   }
 }
 
