@@ -683,6 +683,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
+const APP_VERSION = 'v1.0';
 const BUILD_STAMP = '8/15/2026, 8:25 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
@@ -5065,7 +5066,7 @@ function renderGameplaySettings(){
       Camera Mode — real throws from the board drive gameplay instead of taps/clicks
     </div>
     <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered.</p>
-    <div style="font-size:8px; color:var(--cream-dim); opacity:0.4; text-align:center; padding-top:16px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">Build ${BUILD_STAMP}</div>
+    <div style="font-size:8px; color:var(--cream-dim); opacity:0.4; text-align:center; padding-top:16px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">${APP_VERSION} &middot; ${BUILD_STAMP}</div>
   </div>`;
 }
 
