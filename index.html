@@ -46,10 +46,9 @@ body{
 }
 .sidenav{
   display:flex; flex-direction:column; align-items:center; gap:3px; width:60px; flex-shrink:0;
-  background:var(--felt-dark); border:1px solid var(--felt-lighter); border-right:none;
+  background:rgba(0,0,0,0.14); border-right:1px solid var(--felt-lighter);
   padding:14px 6px;
   overflow-y:auto; min-height:0;
-  box-shadow:0 3px 10px rgba(0,0,0,0.18);
 }
 .sidenav .brand{ padding:0 0 12px 0; display:flex; justify-content:center; }
 .sidenav .brand h1{ display:none; }
@@ -63,7 +62,7 @@ body{
 .sidenav-footer{ margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:3px; width:100%; padding-top:8px; border-top:1px solid var(--felt-lighter); }
 .sidenav-collapse-btn{ display:none; }
 @media (min-width:641px){
-  .sidenav.collapsed{ width:60px; align-items:center; padding:14px 6px; border-radius:0; }
+  .sidenav.collapsed{ width:60px; align-items:center; padding:14px 6px; }
   .sidenav.collapsed .brand{ justify-content:center; padding:0 0 12px 0; }
   .sidenav.collapsed .brand h1{ display:none; }
   .sidenav.collapsed .sidenav-item{ flex-direction:column; align-items:center; gap:2px; font-size:7.5px; text-align:center; border-left:none; padding:7px 2px; }
@@ -72,7 +71,7 @@ body{
   .sidenav-collapse-btn{ display:flex; align-items:center; justify-content:flex-end; cursor:pointer; padding:5px 4px; color:var(--cream-dim); font-size:15px; }
 }
 @media (min-width:641px){
-  .sidenav{ width:170px; align-items:stretch; padding:18px 10px; border-radius:24px 0 0 24px; }
+  .sidenav{ width:170px; align-items:stretch; padding:18px 10px; }
   .sidenav .brand{ justify-content:flex-start; padding:0 6px 12px 6px; }
   .sidenav .brand h1{ display:block; font-size:17px; }
   .sidenav-item{ flex-direction:row; align-items:center; gap:9px; font-size:11.5px; text-align:left; border-left:3px solid transparent; padding:8px 10px; }
@@ -96,15 +95,17 @@ body{
   overflow:hidden;
   min-height:820px;
   display:flex;
-  flex-direction:column;
+  flex-direction:row;
   position:relative;
   margin:24px 12px;
+}
+.device-body{
+  flex:1; min-width:0; display:flex; flex-direction:column;
 }
 /* Phone: full-bleed, no floating card */
 @media (max-width:640px){
   .app-shell{ padding:0; align-items:stretch;}
   .device{ width:auto; max-width:100%; height:100vh; height:100dvh; max-height:100vh; max-height:100dvh; min-height:0; border-radius:0; border:none; box-shadow:none; margin:0;}
-  .sidenav{ min-height:100vh; min-height:100dvh; border-radius:0; }
 }
 /* Tablet: roomier card */
 @media (min-width:641px) and (max-width:1023px){
@@ -114,8 +115,7 @@ body{
 /* Laptop / desktop: persistent side navigation, genuinely wide usage of screen space */
 @media (min-width:1024px){
   .app-shell{ padding:32px; gap:0; }
-  .device{ width:min(1200px, calc(100vw - 280px)); height:calc(100vh - 64px); height:calc(100dvh - 64px); max-height:calc(100vh - 64px); max-height:calc(100dvh - 64px); min-height:0; border-radius:0 24px 24px 0; margin:0; }
-  .app-shell:has(.sidenav.collapsed) .device{ width:min(1400px, calc(100vw - 150px)); }
+  .device{ width:min(1200px, calc(100vw - 280px)); height:calc(100vh - 64px); height:calc(100dvh - 64px); max-height:calc(100vh - 64px); max-height:calc(100dvh - 64px); min-height:0; border-radius:28px; margin:0; }
   .content{ max-width:900px; margin-left:auto; margin-right:auto; }
   .app-shell.fullscreen-mode{ padding:0; }
   .app-shell.fullscreen-mode .device{ width:100vw; height:100vh; height:100dvh; max-height:100vh; max-height:100dvh; min-height:0; border-radius:0; }
@@ -166,7 +166,7 @@ body{
 .panel-instruction-box .pi-label{ font-size:10px; color:var(--brass); font-weight:700; letter-spacing:0.04em; margin-bottom:3px; }
 .panel-instruction-box .pi-text{ font-size:13.5px; color:#fff; font-weight:600; line-height:1.35; }
 @media (min-width:900px){
-  .device.game-layout{ flex-direction:row; }
+  .device.game-layout .device-body{ flex-direction:row; }
   .device.game-layout .screen{ flex:1; min-width:0; }
   .device.game-layout .content{ flex:1; min-height:0; }
   .device.game-layout .board-area{ flex:1; min-height:0; align-items:center; container-type:size; }
@@ -234,6 +234,15 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .card-row{display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
 .card h3{font-size:19px;}
 .card p.desc{color:var(--cream-dim); font-size:13px; margin:4px 0 10px 0; line-height:1.4;}
+/* Grid-picker cards (game list, custom games, etc.) get a uniform height so
+   rows line up cleanly instead of "snaggly teeth" from varying description
+   lengths — the description scrolls internally if it doesn't fit, rather
+   than growing the card. */
+.content-grid .card{ display:flex; flex-direction:column; height:200px; }
+.content-grid .card h3{ flex-shrink:0; }
+.content-grid .card p.desc{ flex:1; min-height:0; overflow-y:auto; padding-right:2px; }
+.content-grid .card .meta-row{ flex-shrink:0; }
+.content-grid .card .btn-row{ flex-shrink:0; margin-top:auto; }
 .badge{
   font-family:'JetBrains Mono',monospace; font-size:10px; padding:3px 8px; border-radius:20px;
   text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;
@@ -591,10 +600,12 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 </head>
 <body>
 <div class="app-shell" id="appShell">
-  <nav class="sidenav" id="sidenav"></nav>
   <div class="device">
-    <div id="app" class="screen"></div>
-    <div id="app-footer" class="screen-footer"></div>
+    <nav class="sidenav" id="sidenav"></nav>
+    <div class="device-body">
+      <div id="app" class="screen"></div>
+      <div id="app-footer" class="screen-footer"></div>
+    </div>
   </div>
 </div>
 <script>
@@ -672,7 +683,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '8/15/2026, 7:55 AM';
+const BUILD_STAMP = '8/15/2026, 8:25 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4425,7 +4436,6 @@ function renderSidenav(){
       <div class="sidenav-item ${['themeSettings','dartSettings','playerSettings','gameplaySettings'].includes(state.screen)?'active':''}" onclick="openContextualSettings()">
         <span class="navicon">&#9881;</span>Settings
       </div>
-      <div style="font-size:8px; color:var(--cream-dim); opacity:0.45; text-align:center; padding-top:8px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">Build ${BUILD_STAMP}</div>
     </div>`;
 }
 function bottomNav(){
@@ -5055,6 +5065,7 @@ function renderGameplaySettings(){
       Camera Mode — real throws from the board drive gameplay instead of taps/clicks
     </div>
     <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered.</p>
+    <div style="font-size:8px; color:var(--cream-dim); opacity:0.4; text-align:center; padding-top:16px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">Build ${BUILD_STAMP}</div>
   </div>`;
 }
 
