@@ -45,41 +45,42 @@ body{
   justify-content:center;
 }
 .sidenav{
-  display:flex; flex-direction:column; align-items:center; gap:4px; width:60px; flex-shrink:0;
+  display:flex; flex-direction:column; align-items:center; gap:3px; width:60px; flex-shrink:0;
   background:var(--felt-dark); border:1px solid var(--felt-lighter); border-right:none;
-  padding:18px 6px;
+  padding:14px 6px;
   overflow-y:auto; min-height:0;
+  box-shadow:0 3px 10px rgba(0,0,0,0.18);
 }
-.sidenav .brand{ padding:0 0 16px 0; display:flex; justify-content:center; }
+.sidenav .brand{ padding:0 0 12px 0; display:flex; justify-content:center; }
 .sidenav .brand h1{ display:none; }
 .sidenav-item{
-  display:flex; flex-direction:column; align-items:center; gap:2px; padding:9px 2px; border-radius:12px;
+  display:flex; flex-direction:column; align-items:center; gap:2px; padding:7px 2px; border-radius:10px;
   color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:7.5px; letter-spacing:0.01em;
   cursor:pointer; width:100%; text-align:center;
 }
-.sidenav-item .navicon{ font-size:17px; }
+.sidenav-item .navicon{ font-size:16px; }
 .sidenav-item.active{ color:var(--brass); background:rgba(204,154,61,0.10); }
-.sidenav-footer{ margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:4px; width:100%; padding-top:10px; border-top:1px solid var(--felt-lighter); }
+.sidenav-footer{ margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:3px; width:100%; padding-top:8px; border-top:1px solid var(--felt-lighter); }
 .sidenav-collapse-btn{ display:none; }
 @media (min-width:641px){
-  .sidenav.collapsed{ width:60px; align-items:center; padding:18px 6px; border-radius:0; }
-  .sidenav.collapsed .brand{ justify-content:center; padding:0 0 16px 0; }
+  .sidenav.collapsed{ width:60px; align-items:center; padding:14px 6px; border-radius:0; }
+  .sidenav.collapsed .brand{ justify-content:center; padding:0 0 12px 0; }
   .sidenav.collapsed .brand h1{ display:none; }
-  .sidenav.collapsed .sidenav-item{ flex-direction:column; align-items:center; gap:2px; font-size:7.5px; text-align:center; border-left:none; padding:9px 2px; }
-  .sidenav.collapsed .sidenav-item .navicon{ font-size:17px; }
+  .sidenav.collapsed .sidenav-item{ flex-direction:column; align-items:center; gap:2px; font-size:7.5px; text-align:center; border-left:none; padding:7px 2px; }
+  .sidenav.collapsed .sidenav-item .navicon{ font-size:16px; }
   .sidenav.collapsed .sidenav-collapse-btn{ justify-content:center; }
-  .sidenav-collapse-btn{ display:flex; align-items:center; justify-content:flex-end; cursor:pointer; padding:6px 4px; color:var(--cream-dim); font-size:16px; }
+  .sidenav-collapse-btn{ display:flex; align-items:center; justify-content:flex-end; cursor:pointer; padding:5px 4px; color:var(--cream-dim); font-size:15px; }
 }
 @media (min-width:641px){
-  .sidenav{ width:190px; align-items:stretch; padding:24px 12px; border-radius:24px 0 0 24px; }
-  .sidenav .brand{ justify-content:flex-start; padding:0 8px 18px 8px; }
-  .sidenav .brand h1{ display:block; font-size:19px; }
-  .sidenav-item{ flex-direction:row; align-items:center; gap:11px; font-size:12.5px; text-align:left; border-left:3px solid transparent; padding:11px 12px; }
+  .sidenav{ width:170px; align-items:stretch; padding:18px 10px; border-radius:24px 0 0 24px; }
+  .sidenav .brand{ justify-content:flex-start; padding:0 6px 12px 6px; }
+  .sidenav .brand h1{ display:block; font-size:17px; }
+  .sidenav-item{ flex-direction:row; align-items:center; gap:9px; font-size:11.5px; text-align:left; border-left:3px solid transparent; padding:8px 10px; }
   .sidenav-item.active{ border-left:3px solid var(--brass); }
-  .sidenav-item .navicon{ font-size:18px; }
+  .sidenav-item .navicon{ font-size:16px; }
 }
 @media (min-width:1024px){
-  .sidenav{ width:210px; padding:26px 14px; }
+  .sidenav{ width:185px; padding:20px 12px; }
   .sidenav .brand h1{ font-size:20px; }
   .sidenav-item{ font-size:13px; }
 }
@@ -131,6 +132,7 @@ body{
   display:flex;
 
   flex-direction:column;
+  justify-content:center;
   overflow-y:auto;
   scrollbar-gutter: stable;
   padding-bottom:8px;
@@ -206,19 +208,19 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .subtitle{color:var(--cream-dim); font-size:13px; padding:0 18px 14px 18px;}
 .section-label{
   font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.14em;
-  color:var(--brass); text-transform:uppercase; padding:16px 18px 8px 18px;
+  color:var(--brass); text-transform:uppercase; padding:12px 18px 6px 18px;
 }
-.content{padding:0 18px 18px 18px; display:flex; flex-direction:column; gap:12px;}
+.content{padding:0 14px 14px 14px; display:flex; flex-direction:column; gap:9px;}
 .content.content-grid{
-  display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr));
-  gap:14px; align-items:start;
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(190px,1fr));
+  gap:10px; align-items:start;
 }
 
 .card{
   background:var(--felt-light);
   border:1px solid var(--felt-lighter);
   border-radius:var(--radius);
-  padding:14px 16px 14px 18px;
+  padding:10px 12px 10px 14px;
   position:relative;
   overflow:hidden;
   box-shadow:0 3px 10px rgba(0,0,0,0.18);
@@ -670,7 +672,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '8/14/2026, 11:50 PM';
+const BUILD_STAMP = '8/15/2026, 7:55 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4350,6 +4352,55 @@ function render(){
   persistState();
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
+  autoFitScreens();
+}
+
+/* ========================= AUTO-FIT (no-scroll pass) =========================
+   Every screen except the live gameplay board ('active', which already has
+   its own proper container-query-based board sizing) gets checked for
+   vertical overflow after each render. If its content is taller than the
+   space it has, we shrink it down (via CSS zoom — the same technique already
+   used for the resizable side panel) just enough to fit, with a sane floor
+   so text never becomes illegible. This is a safety net on top of the
+   tighter base spacing — normal amounts of content shouldn't need it at all,
+   but it means truly long lists (many players, many custom games) degrade
+   gracefully instead of requiring a scroll that's awkward to reach in
+   kiosk/fullscreen mode. */
+const AUTO_FIT_MIN_ZOOM = 0.62;
+function autoFitScreens(){
+  const skip = state.screen === 'active';
+  const targets = [document.getElementById('app')];
+  document.querySelectorAll('.screen').forEach(el=>{ if(el && !targets.includes(el)) targets.push(el); });
+  targets.forEach(el=>{
+    if(!el) return;
+    el.style.zoom = '';
+    el.style.justifyContent = '';
+    if(skip) return;
+    // Reading scrollHeight forces a synchronous layout, so this measurement
+    // reflects the just-updated DOM even though we're not waiting a frame.
+    const naturalScrollH = el.scrollHeight;
+    const availH = el.clientHeight;
+    if(availH > 0 && naturalScrollH > availH + 2){
+      const z = Math.max(AUTO_FIT_MIN_ZOOM, availH / naturalScrollH);
+      el.style.zoom = z;
+      // One corrective pass: zoom itself changes reflow slightly, so the
+      // first estimate is sometimes a touch off. Nudge it once more if needed.
+      requestAnimationFrame(()=>{
+        if(el.scrollHeight > el.clientHeight + 2){
+          const z2 = Math.max(AUTO_FIT_MIN_ZOOM, z * (el.clientHeight / el.scrollHeight));
+          el.style.zoom = z2;
+        }
+        // Rare case: even the shrink floor wasn't enough (genuinely huge
+        // content, e.g. dozens of custom games). Centered content combined
+        // with overflow can trap scrolling above the true top in some
+        // browsers, so fall back to top-aligned so scrolling always reaches
+        // everything.
+        if(el.scrollHeight > el.clientHeight + 2){
+          el.style.justifyContent = 'flex-start';
+        }
+      });
+    }
+  });
 }
 function renderSidenav(){
   const tabs = [
