@@ -659,7 +659,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '8/14/2026, 10:20 PM';
+const BUILD_STAMP = '8/14/2026, 11:00 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -788,7 +788,8 @@ let state = {
     dartsCallerCameraMode: false, // when on, real throws from the board drive gameplay instead of clicks
   },
   dartsCallerStatus: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'error'
-  recentCameraHitHighlight: null, // brief {num,seg} pulse on the wedge/ring just hit via the camera
+  freshCameraDot: false, // true briefly after a real camera-detected dart, makes the newest hit dot flash green
+  lastCameraHitLabel: null, // e.g. 'Single 20', 'Bull (50)', or 'Miss' — what the camera actually saw, for the NOW box
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
   pendingBoard: null, // {label,value,segType} awaiting confirm on dartboard
@@ -2223,7 +2224,13 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
     }
   });
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
-  const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
+  const hitMarker = hitPointsArr.map((pt,i)=>{
+    const isFreshCameraHit = state.freshCameraDot && i===hitPointsArr.length-1;
+    const outerCircle = isFreshCameraHit
+      ? `<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#3DBF6A"><animate attributeName="fill" values="#3DBF6A;#3DBF6A;#FFFFFF" keyTimes="0;0.55;1" dur="1.8s" fill="freeze"/></circle>`
+      : `<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/>`;
+    return outerCircle + `<circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`;
+  }).join('');
   const needsWideMargin = ownerLabels && ownerLabels.length;
   const missOuterEdge = rBezel + 22;
   const cropMargin = needsWideMargin ? -95 : (canvas - missOuterEdge*2)/2 - 10;
@@ -5100,19 +5107,14 @@ function mapBoardManagerSegmentToThrow(segment, coords){
   return {num:number, seg, label, point};
 }
 
-// Brief pulsing highlight on the wedge/ring that was just hit, reusing the
-// same highlight-animation machinery renderDartboardSVG already has for
-// showing target zones. Clears itself after ~1s.
-let cameraHitFlashTimer = null;
-function highlightForMappedThrow(mapped){
-  if(mapped.seg==='bullouter') return {num:'B', seg:'single'};
-  if(mapped.seg==='bullinner') return {num:'B', seg:'bull'};
-  return {num:mapped.num, seg:mapped.seg};
-}
-function flashCameraHit(mapped){
-  state.recentCameraHitHighlight = highlightForMappedThrow(mapped);
-  if(cameraHitFlashTimer) clearTimeout(cameraHitFlashTimer);
-  cameraHitFlashTimer = setTimeout(()=>{ state.recentCameraHitHighlight = null; render(); }, 1000);
+// Marks the most-recently-added hit dot as "fresh" so it renders as a brief
+// green flash that fades to white, instead of the plain white dot. Clears
+// itself after ~1.8s (matches the SVG animation duration).
+let cameraDotFlashTimer = null;
+function flashCameraDot(){
+  state.freshCameraDot = true;
+  if(cameraDotFlashTimer) clearTimeout(cameraDotFlashTimer);
+  cameraDotFlashTimer = setTimeout(()=>{ state.freshCameraDot = false; render(); }, 1800);
 }
 
 // --- Camera-mode turn-end deferral ---
@@ -5155,12 +5157,14 @@ function handleCameraThrow(throwEntry){
   cameraThrowInProgress = true;
   try{
     if(!segment || segment.number === undefined || segment.number === null || segment.number === 0){
+      state.lastCameraHitLabel = 'Miss';
       recordMiss();
       return;
     }
     const mapped = mapBoardManagerSegmentToThrow(segment, throwEntry.coords);
-    flashCameraHit(mapped);
+    state.lastCameraHitLabel = mapped.label;
     commitBoardThrow(mapped);
+    flashCameraDot();
   } finally {
     cameraThrowInProgress = false;
   }
@@ -5184,6 +5188,7 @@ function forceEndCurrentTurnFromTakeout(){
     const fn = cameraPendingTurnEnd;
     cameraPendingTurnEnd = null;
     fn();
+    s.turnHitPoints = []; // clear the dots as soon as the darts are physically pulled
     if(s.complete){
       const finFn = DARTSCALLER_FINISH_GAME_FNS[s.kind];
       if(finFn) finFn(s);
@@ -5195,6 +5200,7 @@ function forceEndCurrentTurnFromTakeout(){
     const endFn = ORIGINAL_END_TURN_FNS[s.kind];
     if(!endFn) return;
     endFn(s);
+    s.turnHitPoints = [];
     if(s.complete){
       const finFn = DARTSCALLER_FINISH_GAME_FNS[s.kind];
       if(finFn) finFn(s);
@@ -5546,6 +5552,14 @@ function renderTurnHint(s){
     const label = turnHintTargetLabel(t);
     return label ? `${name} is throwing for ${label}.` : `${name} is up.`;
   }
+  // In Camera Mode, describe what physically landed, not what the game's
+  // own scoring logic labeled it as. A game like Cricket labels an off-target
+  // number "No Score" for scoring purposes, but that's not the same as a
+  // genuine miss — the dart still hit something real. Only an actual
+  // off-the-board miss should say "missed."
+  if(state.settings.dartsCallerCameraMode && state.lastCameraHitLabel !== null){
+    return state.lastCameraHitLabel==='Miss' ? `${name} missed.` : `${name} hit ${state.lastCameraHitLabel}!`;
+  }
   const last = darts[darts.length-1];
   if(!last || last.label==='Miss' || last.label==='No Score') return `${name} missed.`;
   return `${name} hit ${last.label}!`;
@@ -5763,13 +5777,6 @@ function getCurrentGameTargetHighlight(s){
   if(Array.isArray(result) && result.length > 8) return null;
   return result;
 }
-function boardHighlightsWithCameraFlash(s){
-  const base = getCurrentGameTargetHighlight(s);
-  const flash = state.recentCameraHitHighlight;
-  if(!flash) return base;
-  const baseArr = base ? (Array.isArray(base) ? base : [base]) : [];
-  return [...baseArr, flash];
-}
 function getCurrentGameTargetHighlightRaw(s){
   if(s.kind==='x01'){
     if(s.guidance==='none') return null;
@@ -5852,7 +5859,7 @@ function renderEntryArea(s){
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
-    entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(state.pendingBoard, boardHighlightsWithCameraFlash(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>`;
+    entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>`;
   }
   const toggle = isCricket
     ? `<div class="entry-toggle">
@@ -7162,6 +7169,19 @@ hydrateState();
 initDartFieldOptions();
 render();
 if(state.settings.boardManagerHost){ connectBoardManager(); }
+
+// Kiosk convenience: browsers won't allow fullscreen to trigger purely on
+// page load (requires a real user gesture), so instead we go fullscreen
+// automatically the instant the very first tap/click lands anywhere on the
+// page, then stop listening. In practice this means Oche fills the screen
+// after one touch and stays that way for the rest of the session.
+(function(){
+  function goFullscreenOnce(){
+    if(!state.isFullscreen) toggleFullscreen();
+    document.removeEventListener('pointerdown', goFullscreenOnce, true);
+  }
+  document.addEventListener('pointerdown', goFullscreenOnce, true);
+})();
 </script>
 </body>
 </html>
