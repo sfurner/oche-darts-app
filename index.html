@@ -659,7 +659,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '2026-08-09 22:32 UTC';
+const BUILD_STAMP = '8/14/2026, 10:05 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5042,6 +5042,9 @@ function pollBoardManagerOnce(url, isFirst){
 function handleBoardManagerState(data){
   const throws = Array.isArray(data.throws) ? data.throws : [];
   const status = data.status || data.event || null;
+  if(throws.length !== boardManagerLastThrowCount){
+    console.log('Oche: poll saw throws.length change', boardManagerLastThrowCount, '->', throws.length, JSON.stringify(data));
+  }
 
   // New dart(s) landed since our last poll.
   if(throws.length > boardManagerLastThrowCount){
@@ -5086,15 +5089,20 @@ function mapBoardManagerSegmentToThrow(segment){
 function handleCameraThrow(throwEntry){
   if(!state.settings.dartsCallerCameraMode) return;
   const segment = throwEntry && throwEntry.segment;
+  console.log('Oche: handleCameraThrow received', JSON.stringify(throwEntry));
   if(!segment || segment.number === undefined || segment.number === null){
+    console.log('Oche: -> no usable segment, recording miss');
     recordMiss();
     return;
   }
   if(segment.number === 0){
+    console.log('Oche: -> segment.number is 0, recording miss');
     recordMiss();
     return;
   }
-  commitBoardThrow(mapBoardManagerSegmentToThrow(segment));
+  const mapped = mapBoardManagerSegmentToThrow(segment);
+  console.log('Oche: -> mapped to', JSON.stringify(mapped), '- calling commitBoardThrow');
+  commitBoardThrow(mapped);
 }
 
 // Fallback for messy real-world throws (bounce-outs, no-scores) that never
