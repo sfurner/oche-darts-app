@@ -659,7 +659,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '8/14/2026, 10:05 PM';
+const BUILD_STAMP = '8/14/2026, 10:20 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -788,6 +788,7 @@ let state = {
     dartsCallerCameraMode: false, // when on, real throws from the board drive gameplay instead of clicks
   },
   dartsCallerStatus: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'error'
+  recentCameraHitHighlight: null, // brief {num,seg} pulse on the wedge/ring just hit via the camera
   showAllNumbers: false,
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
   pendingBoard: null, // {label,value,segType} awaiting confirm on dartboard
@@ -5072,47 +5073,104 @@ function handleBoardManagerState(data){
 // Bull encoding isn't confirmed from source — this handles the two most
 // likely conventions (number 25 w/ multiplier, or number 25 alone = outer,
 // 50 = inner) and falls back to the segment name string if present.
-function mapBoardManagerSegmentToThrow(segment){
+// Converts Board Manager's normalized board coordinates into Oche's SVG
+// pixel space. Verified against a real captured throw: a "SingleInner" hit
+// on 12 (x:-0.235, y:0.247) maps to a point 66px from center, which lands
+// exactly inside Oche's inner-single band (24-106px) and in the correct
+// up-left direction for where 12's wedge actually sits — so the convention
+// is: 1.0 unit == R_DOUBLE_OUT pixels, +y == up (mirrors Oche's own polar()
+// convention of cy - r*cos(angle)).
+function boardManagerCoordsToPoint(coords){
+  if(!coords || typeof coords.x !== 'number' || typeof coords.y !== 'number') return null;
+  return { x: BOARD_CX + coords.x * R_DOUBLE_OUT, y: BOARD_CY - coords.y * R_DOUBLE_OUT };
+}
+
+function mapBoardManagerSegmentToThrow(segment, coords){
   const number = segment.number;
   const multiplier = segment.multiplier;
   const name = (segment.name || '').toUpperCase();
+  const point = boardManagerCoordsToPoint(coords);
   if(number === 25 || name.includes('B')){
-    if(multiplier === 2 || number === 50 || name === 'DB' || name === 'D25') return {num:'B', seg:'bullinner', label:'Bull (50)'};
-    return {num:'B', seg:'bullouter', label:'Outer Bull (25)'};
+    if(multiplier === 2 || number === 50 || name === 'DB' || name === 'D25') return {num:'B', seg:'bullinner', label:'Bull (50)', point};
+    return {num:'B', seg:'bullouter', label:'Outer Bull (25)', point};
   }
   const segMap = {1:'single', 2:'double', 3:'triple'};
   const seg = segMap[multiplier] || 'single';
   const label = (seg==='single'?'Single ':seg==='double'?'Double ':'Triple ')+number;
-  return {num:number, seg, label};
+  return {num:number, seg, label, point};
 }
 
-function handleCameraThrow(throwEntry){
-  if(!state.settings.dartsCallerCameraMode) return;
-  const segment = throwEntry && throwEntry.segment;
-  console.log('Oche: handleCameraThrow received', JSON.stringify(throwEntry));
-  if(!segment || segment.number === undefined || segment.number === null){
-    console.log('Oche: -> no usable segment, recording miss');
-    recordMiss();
-    return;
-  }
-  if(segment.number === 0){
-    console.log('Oche: -> segment.number is 0, recording miss');
-    recordMiss();
-    return;
-  }
-  const mapped = mapBoardManagerSegmentToThrow(segment);
-  console.log('Oche: -> mapped to', JSON.stringify(mapped), '- calling commitBoardThrow');
-  commitBoardThrow(mapped);
+// Brief pulsing highlight on the wedge/ring that was just hit, reusing the
+// same highlight-animation machinery renderDartboardSVG already has for
+// showing target zones. Clears itself after ~1s.
+let cameraHitFlashTimer = null;
+function highlightForMappedThrow(mapped){
+  if(mapped.seg==='bullouter') return {num:'B', seg:'single'};
+  if(mapped.seg==='bullinner') return {num:'B', seg:'bull'};
+  return {num:mapped.num, seg:mapped.seg};
+}
+function flashCameraHit(mapped){
+  state.recentCameraHitHighlight = highlightForMappedThrow(mapped);
+  if(cameraHitFlashTimer) clearTimeout(cameraHitFlashTimer);
+  cameraHitFlashTimer = setTimeout(()=>{ state.recentCameraHitHighlight = null; render(); }, 1000);
 }
 
-// Fallback for messy real-world throws (bounce-outs, no-scores) that never
-// produced a throws[] entry: once the board confirms darts were pulled
-// from the board, force the current turn to end if it's still open.
-const DARTSCALLER_END_TURN_FNS = {
+// --- Camera-mode turn-end deferral ---
+// While Camera Mode is on, don't let the game engine advance to the next
+// player just because 3 darts (or a bust) completed the turn logically —
+// wait for a real, camera-confirmed Takeout instead. We do this by wrapping
+// each game kind's own *EndTurn function: calls that originate from a real
+// camera throw get intercepted and queued rather than run immediately;
+// forceEndCurrentTurnFromTakeout() (fired on the real Takeout event) runs
+// the queued call. Manual/click-entered darts are unaffected — they only
+// set cameraThrowInProgress while a camera-sourced dart is being applied.
+let cameraThrowInProgress = false;
+let cameraPendingTurnEnd = null;
+const ORIGINAL_END_TURN_FNS = {
   x01:x01EndTurn, cricket:cricketEndTurn, custom:customEndTurn,
   atc:atcEndTurn, shanghai:shanghaiEndTurn, baseball:baseballEndTurn,
   halveit:halveItEndTurn, killer:killerEndTurn,
 };
+function wrapEndTurnForCamera(originalFn){
+  return function(s){
+    if(state.settings.dartsCallerCameraMode && cameraThrowInProgress){
+      cameraPendingTurnEnd = ()=>originalFn(s);
+      return;
+    }
+    originalFn(s);
+  };
+}
+x01EndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.x01);
+cricketEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.cricket);
+customEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.custom);
+atcEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.atc);
+shanghaiEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.shanghai);
+baseballEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.baseball);
+halveItEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.halveit);
+killerEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.killer);
+
+function handleCameraThrow(throwEntry){
+  if(!state.settings.dartsCallerCameraMode) return;
+  const segment = throwEntry && throwEntry.segment;
+  cameraThrowInProgress = true;
+  try{
+    if(!segment || segment.number === undefined || segment.number === null || segment.number === 0){
+      recordMiss();
+      return;
+    }
+    const mapped = mapBoardManagerSegmentToThrow(segment, throwEntry.coords);
+    flashCameraHit(mapped);
+    commitBoardThrow(mapped);
+  } finally {
+    cameraThrowInProgress = false;
+  }
+}
+
+// Fallback for messy real-world throws (bounce-outs, no-scores) that never
+// produced a throws[] entry: once the board confirms darts were pulled from
+// the board, this is the ONLY place a camera-driven turn actually ends —
+// either completing a turn that was deferred above, or, for the rare case
+// of an incomplete turn (a dart never registered at all), forcing it closed.
 const DARTSCALLER_FINISH_GAME_FNS = {
   x01:finishX01Game, cricket:finishCricketGame, custom:finishCustomGame,
   atc:finishAtcGame, shanghai:finishShanghaiGame, baseball:finishBaseballGame,
@@ -5122,8 +5180,19 @@ function forceEndCurrentTurnFromTakeout(){
   if(!state.settings.dartsCallerCameraMode) return;
   const s = state.session;
   if(!s || s.complete) return;
+  if(cameraPendingTurnEnd){
+    const fn = cameraPendingTurnEnd;
+    cameraPendingTurnEnd = null;
+    fn();
+    if(s.complete){
+      const finFn = DARTSCALLER_FINISH_GAME_FNS[s.kind];
+      if(finFn) finFn(s);
+    }
+    render();
+    return;
+  }
   if(s.currentTurnDarts && s.currentTurnDarts.length > 0 && s.currentTurnDarts.length < 3){
-    const endFn = DARTSCALLER_END_TURN_FNS[s.kind];
+    const endFn = ORIGINAL_END_TURN_FNS[s.kind];
     if(!endFn) return;
     endFn(s);
     if(s.complete){
@@ -5694,6 +5763,13 @@ function getCurrentGameTargetHighlight(s){
   if(Array.isArray(result) && result.length > 8) return null;
   return result;
 }
+function boardHighlightsWithCameraFlash(s){
+  const base = getCurrentGameTargetHighlight(s);
+  const flash = state.recentCameraHitHighlight;
+  if(!flash) return base;
+  const baseArr = base ? (Array.isArray(base) ? base : [base]) : [];
+  return [...baseArr, flash];
+}
 function getCurrentGameTargetHighlightRaw(s){
   if(s.kind==='x01'){
     if(s.guidance==='none') return null;
@@ -5776,7 +5852,7 @@ function renderEntryArea(s){
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
-    entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>`;
+    entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(state.pendingBoard, boardHighlightsWithCameraFlash(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','mainDartboardWrap')}</div></div>`;
   }
   const toggle = isCricket
     ? `<div class="entry-toggle">
