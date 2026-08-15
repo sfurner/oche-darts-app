@@ -670,7 +670,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '8/14/2026, 11:40 PM';
+const BUILD_STAMP = '8/14/2026, 11:50 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5169,7 +5169,12 @@ function handleCameraThrow(throwEntry){
   const segment = throwEntry && throwEntry.segment;
   cameraThrowInProgress = true;
   try{
-    if(!segment || segment.number === undefined || segment.number === null || segment.number === 0){
+    // Confirmed from a real captured miss: Board Manager still reports the
+    // nearest number (e.g. "M20", number:20) even for a genuine miss — it
+    // signals the miss via bed:"Outside" and multiplier:0, NOT number:0.
+    const isMiss = !segment || segment.number === undefined || segment.number === null
+      || segment.bed === 'Outside' || segment.multiplier === 0;
+    if(isMiss){
       state.lastCameraHitLabel = 'Miss';
       recordMiss();
       return;
