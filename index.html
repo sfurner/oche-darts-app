@@ -575,7 +575,6 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 ::-webkit-scrollbar{width:6px;}
 ::-webkit-scrollbar-thumb{background:var(--felt-lighter); border-radius:3px;}
 </style>
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
 <div class="app-shell" id="appShell">
@@ -785,10 +784,8 @@ let state = {
     heatmapPos: null,
     chalkboardPos: null,
     panelWidth: 230,
-    dartsCallerHost: '', // darts PC IP, e.g. 10.0.0.13
+    boardManagerHost: '', // darts PC IP, e.g. 10.0.0.13 — Board Manager itself runs on port 3180 there
     dartsCallerCameraMode: false, // when on, real throws from the board drive gameplay instead of clicks
-    dartsCallerAnnouncer: false, // when on, ask Darts-Caller to voice-call each completed dart
-    dartsCallerAnnouncerCaller: '', // optional specific voice-pack name; blank = whatever Darts-Caller currently has selected
   },
   dartsCallerStatus: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'error'
   showAllNumbers: false,
@@ -842,6 +839,12 @@ function hydrateState(){
       }
     });
     if(typeof payload.uid==='number' && payload.uid>uid) uid = payload.uid;
+    // One-time migration: we used to talk to Darts-Caller (port 8079); now we
+    // talk to Board Manager directly (port 3180) on the same darts PC. Carry
+    // the already-saved IP over so it doesn't need retyping.
+    if(!state.settings.boardManagerHost && payload.settings && payload.settings.dartsCallerHost){
+      state.settings.boardManagerHost = payload.settings.dartsCallerHost;
+    }
   } catch(e){
     console.warn('Oche: could not load saved data', e);
   }
@@ -4960,20 +4963,20 @@ function renderGameplaySettings(){
     </div>
     <p class="info-note">These general play preferences apply everywhere darts get thrown — games, practice, and custom games alike.</p>
 
-    <div class="section-label" style="padding-left:0; margin-top:18px;">Live Board (Darts-Caller)</div>
+    <div class="section-label" style="padding-left:0; margin-top:18px;">Live Board (Board Manager)</div>
     <div>
       <span class="field-label">Darts PC address</span>
-      <input class="input" placeholder="10.0.0.13" value="${s.dartsCallerHost}"
-        onchange="setSetting('dartsCallerHost', this.value.trim()); disconnectDartsCaller();">
+      <input class="input" placeholder="10.0.0.13" value="${s.boardManagerHost}"
+        onchange="setSetting('boardManagerHost', this.value.trim()); disconnectBoardManager();">
     </div>
     <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
       ${state.dartsCallerStatus==='connected'
-        ? `<button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="disconnectDartsCaller()">Disconnect</button>`
-        : `<button class="btn btn-primary" style="flex:none; padding:8px 14px;" onclick="connectDartsCaller()">Connect</button>`}
+        ? `<button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="disconnectBoardManager()">Disconnect</button>`
+        : `<button class="btn btn-primary" style="flex:none; padding:8px 14px;" onclick="connectBoardManager()">Connect</button>`}
       <span class="info-note" style="margin:0;">
         ${state.dartsCallerStatus==='connected' ? '🟢 Connected'
           : state.dartsCallerStatus==='connecting' ? '🟡 Connecting…'
-          : state.dartsCallerStatus==='error' ? ('🔴 Connection failed — check the address, and make sure you have visited https://'+(s.dartsCallerHost||'&lt;ip&gt;')+':8079 once in this browser to accept its certificate.')
+          : state.dartsCallerStatus==='error' ? ('🔴 Connection failed — check the address, and that Board Manager is reachable at http://'+(s.boardManagerHost||'&lt;ip&gt;')+':3180')
           : '⚪ Not connected'}
       </span>
     </div>
@@ -4981,137 +4984,121 @@ function renderGameplaySettings(){
       <input type="checkbox" ${s.dartsCallerCameraMode?'checked':''} onchange="setSetting('dartsCallerCameraMode', ${!s.dartsCallerCameraMode})">
       Camera Mode — real throws from the board drive gameplay instead of taps/clicks
     </div>
-    <div class="checkbox-row">
-      <input type="checkbox" ${s.dartsCallerAnnouncer?'checked':''} onchange="setSetting('dartsCallerAnnouncer', ${!s.dartsCallerAnnouncer})">
-      Announcer — have Darts-Caller call out each dart
-    </div>
-    ${s.dartsCallerAnnouncer ? `
-    <div>
-      <span class="field-label">Voice pack (optional)</span>
-      <input class="input" placeholder="leave blank to use Darts-Caller's current voice" value="${s.dartsCallerAnnouncerCaller}"
-        onchange="setDartsCallerVoice(this.value.trim())">
-    </div>` : ''}
-    <p class="info-note">Camera Mode listens for real dart hits from Darts-Caller on the board PC — it does not change how games are scored, only how darts get entered. The Announcer setting asks Darts-Caller to speak each dart aloud through its own audio output.</p>
+    <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered.</p>
   </div>`;
 }
 
-/* ========================= DARTS-CALLER LIVE INTEGRATION ========================= */
-let dartsCallerSocket = null;
+/* ========================= BOARD MANAGER LIVE INTEGRATION =========================
+   Talks directly to Autodarts' own Board Manager (the actual camera/vision
+   software) instead of going through Darts-Caller. Board Manager exposes a
+   plain REST endpoint at GET /api/state on port 3180 — no Socket.IO, no auth
+   token, no match dependency. We poll it and diff the throws array to notice
+   new darts. Source confirmed from the ha-autodarts-local Home Assistant
+   integration's coordinator.py, which does the same thing this way. */
+let boardManagerPollTimer = null;
+let boardManagerLastThrowCount = 0;
+let boardManagerLastStatus = null;
 
-function dartsCallerUrl(){
-  const host = (state.settings.dartsCallerHost || '').trim();
+function boardManagerUrl(){
+  const host = (state.settings.boardManagerHost || '').trim();
   if(!host) return null;
-  return 'https://' + host + ':8079';
+  return 'http://' + host + ':3180';
 }
 
-function connectDartsCaller(){
-  const url = dartsCallerUrl();
+function connectBoardManager(){
+  const url = boardManagerUrl();
   if(!url) return;
-  if(dartsCallerSocket){ try{ dartsCallerSocket.disconnect(); }catch(e){} dartsCallerSocket = null; }
+  disconnectBoardManager();
   state.dartsCallerStatus = 'connecting';
   render();
-  // Darts-Caller issues a fresh, short-lived auth token embedded in its own
-  // page on every load (its "Zero-Touch" web UI does the same thing). Since
-  // we're served from the same origin, we fetch that page ourselves and pull
-  // the token out, rather than hardcoding a copy that will eventually expire.
-  fetch(url + '/')
-    .then(res => res.text())
-    .then(html => {
-      const m = html.match(/const\s+webAuthToken\s*=\s*"([^"]+)"/);
-      const token = m ? m[1] : null;
-      openDartsCallerSocket(url, token);
-    })
-    .catch(err => {
-      console.warn('Oche: could not fetch Darts-Caller auth token', err);
-      // Fall back to connecting without a token, in case this install doesn't require one.
-      openDartsCallerSocket(url, null);
-    });
+  boardManagerLastThrowCount = 0;
+  boardManagerLastStatus = null;
+  pollBoardManagerOnce(url, /*isFirst*/ true);
+  boardManagerPollTimer = setInterval(()=>pollBoardManagerOnce(url, false), 300);
 }
 
-function openDartsCallerSocket(url, token){
-  try{
-    const opts = { transports:['websocket','polling'], reconnection:true };
-    if(token) opts.auth = { token };
-    dartsCallerSocket = io(url, opts);
-    dartsCallerSocket.on('connect', ()=>{ state.dartsCallerStatus='connected'; render(); });
-    dartsCallerSocket.on('disconnect', ()=>{ state.dartsCallerStatus='disconnected'; render(); });
-    dartsCallerSocket.on('connect_error', (err)=>{ console.warn('Oche: Darts-Caller connect_error', err && err.message); state.dartsCallerStatus='error'; render(); });
-    dartsCallerSocket.on('message', handleDartsCallerMessage);
-  }catch(e){
-    console.warn('Oche: Darts-Caller connection threw', e);
-    state.dartsCallerStatus = 'error';
-    render();
-  }
-}
-
-function disconnectDartsCaller(){
-  if(dartsCallerSocket){ try{ dartsCallerSocket.disconnect(); }catch(e){} dartsCallerSocket = null; }
+function disconnectBoardManager(){
+  if(boardManagerPollTimer){ clearInterval(boardManagerPollTimer); boardManagerPollTimer = null; }
   state.dartsCallerStatus = 'disconnected';
   render();
 }
 
-function setDartsCallerVoice(name){
-  state.settings.dartsCallerAnnouncerCaller = name;
-  if(dartsCallerSocket && dartsCallerSocket.connected && name){
-    dartsCallerSocket.emit('message', 'caller:' + name);
-  }
-  render();
+function pollBoardManagerOnce(url, isFirst){
+  fetch(url + '/api/state')
+    .then(res => { if(!res.ok) throw new Error('HTTP '+res.status); return res.json(); })
+    .then(data => {
+      if(state.dartsCallerStatus !== 'connected'){ state.dartsCallerStatus = 'connected'; render(); }
+      handleBoardManagerState(data);
+    })
+    .catch(err => {
+      console.warn('Oche: Board Manager poll failed', err && err.message);
+      if(isFirst){ state.dartsCallerStatus = 'error'; render(); }
+      // On later polls we leave the status as-is rather than flapping to
+      // "error" on a single dropped request — only a sustained failure
+      // (checked on the next successful/failed cycle) should flip it back.
+    });
 }
 
-// Darts-Caller broadcasts everything under a single Socket.IO event named
-// 'message'; the actual kind of event lives in payload.event.
-function handleDartsCallerMessage(payload){
-  if(!payload || typeof payload !== 'object' || !payload.event) return;
-  const ev = payload.event;
-  if(ev==='dart1-thrown' || ev==='dart2-thrown' || ev==='dart3-thrown'){
-    handleCameraThrow(payload);
-  } else if(ev==='Board Status'){
-    const status = payload.data && payload.data.status;
-    if(status === 'Takeout Finished'){
-      forceEndCurrentTurnFromTakeout();
+function handleBoardManagerState(data){
+  const throws = Array.isArray(data.throws) ? data.throws : [];
+  const status = data.status || data.event || null;
+
+  // New dart(s) landed since our last poll.
+  if(throws.length > boardManagerLastThrowCount){
+    for(let i = boardManagerLastThrowCount; i < throws.length; i++){
+      handleCameraThrow(throws[i]);
     }
   }
-  // game-started / match-ended / bulling-* etc. are ignored for now — reserved for the ring-light integration.
+  // Board reset for a new turn (throws array shrank back down) — just
+  // resync our count, no need to treat this as new darts.
+  boardManagerLastThrowCount = throws.length;
+
+  // Takeout finished is the camera-confirmed "turn is over" signal —
+  // covers bounce-outs/no-scores that never produced a throw entry.
+  if(status !== boardManagerLastStatus){
+    if(status === 'Takeout finished' || status === 'Takeout Finished'){
+      forceEndCurrentTurnFromTakeout();
+      boardManagerLastThrowCount = 0; // board will report a fresh empty throws[] for the next player
+    }
+    boardManagerLastStatus = status;
+  }
 }
 
-// Translates Darts-Caller's fieldNumber/fieldMultiplier into Oche's board
-// vocabulary. fieldNumber 1-20 with multiplier 1/2/3 = single/double/triple.
-// fieldNumber 25 covers BOTH bull rings: multiplier 1 = outer bull (25pts),
-// multiplier 2 = bullseye (50pts). fieldNumber 0 = miss.
-function mapCallerFieldToBoardThrow(fieldNumber, fieldMultiplier){
-  if(fieldNumber === 25){
-    if(fieldMultiplier === 2) return {num:'B', seg:'bullinner', label:'Bull (50)'};
+// Translates Board Manager's segment.number/segment.multiplier into Oche's
+// board vocabulary. Numbers 1-20 with multiplier 1/2/3 = single/double/triple.
+// Bull encoding isn't confirmed from source — this handles the two most
+// likely conventions (number 25 w/ multiplier, or number 25 alone = outer,
+// 50 = inner) and falls back to the segment name string if present.
+function mapBoardManagerSegmentToThrow(segment){
+  const number = segment.number;
+  const multiplier = segment.multiplier;
+  const name = (segment.name || '').toUpperCase();
+  if(number === 25 || name.includes('B')){
+    if(multiplier === 2 || number === 50 || name === 'DB' || name === 'D25') return {num:'B', seg:'bullinner', label:'Bull (50)'};
     return {num:'B', seg:'bullouter', label:'Outer Bull (25)'};
   }
   const segMap = {1:'single', 2:'double', 3:'triple'};
-  const seg = segMap[fieldMultiplier] || 'single';
-  const label = (seg==='single'?'Single ':seg==='double'?'Double ':'Triple ')+fieldNumber;
-  return {num:fieldNumber, seg, label};
+  const seg = segMap[multiplier] || 'single';
+  const label = (seg==='single'?'Single ':seg==='double'?'Double ':'Triple ')+number;
+  return {num:number, seg, label};
 }
 
-function handleCameraThrow(payload){
+function handleCameraThrow(throwEntry){
   if(!state.settings.dartsCallerCameraMode) return;
-  const g = payload.game || {};
-  const fieldNumber = g.fieldNumber;
-  const fieldMultiplier = g.fieldMultiplier;
-  if(fieldNumber === undefined || fieldNumber === null) return;
-  if(fieldNumber === 0){
+  const segment = throwEntry && throwEntry.segment;
+  if(!segment || segment.number === undefined || segment.number === null){
     recordMiss();
-  } else {
-    commitBoardThrow(mapCallerFieldToBoardThrow(fieldNumber, fieldMultiplier));
+    return;
   }
-  announceCallerScore(g.dartValue);
-}
-
-function announceCallerScore(scoreVal){
-  if(!state.settings.dartsCallerAnnouncer) return;
-  if(!dartsCallerSocket || !dartsCallerSocket.connected) return;
-  if(scoreVal===undefined || scoreVal===null || scoreVal==='') return;
-  dartsCallerSocket.emit('message', 'call:' + scoreVal);
+  if(segment.number === 0){
+    recordMiss();
+    return;
+  }
+  commitBoardThrow(mapBoardManagerSegmentToThrow(segment));
 }
 
 // Fallback for messy real-world throws (bounce-outs, no-scores) that never
-// produced 3 dart-thrown events: once the board confirms darts were pulled
+// produced a throws[] entry: once the board confirms darts were pulled
 // from the board, force the current turn to end if it's still open.
 const DARTSCALLER_END_TURN_FNS = {
   x01:x01EndTurn, cricket:cricketEndTurn, custom:customEndTurn,
@@ -7090,7 +7077,7 @@ function renderPlayerDetail(){
 hydrateState();
 initDartFieldOptions();
 render();
-if(state.settings.dartsCallerHost && typeof io !== 'undefined'){ connectDartsCaller(); }
+if(state.settings.boardManagerHost){ connectBoardManager(); }
 </script>
 </body>
 </html>
