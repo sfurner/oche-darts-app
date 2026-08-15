@@ -36,8 +36,11 @@ body{
 }
 .app-shell{
   display:flex;
-  min-height:100vh;
-  min-height:100dvh;
+  height:100vh;
+  height:100dvh;
+  max-height:100vh;
+  max-height:100dvh;
+  overflow:hidden;
   align-items:stretch;
   justify-content:center;
 }
@@ -45,6 +48,7 @@ body{
   display:flex; flex-direction:column; align-items:center; gap:4px; width:60px; flex-shrink:0;
   background:var(--felt-dark); border:1px solid var(--felt-lighter); border-right:none;
   padding:18px 6px;
+  overflow-y:auto; min-height:0;
 }
 .sidenav .brand{ padding:0 0 16px 0; display:flex; justify-content:center; }
 .sidenav .brand h1{ display:none; }
@@ -666,7 +670,7 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const BUILD_STAMP = '8/14/2026, 11:15 PM';
+const BUILD_STAMP = '8/14/2026, 11:30 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
