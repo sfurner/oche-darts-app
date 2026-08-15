@@ -5010,13 +5010,35 @@ function connectDartsCaller(){
   if(dartsCallerSocket){ try{ dartsCallerSocket.disconnect(); }catch(e){} dartsCallerSocket = null; }
   state.dartsCallerStatus = 'connecting';
   render();
+  // Darts-Caller issues a fresh, short-lived auth token embedded in its own
+  // page on every load (its "Zero-Touch" web UI does the same thing). Since
+  // we're served from the same origin, we fetch that page ourselves and pull
+  // the token out, rather than hardcoding a copy that will eventually expire.
+  fetch(url + '/')
+    .then(res => res.text())
+    .then(html => {
+      const m = html.match(/const\s+webAuthToken\s*=\s*"([^"]+)"/);
+      const token = m ? m[1] : null;
+      openDartsCallerSocket(url, token);
+    })
+    .catch(err => {
+      console.warn('Oche: could not fetch Darts-Caller auth token', err);
+      // Fall back to connecting without a token, in case this install doesn't require one.
+      openDartsCallerSocket(url, null);
+    });
+}
+
+function openDartsCallerSocket(url, token){
   try{
-    dartsCallerSocket = io(url, { transports:['websocket','polling'], reconnection:true });
+    const opts = { transports:['websocket','polling'], reconnection:true };
+    if(token) opts.auth = { token };
+    dartsCallerSocket = io(url, opts);
     dartsCallerSocket.on('connect', ()=>{ state.dartsCallerStatus='connected'; render(); });
     dartsCallerSocket.on('disconnect', ()=>{ state.dartsCallerStatus='disconnected'; render(); });
-    dartsCallerSocket.on('connect_error', ()=>{ state.dartsCallerStatus='error'; render(); });
+    dartsCallerSocket.on('connect_error', (err)=>{ console.warn('Oche: Darts-Caller connect_error', err && err.message); state.dartsCallerStatus='error'; render(); });
     dartsCallerSocket.on('message', handleDartsCallerMessage);
   }catch(e){
+    console.warn('Oche: Darts-Caller connection threw', e);
     state.dartsCallerStatus = 'error';
     render();
   }
