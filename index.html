@@ -733,7 +733,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 4:35 PM';
+const BUILD_STAMP = '8/15/2026, 5:05 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2361,6 +2361,12 @@ function commitBoardThrow(c){
     blackoutApplyDart(bs, num, mult, c.point);
     if(bs.complete && !wasComplete) finishBlackoutSession();
     render();
+  } else if(state.session && state.session.kind==='callshot'){
+    // Route through the exact same state machine manual board taps use —
+    // confirmed the bug: camera throws were reaching commitBoardThrow but
+    // falling through every branch here with no callshot case at all.
+    const zoneId = callShotZoneIdFromNumSeg(c.num, c.seg);
+    callShotRegisterDart(zoneId);
   } else if(state.session){
     dispatchThrow(num, mult);
   }
@@ -2483,6 +2489,12 @@ function recordMissCore(){
   } else if(s.kind==='killer'){
     const res = killerApplyDart(s, 0, 'miss');
     if(res.turnOver){ killerEndTurn(s); if(s.complete) finishKillerGame(s); }
+  } else if(s.kind==='callshot'){
+    // Same reasoning as commitBoardThrow above — a genuine off-the-board
+    // miss (whether a real board click or a camera-detected miss) needs to
+    // reach the callshot state machine too, not just real hits.
+    callShotRegisterDart(null);
+    return;
   }
   if(s.currentTurnDarts.length>0){
     const last = s.currentTurnDarts[s.currentTurnDarts.length-1];
@@ -3729,9 +3741,18 @@ function callShotAttemptThrow(hit){
   }
 }
 function callShotResolveAttempt(s, success){
+  // Captured before any state resets below, since s.calledTargets/targetIndex
+  // describe the attempt that's *just finishing* right now.
+  const targetIdForSummary = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
+  const targetLabelForSummary = targetIdForSummary ? sectionZoneLabel(targetIdForSummary) : 'the target';
   s.currentTurnDarts = [];
+  s.turnHitPoints = [];
   if(s.stage==='callattempt'){
+    const callerName = playerName(s.participants[s.callerIdx].playerId);
     if(success){
+      s.lastTurnSummary = s.leaderMustProve
+        ? `<b>${callerName} proved it: ${targetLabelForSummary}!</b>`
+        : `<b>${callerName} set the target: ${targetLabelForSummary}.</b>`;
       s.attemptOrder = s.participants.map((p,i)=>i).filter(i=>i!==s.callerIdx && !s.participants[i].eliminated);
       s.attemptPos = 0;
       s.dartsUsedThisAttempt = 0;
@@ -3743,14 +3764,21 @@ function callShotResolveAttempt(s, success){
     } else {
       const caller = s.participants[s.callerIdx];
       caller.letters++;
+      const newLetter = s.word[caller.letters-1] || '';
+      s.lastTurnSummary = `<b>${callerName} missed ${targetLabelForSummary}${newLetter?` and receives ${newLetter}`:''}.</b>`;
       if(caller.letters >= s.word.length){ caller.eliminated = true; }
       callShotNextRound(s);
     }
   } else if(s.stage==='follow'){
+    const followerName = playerName(s.participants[s.currentIdx].playerId);
     if(!success){
       const p = s.participants[s.currentIdx];
       p.letters++;
+      const newLetter = s.word[p.letters-1] || '';
+      s.lastTurnSummary = `<b>${followerName} missed ${targetLabelForSummary}${newLetter?` and receives ${newLetter}`:''}.</b>`;
       if(p.letters >= s.word.length){ p.eliminated = true; }
+    } else {
+      s.lastTurnSummary = `<b>${followerName} matched ${targetLabelForSummary}!</b>`;
     }
     s.attemptPos++;
     s.dartsUsedThisAttempt = 0;
@@ -5563,17 +5591,15 @@ function renderCallShotActiveShell(s){
     }).join('')}</div>`;
   };
   let board = '';
-  if(actorIsBot){
-    const targetZoneId = s.stage==='callselect'?null:(s.orderMatters?s.calledTargets[s.targetIndex]:s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i)));
-    board = `<div class="board-area" style="pointer-events:none; opacity:0.85;"><div class="board-wrap">${renderDartboardSVG(null, callShotHighlightFromZoneId(targetZoneId), s.turnHitPoints)}</div></div>`;
-  } else if(s.stage==='callselect'){
-    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(null, null, null, null, undefined, 'callShotDartboardClickForCall')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
-  } else if(s.mode==='natural' && s.calledTargets.length===0){
-    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(null, null, s.turnHitPoints, null, 'callShotAttemptThrow(false)', 'callShotDartboardClickForAttempt')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
-  } else {
-    const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
-    board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(null, callShotHighlightFromZoneId(currentTargetId), s.turnHitPoints, null, 'callShotAttemptThrow(false)', 'callShotDartboardClickForAttempt')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
-  }
+  // Unified board rendering — no more separate branches per stage/bot status,
+  // and no independent resize/move controls. Same auto-fitting board
+  // container the main gameplay screen (301, etc.) uses, identified by the
+  // same id so it inherits the exact same sizing CSS automatically. The
+  // target stays highlighted continuously from the moment it's established
+  // until the round changes — there's no "unset" state once calledTargets
+  // has an entry.
+  const currentTargetId = s.calledTargets.length===0 ? null : (s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i)));
+  board = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${actorIsBot?'pointer-events:none; opacity:0.85;':''}">${renderDartboardSVG(null, callShotHighlightFromZoneId(currentTargetId), s.turnHitPoints)}</div></div>`;
   const playerBoxes = `<div class="panel-zone-players">
     <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
     <div class="panel-players-grid">${s.participants.map((p,i)=>{
@@ -5671,17 +5697,31 @@ function renderTurnHint(s){
   const actor = s.participants[s.currentIdx];
   const name = playerName(actor.playerId);
   if(s.kind==='callshot'){
-    if(s.stage==='callselect') return `${name} is calling a shot&hellip;`;
-    const isCaller = s.stage==='callattempt';
+    // Matches killer/halveit's existing convention: a brief "what just
+    // happened" summary, set right before the state advances, shown until
+    // the next actor's situation naturally replaces it.
+    if(s.calledTargets.length===0 && s.lastTurnSummary) return s.lastTurnSummary;
+    if(s.calledTargets.length===0){
+      return `<b>${name} is the leader</b><br>Throw one dart. Wherever it lands becomes the target.`;
+    }
+    const isProving = s.stage==='callattempt'; // leader proving their own call (Prove It mode)
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
+    const label = currentTargetId ? sectionZoneLabel(currentTargetId) : 'the target';
     const darts = s.currentTurnDarts;
+    const remaining = s.maxDarts - (s.dartsUsedThisAttempt||0);
     if(darts.length===0){
-      if(s.mode==='natural' && s.calledTargets.length===0) return `${name} is throwing &mdash; any hit on the board sets the shot, only a total miss takes a letter.`;
-      const label = currentTargetId ? sectionZoneLabel(currentTargetId) : 'the target';
-      return isCaller ? `${name} is throwing for ${label}.` : `${name} is trying to match ${label}.`;
+      return isProving
+        ? `<b>Target: ${label}</b><br>${name} must prove it. Hit ${label} within ${s.maxDarts} dart${s.maxDarts!==1?'s':''}.`
+        : `<b>Target: ${label}</b><br>${name} must match ${label}. ${s.maxDarts} dart${s.maxDarts!==1?'s':''} available.`;
     }
     const last = darts[darts.length-1];
-    return (!last || last.label==='Miss') ? `${name} missed!` : `${name} hit ${last.label}!`;
+    const missed = !last || last.label==='Miss';
+    if(missed && remaining>0){
+      return `<b>Target: ${label}</b><br>${name} missed. ${remaining} dart${remaining!==1?'s':''} left to ${isProving?'prove it':'match it'}.`;
+    }
+    return missed
+      ? `<b>${name} missed ${label} and receives a letter.</b>`
+      : `<b>${name} ${isProving?'proved it':'matched'} ${label}!</b>`;
   }
   const darts = s.currentTurnDarts;
   if(darts.length===0){
