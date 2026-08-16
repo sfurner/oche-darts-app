@@ -118,14 +118,16 @@ body{
   .app-shell{ padding:32px 16px;}
   .device{ width:520px; height:calc(100vh - 64px); height:calc(100dvh - 64px); max-height:calc(100vh - 64px); max-height:calc(100dvh - 64px); min-height:0;}
 }
-/* Laptop / desktop: persistent side navigation, genuinely wide usage of screen space */
+/* Laptop / desktop: persistent side navigation, genuinely wide usage of screen space.
+   The shell itself has NO hard width cap — only the outer app-shell padding
+   provides margin. Individual text-heavy elements get their own readable
+   max-width directly (see .info-note, .desc, .option-legend), rather than
+   capping the whole page. */
 @media (min-width:1024px){
-  .app-shell{ padding:32px; gap:0; }
-  .device{ width:min(1200px, calc(100vw - 280px)); height:calc(100vh - 64px); height:calc(100dvh - 64px); max-height:calc(100vh - 64px); max-height:calc(100dvh - 64px); min-height:0; border-radius:28px; margin:0; }
-  .content{ max-width:900px; margin-left:auto; margin-right:auto; }
+  .app-shell{ padding:24px; gap:0; }
+  .device{ width:calc(100vw - 48px); height:calc(100vh - 48px); height:calc(100dvh - 48px); max-height:calc(100vh - 48px); max-height:calc(100dvh - 48px); min-height:0; border-radius:28px; margin:0; }
   .app-shell.fullscreen-mode{ padding:0; }
   .app-shell.fullscreen-mode .device{ width:100vw; height:100vh; height:100dvh; max-height:100vh; max-height:100dvh; min-height:0; border-radius:0; }
-  .app-shell.fullscreen-mode .content{ max-width:1100px; }
 }
 .fullscreen-toggle{
   display:none;
@@ -138,7 +140,7 @@ body{
   display:flex;
 
   flex-direction:column;
-  justify-content:center;
+  justify-content:flex-start;
   overflow-y:auto;
   scrollbar-gutter: stable;
   padding-bottom:8px;
@@ -164,12 +166,12 @@ body{
 .panel-players-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .panel-player-card{ background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:8px; padding:7px 8px; }
 .panel-player-card.active{ border:2px solid #5b9bf5; background:rgba(91,155,245,0.14); box-shadow:0 0 10px rgba(91,155,245,0.3); }
-.panel-player-card .pp-name{ font-size:10px; color:var(--cream-dim); font-weight:700; letter-spacing:0.02em; }
+.panel-player-card .pp-name{ font-size:12px; color:var(--cream-dim); font-weight:700; letter-spacing:0.02em; }
 .panel-player-card.active .pp-name{ color:#8fc0ff; }
 .panel-player-card .pp-stat{ font-size:16px; font-weight:700; color:var(--cream); }
 .panel-player-card.active .pp-stat{ font-size:19px; font-weight:800; color:#fff; }
 .panel-instruction-box{ border:1px solid rgba(255,210,63,0.4); background:rgba(255,210,63,0.08); border-radius:8px; padding:9px; }
-.panel-instruction-box .pi-label{ font-size:10px; color:var(--brass); font-weight:700; letter-spacing:0.04em; margin-bottom:3px; }
+.panel-instruction-box .pi-label{ font-size:12px; color:var(--brass); font-weight:700; letter-spacing:0.04em; margin-bottom:3px; }
 .panel-instruction-box .pi-text{ font-size:13.5px; color:#fff; font-weight:600; line-height:1.35; }
 @media (min-width:900px){
   .device.game-layout .device-body{ flex-direction:row; }
@@ -213,7 +215,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .iconbtn:active{transform:scale(0.94);}
 .subtitle{color:var(--cream-dim); font-size:13px; padding:0 18px 14px 18px;}
 .section-label{
-  font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.14em;
+  font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:0.14em;
   color:var(--brass); text-transform:uppercase; padding:12px 18px 6px 18px;
 }
 .content{padding:0 var(--sp-page-margin) var(--sp-page-margin) var(--sp-page-margin); display:flex; flex-direction:column; gap:var(--sp-card-gap);}
@@ -255,12 +257,12 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .content-grid .card .meta-row{ flex-shrink:0; }
 .content-grid .card .btn-row{ flex-shrink:0; margin-top:auto; }
 .badge{
-  font-family:'JetBrains Mono',monospace; font-size:10px; padding:3px 8px; border-radius:20px;
+  font-family:'JetBrains Mono',monospace; font-size:12px; padding:3px 8px; border-radius:20px;
   text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;
 }
 .badge.live{background:color-mix(in srgb, var(--green) 25%, transparent); color:color-mix(in srgb, var(--green) 75%, white); border:1px solid var(--green);}
 .badge.soon{background:rgba(174,188,175,0.12); color:var(--cream-dim); border:1px solid var(--felt-lighter);}
-.meta-row{display:flex; gap:14px; font-size:11px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; margin-bottom:12px; flex-wrap:wrap;}
+.meta-row{display:flex; gap:14px; font-size:12px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; margin-bottom:12px; flex-wrap:wrap;}
 .meta-row span{display:flex; align-items:center; gap:4px;}
 .btn-row{display:flex; gap:8px;}
 .btn{
@@ -307,7 +309,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .chip.selected{background:rgba(204,154,61,0.18); border-color:var(--brass); color:var(--brass);}
 .chip-wrap{display:flex; flex-wrap:wrap; gap:6px;}
 .checkout-options{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 18px 8px 18px; }
-.checkout-options-label{ font-size:11px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:0.05em; margin-right:2px; }
+.checkout-options-label{ font-size:12px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:0.05em; margin-right:2px; }
 .checkout-options .chip{ font-family:'JetBrains Mono',monospace; font-size:12px; }
 
 .player-row{
@@ -324,7 +326,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .player-card:hover{ border-color:var(--brass); }
 .player-card .player-info{ min-width:0; flex:1; }
 .player-card .player-name{ font-size:15px; font-weight:600; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.player-card .player-meta{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); margin-top:2px; }
+.player-card .player-meta{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream-dim); margin-top:2px; }
 .player-card.is-bot{ opacity:0.82; }
 .player-avatar{
   width:44px;height:44px;border-radius:50%; display:flex;align-items:center;justify-content:center;
@@ -342,7 +344,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 }
 
 .active-top{padding:10px 18px 6px 18px;}
-.active-top .game-title{font-size:11px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:0.1em;}
+.active-top .game-title{font-size:12px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:0.1em;}
 .objective-banner{
   background:linear-gradient(90deg, color-mix(in srgb, var(--brass) 20%, var(--felt-light)), color-mix(in srgb, var(--brass) 7%, var(--felt-light)));
   border:2px solid var(--brass); border-radius:12px; padding:10px 16px; margin:8px 0 10px 0;
@@ -350,7 +352,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 }
 .objective-banner .big{font-family:'Oswald',sans-serif; font-size:24px; line-height:1.15; color:var(--brass); font-weight:700;}
 .objective-banner .small{font-size:13px; color:var(--cream); margin-top:4px; line-height:1.3; font-weight:500;}
-.objective-banner .tiny{font-size:11px; color:var(--cream-dim); margin-top:3px;}
+.objective-banner .tiny{font-size:12px; color:var(--cream-dim); margin-top:3px;}
 
 .score-strip{display:flex; gap:8px; padding:0 18px 8px 18px; overflow-x:auto;}
 .score-card{
@@ -358,10 +360,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   padding:7px 10px; position:relative;
 }
 .score-card.active{border-color:var(--brass); box-shadow:0 0 0 1px var(--brass);}
-.score-card .pname{font-size:11px; color:var(--cream-dim); display:flex; align-items:center; gap:5px;}
+.score-card .pname{font-size:12px; color:var(--cream-dim); display:flex; align-items:center; gap:5px;}
 .score-card .pscore{font-family:'Oswald',sans-serif; font-size:22px; color:var(--cream); line-height:1.1;}
-.score-card .pmarks{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); margin-top:2px;}
-.dartpip{color:var(--brass); font-size:10px;}
+.score-card .pmarks{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream-dim); margin-top:2px;}
+.dartpip{color:var(--brass); font-size:12px;}
 
 .turn-area{padding:0 18px 6px 18px;}
 .turn-darts{display:flex; gap:8px; align-items:center; min-height:30px;}
@@ -400,10 +402,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .cb-miss-btn{
   position:absolute; top:8px; left:8px; z-index:5;
   background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.3); color:#f2f2ee;
-  border-radius:8px; padding:5px 11px; font-family:'JetBrains Mono',monospace; font-size:11px;
+  border-radius:8px; padding:5px 11px; font-family:'JetBrains Mono',monospace; font-size:12px;
   font-weight:700; text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;
 }
-.chalkboard-panel .cb-vs{ text-align:center; color:#a8a89f; font-size:10px; letter-spacing:0.2em; margin-bottom:1px; font-family:'Inter',sans-serif; }
+.chalkboard-panel .cb-vs{ text-align:center; color:#a8a89f; font-size:12px; letter-spacing:0.2em; margin-bottom:1px; font-family:'Inter',sans-serif; }
 .chalkboard-panel .cb-title{ text-align:center; color:#f2f2ee; font-size:16px; letter-spacing:0.08em; margin-bottom:4px; font-family:'Kalam',cursive; font-weight:700; text-shadow:0 0 3px rgba(255,255,255,0.35); }
 .chalkboard-panel .cb-header-row, .chalkboard-panel .cb-row{ display:grid; align-items:center; gap:1px; }
 .chalkboard-panel .cb-name{ text-align:center; color:#fff; font-family:'Kalam',cursive; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px; text-shadow:0 0 3px rgba(255,255,255,0.3); }
@@ -444,7 +446,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .entry-toggle button{ flex:none; background:none; border:none; padding:0 0 5px 0; font-size:13px; color:var(--cream-dim); cursor:pointer; border-bottom:2px solid transparent; font-family:'Inter',sans-serif; font-weight:500; }
 .entry-toggle button.tab-active{ color:var(--brass); border-bottom-color:var(--brass); font-weight:600; }
 .game-header-row{ display:grid; grid-template-columns:1fr auto 1fr; align-items:start; padding:16px 18px 10px 18px; }
-.round-label{ font-size:11px; color:var(--cream-dim); letter-spacing:0.05em; }
+.round-label{ font-size:12px; color:var(--cream-dim); letter-spacing:0.05em; }
 .round-value{ font-size:15px; color:var(--cream); font-weight:600; margin-top:1px; }
 .game-title-center{ font-size:33px; font-weight:700; color:var(--cream); text-align:center; letter-spacing:0.01em; }
 .instruction-line{ padding:2px 18px 14px 18px; font-size:18px; font-weight:600; color:var(--cream); }
@@ -453,15 +455,15 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .player-box.active{ border-color:var(--brass); }
 .player-box .pb-name{ font-size:12px; color:var(--cream-dim); font-weight:600; }
 .player-box.active .pb-name{ color:var(--brass); }
-.player-box .pb-line2{ font-size:10px; color:var(--brass); font-weight:600; }
+.player-box .pb-line2{ font-size:12px; color:var(--brass); font-weight:600; }
 .player-box .pb-stat{ font-size:26px; color:var(--cream); font-weight:700; line-height:1.1; }
-.player-box .pb-sub{ font-size:10px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; }
+.player-box .pb-sub{ font-size:12px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; }
 .bottom-action-row{ display:flex; gap:26px; justify-content:center; padding:14px 18px; border-top:1px solid var(--felt-lighter); margin-top:auto; flex-wrap:wrap; }
 .bottom-action-row .action-link{ font-size:12px; color:var(--cream-dim); letter-spacing:0.03em; cursor:pointer; background:none; border:none; font-family:'JetBrains Mono',monospace; text-transform:uppercase; padding:4px; }
 .bottom-action-row .action-link.warn{ color:color-mix(in srgb, var(--red) 75%, white); }
 
 .quicktargets{padding:0 18px 8px 18px;}
-.quicktargets .qlabel{font-size:11px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; text-transform:uppercase; margin-bottom:6px;}
+.quicktargets .qlabel{font-size:12px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; text-transform:uppercase; margin-bottom:6px;}
 .qt-row{display:flex; gap:8px; flex-wrap:wrap;}
 .qt-btn{
   background:linear-gradient(180deg, rgba(204,154,61,0.22), rgba(204,154,61,0.06));
@@ -501,7 +503,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 }
 .num-btn-split.recommended .zone-single{ color:var(--brass); }
 .killer-zone-single{ flex-direction:column; gap:1px; }
-.killer-owner-tag{ font-size:11px; font-weight:600; letter-spacing:0.02em; color:var(--cream-dim); max-width:90%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.killer-owner-tag{ font-size:12px; font-weight:600; letter-spacing:0.02em; color:var(--cream-dim); max-width:90%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .num-btn-split.recommended .killer-owner-tag{ color:var(--brass); }
 .num-btn-split .zone-row{ flex:1; display:flex; }
 .num-btn-split .zone-double, .num-btn-split .zone-triple{
@@ -527,7 +529,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 }
 .bottom-controls button{
   flex:1; background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim);
-  border-radius:10px; padding:10px 4px; font-size:11px; font-family:'JetBrains Mono',monospace;
+  border-radius:10px; padding:10px 4px; font-size:12px; font-family:'JetBrains Mono',monospace;
   text-transform:uppercase; cursor:pointer;
 }
 .bottom-controls button.warn{color:color-mix(in srgb, var(--red) 75%, white);}
@@ -585,7 +587,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
 .stat-box{background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px 12px;}
 .stat-box .val{font-family:'Oswald',sans-serif; font-size:22px; color:var(--brass);}
-.stat-box .lab{font-size:11px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; text-transform:uppercase;}
+.stat-box .lab{font-size:12px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; text-transform:uppercase;}
 
 .checkbox-row{display:flex; align-items:center; gap:8px; padding:8px 0; font-size:13px; color:var(--cream);}
 .checkbox-row input{width:16px;height:16px;}
@@ -594,8 +596,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .theme-swatch{display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer; width:72px;}
 .theme-swatch .circle{width:44px; height:44px; border-radius:50%; border:2px solid var(--felt-lighter); box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25);}
 .theme-swatch.selected .circle{border-color:var(--brass); box-shadow:0 0 0 2px var(--brass);}
-.theme-swatch .tlabel{font-size:10px; color:var(--cream-dim); text-align:center; line-height:1.2;}
-.info-note{font-size:12px; color:var(--cream-dim); line-height:1.5; margin-top:6px;}
+.theme-swatch .tlabel{font-size:12px; color:var(--cream-dim); text-align:center; line-height:1.2;}
+.info-note{font-size:13px; color:var(--cream-dim); line-height:1.5; margin-top:6px; max-width:640px;}
 .co-row{display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--felt-light); font-family:'JetBrains Mono',monospace; font-size:13px;}
 .co-row .co-score{color:var(--brass); font-family:'Oswald',sans-serif; font-size:17px; width:44px;}
 .co-row .co-route{color:var(--cream);}
@@ -712,7 +714,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 3:40 PM';
+const BUILD_STAMP = '8/15/2026, 4:05 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4756,14 +4758,14 @@ function renderPlayerSetup(){
             <div class="player-avatar" style="background:${playerColor(p,idx)}; cursor:pointer; flex-shrink:0;" onclick="openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
             <div style="min-width:0;">
               <div style="font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.name}</div>
-              ${p.isGuest ? `<div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')">Guest &middot; tap to make permanent</div>` : ''}
+              ${p.isGuest ? `<div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream-dim); cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')">Guest &middot; tap to make permanent</div>` : ''}
             </div>
           </div>
           <input type="checkbox" ${selected?'checked':''} onchange="togglePlayerSelect('${p.id}')" style="width:22px;height:22px; flex-shrink:0;">
         </div>
         ${!p.isBot ? `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px; background:var(--felt); border-radius:8px; cursor:pointer; margin-top:10px;" onclick="openDartPicker('${p.id}','playerSetup')">
           <span style="font-size:12px; color:var(--cream-dim); display:flex; align-items:center; gap:8px; min-width:0;">${dart?dartAvatarHtml(dart,20):''}<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Dart: <span style="color:var(--brass);">${dart?dartSetupDisplayName(dart):'No Dart Selected'}</span></span></span>
-          <span style="font-size:11px; color:var(--cream-dim); flex-shrink:0;">Change &#9656;</span>
+          <span style="font-size:12px; color:var(--cream-dim); flex-shrink:0;">Change &#9656;</span>
         </div>` : ''}
       </div>`;
   }
@@ -5374,7 +5376,7 @@ function playerBoxData(s, p){
 }
 function renderPlayerBoxes(s){
   return `<div class="panel-zone-players">
-    <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:10px; letter-spacing:0.04em;">PLAYERS</div>
+    <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
     <div class="panel-players-grid">${s.participants.map((p,i)=>{
       const d = playerBoxData(s,p);
       const isCurrent = i===s.currentIdx;
@@ -5517,7 +5519,7 @@ function renderActiveShell(){
   return `<div class="game-header-row">
     ${renderRoundInfo(s)}
     <div class="game-title-center">${gname}</div>
-    <div style="text-align:right;">${s.kind==='killer' ? '<div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:11px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div>' : ''}</div>
+    <div style="text-align:right;">${s.kind==='killer' ? '<div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:12px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div>' : ''}</div>
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
@@ -5554,7 +5556,7 @@ function renderCallShotActiveShell(s){
     board = `<div class="board-area"><div class="board-wrap" id="callshotBoardWrap" style="${floatingStyle(state.settings.dartboardPos)}">${renderDartboardSVG(null, callShotHighlightFromZoneId(currentTargetId), s.turnHitPoints, null, 'callShotAttemptThrow(false)', 'callShotDartboardClickForAttempt')}${renderResizeHandle('dartboardScale','--dartboard-scale',0.4,3.5)}${renderMoveHandle('dartboardPos','callshotBoardWrap')}</div></div>`;
   }
   const playerBoxes = `<div class="panel-zone-players">
-    <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:10px; letter-spacing:0.04em;">PLAYERS</div>
+    <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
     <div class="panel-players-grid">${s.participants.map((p,i)=>{
       const lettersShown = word.slice(0, p.letters);
       const remaining = word.slice(p.letters);
@@ -7083,7 +7085,7 @@ function renderDartDetail(){
       <div class="stat-box"><div class="val">${rec.savedGames}</div><div class="lab">Saved Games</div></div>
     </div>
     ${gameTypes.length? `<div class="section-label" style="padding-left:0;">By Game</div>
-      ${gameTypes.map(g=>`<div class="co-row"><span class="co-route">${g}</span><span class="co-score" style="font-size:14px;">${rec.ratingsByGame[g].rating} <span style="font-size:11px; color:var(--cream-dim);">(${rec.ratingsByGame[g].count})</span></span></div>`).join('')}` : ''}
+      ${gameTypes.map(g=>`<div class="co-row"><span class="co-route">${g}</span><span class="co-score" style="font-size:14px;">${rec.ratingsByGame[g].rating} <span style="font-size:12px; color:var(--cream-dim);">(${rec.ratingsByGame[g].count})</span></span></div>`).join('')}` : ''}
     ` : `<div class="empty-state"><div class="glyph">&#127919;</div><h3>No saved games yet</h3><p>Play and save a game with this dart selected to start building a rating.</p></div>`}
     <button class="btn btn-primary btn-full" onclick="openDartBuilder('${d.id}')">Edit This Setup</button>
     <div class="btn-row">
@@ -7215,7 +7217,7 @@ function renderEquipmentInsights(playerId){
     const sorted = entries.sort((a,b)=>b[1].rating-a[1].rating);
     return `<div style="margin-bottom:10px;">
       <span class="field-label">${fieldLabels[fieldKey]||fieldKey}</span>
-      ${sorted.map(([val,d])=>`<div class="co-row"><span class="co-route">${val}</span><span class="co-score" style="font-size:13px;">${d.rating} <span style="color:var(--cream-dim); font-size:10px;">(${d.count} game${d.count!==1?'s':''})</span></span></div>`).join('')}
+      ${sorted.map(([val,d])=>`<div class="co-row"><span class="co-route">${val}</span><span class="co-score" style="font-size:13px;">${d.rating} <span style="color:var(--cream-dim); font-size:12px;">(${d.count} game${d.count!==1?'s':''})</span></span></div>`).join('')}
     </div>`;
   }).filter(Boolean);
   if(!sections.length) return '';
@@ -7273,7 +7275,7 @@ function renderPlayerDetail(){
     ${stats.dartRecords.length? `<div class="content" style="padding:0 0 12px 0;">${sectionHeader('Dart ratings')}</div>
       ${stats.dartRecords.map(r=>{
         const d = state.dartSetups.find(x=>x.id===r.dartSetupId);
-        return `<div class="co-row"><span class="co-route">${d?dartSetupDisplayName(d):'Unknown Setup'} <span style="font-size:10px; color:var(--cream-dim);">(${r.confidenceLevel})</span></span><span class="co-score" style="font-size:14px;">${r.overallRating}</span></div>`;
+        return `<div class="co-row"><span class="co-route">${d?dartSetupDisplayName(d):'Unknown Setup'} <span style="font-size:12px; color:var(--cream-dim);">(${r.confidenceLevel})</span></span><span class="co-score" style="font-size:14px;">${r.overallRating}</span></div>`;
       }).join('')}` : ''}
     ${renderEquipmentInsights(p.id)}
     ${confirmingDelete ? `
