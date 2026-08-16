@@ -733,7 +733,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 5:05 PM';
+const BUILD_STAMP = '8/15/2026, 5:15 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -3808,7 +3808,15 @@ function callShotNextRound(s){
   s.dartsUsedThisAttempt = 0;
   s.round++;
   callShotCheckWin(s);
-  if(s.complete) finishCallShotGame(s);
+  if(s.complete){ finishCallShotGame(s); return; }
+  // Fold "who's up now" into whatever "what just happened" summary was set
+  // moments ago — without this, the instruction box correctly highlights the
+  // new active player but keeps describing the *previous* player's result
+  // until they actually throw, which is exactly backwards (confirmed by
+  // real play: the highlight updated, the text didn't).
+  const newLeaderName = playerName(s.participants[next].playerId);
+  const nowInstruction = `<b>${newLeaderName} is the new leader</b><br>Throw one dart to establish the next target.`;
+  s.lastTurnSummary = s.lastTurnSummary ? `${s.lastTurnSummary}<br><br>${nowInstruction}` : nowInstruction;
 }
 function callShotCheckWin(s){
   const alive = s.participants.filter(p=>!p.eliminated);
