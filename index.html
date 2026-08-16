@@ -228,6 +228,13 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .content.content-grid.wide-cards{
   grid-template-columns:repeat(auto-fill, minmax(270px,1fr));
 }
+/* Responsive form-field grid (spec #9) — lets related short fields (a
+   dropdown here, a dropdown there) sit side by side on a wide display
+   instead of every single field getting its own full-width row. */
+.field-grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(210px,1fr));
+  gap:14px var(--sp-card-gap); align-items:start;
+}
 
 .card{
   background:var(--felt-light);
@@ -277,6 +284,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   transition:transform 0.08s ease;
 }
 .btn:active{transform:scale(0.96);}
+/* Larger tap target for the frequently-clicked, moves-you-forward buttons
+   (Continue, Start Game) — kept as an opt-in modifier rather than bumping
+   every button, since most (How It Works, Change, chips) should stay compact. */
+.btn-lg{ padding:18px 20px; font-size:16px; border-radius:12px; }
 .btn-primary{background:linear-gradient(180deg,var(--brass),var(--brass-dark)); color:#241a06;}
 .btn-secondary{background:transparent; color:var(--cream); border:1px solid var(--felt-lighter);}
 .btn-ghost{background:transparent; color:var(--cream-dim); border:none; text-decoration:underline; flex:none;}
@@ -722,7 +733,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 4:20 PM';
+const BUILD_STAMP = '8/15/2026, 4:35 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4796,7 +4807,7 @@ function renderPlayerSetup(){
   ${botPlayers.length ? `<div class="content" style="padding-bottom:0;">${sectionHeader('Bot opponents', botPlayers.length)}</div><div class="content content-grid wide-cards">${botPlayers.map((p)=>playerCard(p, state.players.indexOf(p))).join('')}</div>` : ''}
   <div class="content" style="padding-top:var(--sp-section-gap);">
     <button class="btn btn-secondary btn-full" ${state.selectedPlayerIds.length<2?'disabled':''} onclick="randomizeOrder()">Randomize Player Order</button>
-    <button class="btn btn-primary btn-full" ${state.selectedPlayerIds.length===0?'disabled':''} onclick="proceedToOptions()">Continue</button>
+    <button class="btn btn-primary btn-full btn-lg" ${state.selectedPlayerIds.length===0?'disabled':''} onclick="proceedToOptions()">Continue</button>
   </div>`;
 }
 function renderEmojiPickerModal(playerId){
@@ -4978,7 +4989,7 @@ function renderGameOptions(){
   </div>
   <div class="content">
     ${body}
-    <button class="btn btn-primary btn-full" onclick="launchGame()">Start Game</button>
+    <button class="btn btn-primary btn-full btn-lg" onclick="launchGame()">Start Game</button>
   </div>`;
 }
 
@@ -6323,7 +6334,7 @@ function renderPracticePlayerSetup(){
         ${state.practiceRandomMode==='perDart' ? 'A brand new random target on every single throw — pure reflex.' : ''}
       </p>
     </div>` : ''}
-    <button class="btn btn-primary btn-full" ${!state.practicePlayerId?'disabled':''} onclick="startPracticeFlow('${practId}')">Continue</button>
+    <button class="btn btn-primary btn-full btn-lg" ${!state.practicePlayerId?'disabled':''} onclick="startPracticeFlow('${practId}')">Continue</button>
   </div>`;
 }
 function practiceMissColor(distMM){
@@ -7057,7 +7068,7 @@ function renderDartBuilder(){
     </div>
     ${DART_FIELD_SCHEMA.map(section=>`
       ${sectionHeader(section.label)}
-      ${section.fields.map(f=> f.type==='select' ? renderDartSelectField(f) : renderDartTextField(f.key, f.label)).join('')}
+      <div class="field-grid">${section.fields.map(f=> f.type==='select' ? renderDartSelectField(f) : renderDartTextField(f.key, f.label)).join('')}</div>
     `).join('')}
     <div>
       <span class="field-label">Notes (optional)</span>
