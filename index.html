@@ -22,6 +22,12 @@
   --ink:#0C1512;
   --radius:14px;
   --shadow: 0 6px 18px rgba(0,0,0,0.35);
+  /* Global spacing system (spec #14) — one shared scale instead of
+     per-screen guesswork. */
+  --sp-page-margin:16px;
+  --sp-section-gap:26px;
+  --sp-card-gap:12px;
+  --sp-form-gap:18px;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;height:100%;overflow:hidden;}
@@ -210,10 +216,15 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.14em;
   color:var(--brass); text-transform:uppercase; padding:12px 18px 6px 18px;
 }
-.content{padding:0 14px 14px 14px; display:flex; flex-direction:column; gap:9px;}
+.content{padding:0 var(--sp-page-margin) var(--sp-page-margin) var(--sp-page-margin); display:flex; flex-direction:column; gap:var(--sp-card-gap);}
 .content.content-grid{
-  display:grid; grid-template-columns:repeat(auto-fill, minmax(190px,1fr));
-  gap:10px; align-items:start;
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(230px,1fr));
+  gap:var(--sp-card-gap); align-items:start;
+}
+/* Larger info cards (players, dart setups) get a wider minimum so they
+   don't cram into the same column width as small game cards (spec #1). */
+.content.content-grid.wide-cards{
+  grid-template-columns:repeat(auto-fill, minmax(270px,1fr));
 }
 
 .card{
@@ -303,15 +314,32 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   display:flex; align-items:center; justify-content:space-between; padding:14px 16px;
   background:var(--felt-dark); border:1px solid var(--felt-lighter); border-radius:10px; margin-bottom:8px;
 }
+/* Wide player cards (spec #4/#5) — used in the grid-based Player Management
+   and player-selection screens, replacing the old narrow vertical stack. */
+.player-card{
+  display:flex; align-items:center; gap:12px; padding:14px; cursor:pointer;
+  background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:var(--radius);
+  transition:border-color 0.12s ease;
+}
+.player-card:hover{ border-color:var(--brass); }
+.player-card .player-info{ min-width:0; flex:1; }
+.player-card .player-name{ font-size:15px; font-weight:600; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.player-card .player-meta{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); margin-top:2px; }
+.player-card.is-bot{ opacity:0.82; }
 .player-avatar{
   width:44px;height:44px;border-radius:50%; display:flex;align-items:center;justify-content:center;
   font-weight:700; font-size:20px; color:#1a1206; flex-shrink:0;
 }
 .big-section-header{
   font-family:'Oswald',sans-serif; font-size:20px; font-weight:700; color:var(--brass); letter-spacing:0.03em;
-  margin:18px 0 10px 0; border-bottom:2px solid var(--felt-lighter); padding-bottom:6px;
+  margin:var(--sp-section-gap) 0 12px 0; border-bottom:2px solid var(--felt-lighter); padding-bottom:6px;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
 }
 .big-section-header:first-child{ margin-top:0; }
+.big-section-header .count{
+  font-family:'JetBrains Mono',monospace; font-weight:400; font-size:12px;
+  color:var(--cream-dim); text-transform:none; letter-spacing:0;
+}
 
 .active-top{padding:10px 18px 6px 18px;}
 .active-top .game-title{font-size:11px; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; text-transform:uppercase; letter-spacing:0.1em;}
@@ -684,7 +712,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 2:05 PM';
+const BUILD_STAMP = '8/15/2026, 3:20 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4504,7 +4532,7 @@ function renderHomeShell(){
     <div class="screen" style="flex:1; overflow-y:auto;">${body}</div>`;
 }
 function renderPlayTab(){
-  return `<div class="section-label">Choose a game</div>
+  return `<div class="content" style="padding-bottom:0;">${sectionHeader('Choose a game')}</div>
   <div class="content content-grid">
     ${GAMES.map(g=>`
       <div class="card">
@@ -4524,7 +4552,7 @@ function renderPlayTab(){
   </div>`;
 }
 function renderPracticeTab(){
-  return `<div class="section-label">Featured</div>
+  return `<div class="content" style="padding-bottom:0;">${sectionHeader('Featured')}</div>
   <div class="content content-grid">
     <div class="card" style="border:1px solid var(--brass);">
       <h3>Section Trainer</h3>
@@ -4542,7 +4570,7 @@ function renderPracticeTab(){
       </div>
     </div>
   </div>
-  <div class="section-label">Build Your Own</div>
+  <div class="content" style="padding-bottom:0;">${sectionHeader('Build your own')}</div>
   <div class="content content-grid">
     <div class="card">
       <h3>Custom Practice Routine</h3>
@@ -4550,8 +4578,8 @@ function renderPracticeTab(){
       <button class="btn btn-primary btn-full" onclick="openCustomBuilder()">Build a Routine</button>
     </div>
   </div>
-  ${state.customPractices.length ? `<div class="section-label">Your Routines</div>
-  <div class="content content-grid">
+  <div class="content" style="padding-bottom:0;">${sectionHeader('Your routines', state.customPractices.length)}</div>
+  ${state.customPractices.length ? `<div class="content content-grid">
     ${state.customPractices.map(p=>`
       <div class="card" style="border:1px solid var(--brass);">
         <h3>${p.name}</h3>
@@ -4570,8 +4598,8 @@ function renderPracticeTab(){
         `}
       </div>
     `).join('')}
-  </div>` : ''}
-  <div class="section-label">Guided routines</div>
+  </div>` : `<div class="content" style="padding-top:0;"><p style="color:var(--cream-dim); font-size:13px;">No custom routines yet — build one above and it'll show up here.</p></div>`}
+  <div class="content" style="padding-bottom:0;">${sectionHeader('Guided routines')}</div>
   <div class="content content-grid">
     ${PRACTICES.map(p=>`
       <div class="card">
@@ -4590,15 +4618,13 @@ function confirmDeletePractice(id){
   render();
 }
 function renderCustomTab(){
-  return `<div class="section-label">Design your own game</div>
-  <div class="content content-grid">
-    <div class="card">
-      <h3>Custom Game</h3>
-      <p class="desc">Design house rules — targets, points, turn length, penalties, teams, and win conditions. Save it as a template to play again.</p>
-      <button class="btn btn-secondary btn-full" onclick="openCustomGameBuilder()">Design a Game</button>
-    </div>
-    ${state.customGames.length? `<div class="section-label" style="padding-left:0;">Your games</div>
-      ${state.customGames.map(g=>`<div class="card"><h3 style="font-size:16px;">${g.name}</h3><p class="desc">${g.desc}</p>
+  return `<div class="content" style="padding-bottom:0; gap:10px;">
+    <p style="color:var(--cream-dim); font-size:14px; max-width:640px;">Design your own house rules — targets, points, turn length, penalties, teams, and win conditions — then save it as a template to play again anytime.</p>
+    <button class="btn btn-primary" style="flex:none; align-self:flex-start; padding:11px 22px;" onclick="openCustomGameBuilder()">+ Design a Game</button>
+  </div>
+  <div class="content" style="padding-bottom:0;">${sectionHeader('My custom games', state.customGames.length)}</div>
+  ${state.customGames.length ? `<div class="content content-grid">
+    ${state.customGames.map(g=>`<div class="card"><h3 style="font-size:16px;">${g.name}</h3><p class="desc">${g.desc}</p>
       ${state.confirmDeleteCustomGameId===g.id ? `
         <p style="color:var(--red); font-size:13px;">Delete "${g.name}"? This can't be undone.</p>
         <div class="btn-row">
@@ -4612,8 +4638,8 @@ function renderCustomTab(){
       </div>
       <button class="btn btn-danger btn-full" style="margin-top:6px;" onclick="state.confirmDeleteCustomGameId='${g.id}'; render();">Delete</button>
       `}
-      </div>`).join('')}` : ''}
-  </div>`;
+      </div>`).join('')}
+  </div>` : `<div class="content" style="padding-top:0;"><p style="color:var(--cream-dim); font-size:13px;">No custom games yet — design one above and it'll show up here.</p></div>`}`;
 }
 function confirmDeleteCustomGame(id){
   state.customGames = state.customGames.filter(g=>g.id!==id);
@@ -4637,7 +4663,7 @@ function renderStatsHub(){
   const wins = {};
   gameEntries.forEach(h=>{ wins[h.winner]=(wins[h.winner]||0)+1; });
   const topPlayer = Object.entries(wins).sort((a,b)=>b[1]-a[1])[0];
-  return `<div class="section-label">Overview</div>
+  return `<div class="content" style="padding-bottom:0;">${sectionHeader('Overview')}</div>
   <div class="content">
     <div class="stat-grid">
       <div class="stat-box"><div class="val">${gameEntries.length}</div><div class="lab">Games Saved</div></div>
@@ -4645,8 +4671,8 @@ function renderStatsHub(){
       <div class="stat-box"><div class="val">${topPlayer?topPlayer[0]:'—'}</div><div class="lab">Top Player</div></div>
     </div>
   </div>
-  <div class="section-label">Browse By</div>
-  <div class="content">
+  <div class="content" style="padding-bottom:0;">${sectionHeader('Browse by')}</div>
+  <div class="content content-grid">
     <div class="card" onclick="openPlayerManager()">
       <h3>Players</h3>
       <p class="desc">Wins, streaks, favorite games, and dart ratings for each player — games and practice tracked separately.</p>
@@ -4663,8 +4689,8 @@ function renderStatsHub(){
       <h3>Practice History</h3>
       <p class="desc">Every saved practice routine and Section Trainer session. ${practiceEntries.length} saved.</p>
     </div>
-    <p class="info-note">Guest players' games clear 12 hours after they're played, unless that guest is switched to permanent first.</p>
-  </div>`;
+  </div>
+  <div class="content"><p class="info-note">Guest players' games clear 12 hours after they're played, unless that guest is switched to permanent first.</p></div>`;
 }
 function openGameHistoryList(){ state.screen='gameHistoryList'; render(); }
 function openPracticeHistoryList(){ state.screen='practiceHistoryList'; render(); }
@@ -4717,26 +4743,28 @@ function renderRulesScreen(){
 function renderPlayerSetup(){
   const g = state.pendingCustomGame ? null : GAMES.find(x=>x.id===state.pendingGameId);
   const titleName = state.pendingCustomGame ? state.pendingCustomGame.name : g.name;
-  const permanentPlayers = state.players.filter(p=>!p.isGuest);
+  const permanentPlayers = state.players.filter(p=>!p.isGuest && !p.isBot);
   const guestPlayers = state.players.filter(p=>p.isGuest);
-  function playerRow(p, idx){
+  const botPlayers = state.players.filter(p=>p.isBot);
+  function playerCard(p, idx){
     const dartId = state.playerDartSelections[p.id];
     const dart = dartId ? state.dartSetups.find(x=>x.id===dartId) : null;
-    return `<div class="player-row" style="flex-direction:column; align-items:stretch; gap:8px;">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <div style="display:flex; align-items:center; gap:12px;">
-            <div class="player-avatar" style="background:${playerColor(p,idx)}; cursor:pointer;" onclick="openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
-            <div style="font-size:16px; font-weight:600;">${p.name}</div>
+    const selected = state.selectedPlayerIds.includes(p.id);
+    return `<div class="card" style="padding:14px; ${selected?'border-color:var(--brass);':''}">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div style="display:flex; align-items:center; gap:12px; min-width:0;">
+            <div class="player-avatar" style="background:${playerColor(p,idx)}; cursor:pointer; flex-shrink:0;" onclick="openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
+            <div style="min-width:0;">
+              <div style="font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.name}</div>
+              ${p.isGuest ? `<div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')">Guest &middot; tap to make permanent</div>` : ''}
+            </div>
           </div>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <span class="badge ${p.isGuest?'soon':'live'}" style="cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')" title="Tap to switch">${p.isGuest?'Guest &middot; tap to make permanent':'Permanent'}</span>
-            <input type="checkbox" ${state.selectedPlayerIds.includes(p.id)?'checked':''} onchange="togglePlayerSelect('${p.id}')" style="width:20px;height:20px;">
-          </div>
+          <input type="checkbox" ${selected?'checked':''} onchange="togglePlayerSelect('${p.id}')" style="width:22px;height:22px; flex-shrink:0;">
         </div>
-        <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px; background:var(--felt); border-radius:8px; cursor:pointer;" onclick="openDartPicker('${p.id}','playerSetup')">
-          <span style="font-size:12px; color:var(--cream-dim); display:flex; align-items:center; gap:8px;">${dart?dartAvatarHtml(dart,20):''}Dart: <span style="color:var(--brass);">${dart?dartSetupDisplayName(dart):'No Dart Selected'}</span></span>
-          <span style="font-size:11px; color:var(--cream-dim);">Change &#9656;</span>
-        </div>
+        ${!p.isBot ? `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px; background:var(--felt); border-radius:8px; cursor:pointer; margin-top:10px;" onclick="openDartPicker('${p.id}','playerSetup')">
+          <span style="font-size:12px; color:var(--cream-dim); display:flex; align-items:center; gap:8px; min-width:0;">${dart?dartAvatarHtml(dart,20):''}<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Dart: <span style="color:var(--brass);">${dart?dartSetupDisplayName(dart):'No Dart Selected'}</span></span></span>
+          <span style="font-size:11px; color:var(--cream-dim); flex-shrink:0;">Change &#9656;</span>
+        </div>` : ''}
       </div>`;
   }
   return `<div class="topbar">
@@ -4745,15 +4773,18 @@ function renderPlayerSetup(){
     <div style="width:38px;"></div>
   </div>
   <div class="subtitle">${titleName} &middot; select players or add a guest</div>
-  <div class="content">
-    <div class="big-section-header">Your Players</div>
-    ${permanentPlayers.length ? permanentPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">No permanent players yet. Add a guest below, then tap "Guest" on their row to make them permanent.</p>'}
-    ${guestPlayers.length ? `<div class="big-section-header">Guests</div>${guestPlayers.map((p,idx)=>playerRow(p, state.players.indexOf(p))).join('')}` : ''}
-    <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first. Tap a player's avatar to change their emoji.</p>
+  <div class="content" style="padding-bottom:0;">
     <div style="display:flex; gap:8px;">
       <input class="input" id="newPlayerName" placeholder="Add a guest by name" onkeydown="if(event.key==='Enter')addGuestPlayer()">
       <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="addGuestPlayer()">Add</button>
     </div>
+    <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first. Tap a player's avatar to change their emoji.</p>
+  </div>
+  <div class="content" style="padding-bottom:0;">${sectionHeader('Permanent players', permanentPlayers.length)}</div>
+  ${permanentPlayers.length ? `<div class="content content-grid wide-cards">${permanentPlayers.map((p)=>playerCard(p, state.players.indexOf(p))).join('')}</div>` : '<div class="content" style="padding-top:0;"><p style="color:var(--cream-dim); font-size:13px;">No permanent players yet. Add a guest above, then tap their name to make them permanent.</p></div>'}
+  ${guestPlayers.length ? `<div class="content" style="padding-bottom:0;">${sectionHeader('Guests', guestPlayers.length)}</div><div class="content content-grid wide-cards">${guestPlayers.map((p)=>playerCard(p, state.players.indexOf(p))).join('')}</div>` : ''}
+  ${botPlayers.length ? `<div class="content" style="padding-bottom:0;">${sectionHeader('Bot opponents', botPlayers.length)}</div><div class="content content-grid wide-cards">${botPlayers.map((p)=>playerCard(p, state.players.indexOf(p))).join('')}</div>` : ''}
+  <div class="content" style="padding-top:var(--sp-section-gap);">
     <button class="btn btn-secondary btn-full" ${state.selectedPlayerIds.length<2?'disabled':''} onclick="randomizeOrder()">Randomize Player Order</button>
     <button class="btn btn-primary btn-full" ${state.selectedPlayerIds.length===0?'disabled':''} onclick="proceedToOptions()">Continue</button>
   </div>`;
@@ -5291,6 +5322,12 @@ function forceEndCurrentTurnFromTakeout(){
 
 /* ========================= RENDER: ACTIVE GAME ========================= */
 function playerName(id){ const p = state.players.find(x=>x.id===id); return p? (p.emoji?p.emoji+' ':'')+p.name : '???'; }
+// The one standard section header (spec #11) — reuses the .big-section-header
+// class already adopted across Player Setup, Dart Manager, and Player
+// Management, rather than introducing a second competing style.
+function sectionHeader(text, count){
+  return `<div class="big-section-header">${text}${count!==undefined ? `<span class="count">${count}</span>` : ''}</div>`;
+}
 function participantDisplayDarts(s, idx){
   if(idx === s.currentIdx) return s.currentTurnDarts.map(d=>d.label);
   return s.participants[idx].lastTurnDarts || [];
@@ -6919,9 +6956,13 @@ function renderDartPicker(){
 function renderDartManager(){
   const active = state.dartSetups.filter(d=>!d.archived);
   const archived = state.dartSetups.filter(d=>d.archived);
-  return `<div class="content">
-  <div class="big-section-header">Your Dart Setups</div>
-    ${active.length===0 ? '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No dart setups yet</h3><p>Add your first setup to start tracking performance by dart.</p></div>' : ''}
+  return `<div class="content" style="padding-bottom:0; gap:10px;">
+    <p style="color:var(--cream-dim); font-size:14px; max-width:640px;">Track separate stats per dart setup — brand, weight, shaft, and flight combination — so you can see what actually performs best for you.</p>
+    <button class="btn btn-primary" style="flex:none; align-self:flex-start; padding:11px 22px;" onclick="openDartBuilder(null)">+ Add New Dart Setup</button>
+  </div>
+  <div class="content" style="padding-bottom:0;">${sectionHeader('Your dart setups', active.length)}</div>
+  ${active.length===0 ? '<div class="content" style="padding-top:0;"><div class="empty-state"><div class="glyph">&#127919;</div><h3>No dart setups yet</h3><p>Add your first setup to start tracking performance by dart.</p></div></div>' : `
+  <div class="content content-grid wide-cards">
     ${active.map(d=>`
       <div class="card">
         <div class="card-row" style="align-items:center; gap:10px;">
@@ -6940,11 +6981,12 @@ function renderDartManager(){
         </div>
       </div>
     `).join('')}
-    <button class="btn btn-primary btn-full" onclick="openDartBuilder(null)">+ Add New Dart Setup</button>
-    ${archived.length? `<div class="big-section-header">Archived</div>
+  </div>`}
+  ${archived.length? `<div class="content" style="padding-bottom:0;">${sectionHeader('Archived', archived.length)}</div>
+    <div class="content content-grid wide-cards">
       ${archived.map(d=>`<div class="card" style="opacity:0.6;"><h3 style="font-size:15px;">${dartSetupDisplayName(d)}</h3>
-        <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="toggleDartArchived('${d.id}')">Restore</button></div>`).join('')}` : ''}
-  </div>`;
+        <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="toggleDartArchived('${d.id}')">Restore</button></div>`).join('')}
+    </div>` : ''}`;
 }
 function renderDartSelectField(f){
   const b = state.dartBuilder;
@@ -7054,27 +7096,27 @@ function renderPlayerManager(){
   const permanentPlayers = state.players.filter(p=>!p.isGuest && !p.isBot);
   const guestPlayers = state.players.filter(p=>p.isGuest);
   const botPlayers = state.players.filter(p=>p.isBot);
-  function row(p,idx){
-    return `<div class="player-row" style="cursor:pointer;" onclick="openPlayerDetail('${p.id}')">
-      <div style="display:flex; align-items:center; gap:12px;">
-        <div class="player-avatar" style="background:${playerColor(p,idx)}; cursor:pointer;" onclick="event.stopPropagation(); openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
-        <div style="font-size:16px; font-weight:600;">${p.name}${p.isBot?` <span style="color:var(--cream-dim); font-size:12px; font-weight:400;">&middot; ${BOT_RATING_LABELS[p.botRating]||''} (${p.botRating}/10)</span>`:''}</div>
+  function card(p,idx){
+    return `<div class="player-card ${p.isBot?'is-bot':''}" onclick="openPlayerDetail('${p.id}')">
+      <div class="player-avatar" style="background:${playerColor(p,idx)}; cursor:pointer;" onclick="event.stopPropagation(); openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
+      <div class="player-info">
+        <div class="player-name">${p.name}</div>
+        <div class="player-meta">${p.isBot?`Bot &middot; ${BOT_RATING_LABELS[p.botRating]||''} (${p.botRating}/10)`:p.isGuest?'Guest':'Permanent'}</div>
       </div>
-      <span class="badge ${p.isBot?'live':p.isGuest?'soon':'live'}">${p.isBot?'Bot':p.isGuest?'Guest':'Permanent'}</span>
     </div>`;
   }
   return `<div class="content">
-    <div class="big-section-header">Permanent Players</div>
-    ${permanentPlayers.length ? permanentPlayers.map((p)=>row(p, state.players.indexOf(p))).join('') : '<p style="color:var(--cream-dim); font-size:13px;">None yet — add one below.</p>'}
-    ${botPlayers.length ? `<div class="big-section-header">Bot Opponents</div>${botPlayers.map((p)=>row(p, state.players.indexOf(p))).join('')}` : ''}
-    ${guestPlayers.length ? `<div class="big-section-header">Guests</div>${guestPlayers.map((p)=>row(p, state.players.indexOf(p))).join('')}` : ''}
-    <div style="display:flex; gap:8px; margin-top:18px;">
+    <div style="display:flex; gap:8px;">
       <input class="input" id="newManagedPlayerName" placeholder="Add a new player" onkeydown="if(event.key==='Enter')addManagedPlayer()">
       <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="addManagedPlayer()">Add</button>
     </div>
     <p class="info-note">Tap any player to edit their name and avatar, or see their stats.</p>
+    ${sectionHeader('Permanent Players', permanentPlayers.length)}
+    ${permanentPlayers.length ? `<div class="content-grid wide-cards" style="padding:0;">${permanentPlayers.map((p)=>card(p, state.players.indexOf(p))).join('')}</div>` : '<p style="color:var(--cream-dim); font-size:13px;">None yet — add one above.</p>'}
+    ${guestPlayers.length ? `${sectionHeader('Guests', guestPlayers.length)}<div class="content-grid wide-cards" style="padding:0;">${guestPlayers.map((p)=>card(p, state.players.indexOf(p))).join('')}</div>` : ''}
+    ${botPlayers.length ? `${sectionHeader('Bot Opponents', botPlayers.length)}<div class="content-grid wide-cards" style="padding:0;">${botPlayers.map((p)=>card(p, state.players.indexOf(p))).join('')}</div>` : ''}
     ${state.addingBot ? `
-      <div class="rule-block">
+      <div class="rule-block" style="margin-top:var(--sp-section-gap);">
         <h4>New Bot Opponent</h4>
         <input class="input" id="newBotName" placeholder="Bot name" value="Bot" style="margin-top:8px;">
         <span class="field-label" style="margin-top:10px; display:block;">Skill Level</span>
@@ -7085,7 +7127,7 @@ function renderPlayerManager(){
           <button class="btn btn-secondary" onclick="state.addingBot=false; render();">Cancel</button>
         </div>
       </div>
-    ` : `<button class="btn btn-secondary btn-full" onclick="state.addingBot=true; state.newBotRating=5; render();">+ Add Bot Opponent</button>`}
+    ` : `<button class="btn btn-secondary btn-full" style="margin-top:var(--sp-section-gap);" onclick="state.addingBot=true; state.newBotRating=5; render();">+ Add Bot Opponent</button>`}
   </div>`;
 }
 function addBotPlayer(){
@@ -7203,7 +7245,7 @@ function renderPlayerDetail(){
       <div class="chip-wrap">${[1,2,3,4,5,6,7,8,9,10].map(n=>`<span class="chip ${p.botRating===n?'selected':''}" onclick="setBotRating('${p.id}',${n})">${n}</span>`).join('')}</div>
       <p class="info-note">${BOT_RATING_LABELS[p.botRating]||''} — currently plays X01 games against you. Higher ratings group tighter around the target; lower ratings miss a lot.</p>
     </div>` : ''}
-    <div class="section-label" style="padding-left:0;">Games</div>
+    <div class="content" style="padding:0 0 12px 0;">${sectionHeader('Games')}</div>
     <div class="stat-grid">
       <div class="stat-box"><div class="val">${stats.gamesPlayed}</div><div class="lab">Games Played</div></div>
       <div class="stat-box"><div class="val">${stats.wins}</div><div class="lab">Wins</div></div>
@@ -7212,26 +7254,25 @@ function renderPlayerDetail(){
     </div>
     ${stats.games.favorite? `<p style="color:var(--cream-dim); font-size:13px;">Favorite game: <strong style="color:var(--brass);">${stats.games.favorite}</strong></p>` : ''}
     ${renderAccuracySection(p.id)}
-    ${stats.entries.length? `<div class="section-label" style="padding-left:0;">Recent Games</div>
+    ${stats.entries.length? `<div class="content" style="padding:0 0 12px 0;">${sectionHeader('Recent games')}</div>
       ${stats.entries.slice(0,8).map(h=>`<div class="co-row"><span class="co-route">${h.name}</span><span class="${h.winner===p.name?'co-score':''}" style="font-size:12px; color:${h.winner===p.name?'var(--brass)':'var(--cream-dim)'};">${h.winner===p.name?'Won':h.winner}</span></div>`).join('')}` :
       '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No saved games yet</h3><p>Play and save a game with this player to start building stats.</p></div>'}
 
-    <div class="section-label" style="padding-left:0;">Practice</div>
+    <div class="content" style="padding:0 0 12px 0;">${sectionHeader('Practice')}</div>
     <div class="stat-grid">
       <div class="stat-box"><div class="val">${stats.practice.played}</div><div class="lab">Sessions</div></div>
       <div class="stat-box"><div class="val">${stats.practice.favorite||'—'}</div><div class="lab">Most Practiced</div></div>
     </div>
-    ${stats.practice.entries.length? `<div class="section-label" style="padding-left:0;">Recent Practice</div>
+    ${stats.practice.entries.length? `<div class="content" style="padding:0 0 12px 0;">${sectionHeader('Recent practice')}</div>
       ${stats.practice.entries.slice(0,8).map(h=>`<div class="co-row"><span class="co-route">${h.name}</span><span style="font-size:12px; color:var(--cream-dim);">${h.detail}</span></div>`).join('')}` :
       '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No practice sessions yet</h3><p>Run a practice routine or trainer to start building this.</p></div>'}
 
-    ${stats.dartRecords.length? `<div class="section-label" style="padding-left:0;">Dart Ratings</div>
+    ${stats.dartRecords.length? `<div class="content" style="padding:0 0 12px 0;">${sectionHeader('Dart ratings')}</div>
       ${stats.dartRecords.map(r=>{
         const d = state.dartSetups.find(x=>x.id===r.dartSetupId);
         return `<div class="co-row"><span class="co-route">${d?dartSetupDisplayName(d):'Unknown Setup'} <span style="font-size:10px; color:var(--cream-dim);">(${r.confidenceLevel})</span></span><span class="co-score" style="font-size:14px;">${r.overallRating}</span></div>`;
       }).join('')}` : ''}
     ${renderEquipmentInsights(p.id)}
-    <div class="section-label" style="padding-left:0;"></div>
     ${confirmingDelete ? `
       <div class="rule-block" style="border-color:var(--red);">
         <p style="color:var(--cream);">Delete ${p.name}? Their saved game history will remain but will show as an unknown player.</p>
