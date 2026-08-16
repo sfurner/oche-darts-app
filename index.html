@@ -712,7 +712,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 3:20 PM';
+const BUILD_STAMP = '8/15/2026, 3:40 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4959,7 +4959,7 @@ function renderGameOptions(){
       <input class="input" id="callShotWordInput" placeholder="HORSE" value="${o.callShotWord||''}" oninput="state.gameOptions.callShotWord=this.value.toUpperCase()">
       <p class="info-note">Spell this whole word in missed letters and you're eliminated. Leave it blank for the classic HORSE.</p>
     </div>
-    <p class="info-note">One player calls a target (or, in Follow the Leader, just throws) and gets their tries to hit it. Miss it completely, and the caller takes a letter, just like anyone else would. Hit it, and everyone else takes a turn trying to match it; anyone who fails picks up a letter (only one letter per turn, even in Multi Call with several targets to hit). Then the call passes to the next player and it starts again — last one standing wins.</p>`;
+    <p class="info-note">One player calls a target (or, in Follow the Leader, just throws) and gets their tries to hit it. Miss it completely, and the caller takes a letter, just like anyone else would. Hit it, and everyone else takes a turn trying to match it; anyone who fails picks up a letter. Then the call passes to the next player and it starts again — last one standing wins.</p>`;
   }
   return `<div class="topbar">
     <div class="iconbtn" onclick="state.screen='playerSetup'; render();">&#8592;</div>
@@ -6790,6 +6790,7 @@ function renderCustomGameBuilder(){
   const disabled = style==='countdown' ? false : cgb.targets.length===0;
   return `<div class="topbar"><div class="iconbtn" onclick="cgbCancel()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${cgb.editingId?'Edit Game':'Design a Game'}</h1><div style="width:38px;"></div></div>
   <div class="content">
+    ${sectionHeader('Basics')}
     <div>
       <span class="field-label">Name</span>
       <input class="input" id="cgbNameInput" placeholder="e.g. Round the World Blitz" value="${cgb.name}">
@@ -6814,6 +6815,7 @@ function renderCustomGameBuilder(){
       </div>
     </div>
 
+    ${sectionHeader('Scoring')}
     ${style==='countdown' ? `
     <div>
       <span class="field-label">Starting Score</span>
@@ -6864,6 +6866,7 @@ function renderCustomGameBuilder(){
       </div>
     </div>
 
+    ${sectionHeader('Rules')}
     <div>
       <span class="field-label">Miss / Penalty</span>
       <div class="chip-wrap">${chip('No Penalty','penalty','none')}${chip('Subtract Points','penalty','subtract')}${chip('End Turn Early','penalty','endturn')}</div>
@@ -7043,7 +7046,7 @@ function renderDartBuilder(){
       <p class="info-note">Leave blank and we'll generate a name from brand, model, and weight automatically. You can always come back and rename it.</p>
     </div>
     ${DART_FIELD_SCHEMA.map(section=>`
-      <div class="section-label" style="padding-left:0;">${section.label}</div>
+      ${sectionHeader(section.label)}
       ${section.fields.map(f=> f.type==='select' ? renderDartSelectField(f) : renderDartTextField(f.key, f.label)).join('')}
     `).join('')}
     <div>
