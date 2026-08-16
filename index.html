@@ -684,7 +684,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 8:25 AM';
+const BUILD_STAMP = '8/15/2026, 2:05 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2351,9 +2351,12 @@ function dispatchThrowCore(num, segType){
   } else if(s.kind==='cricket'){
     const validNums = [20,19,18,17,16,15,'B'];
     const targetNum = num==='B' ? 'B' : num;
-    if(!validNums.includes(targetNum)){ /* off-cricket-number hit: just record as miss-equivalent */ 
+    if(!validNums.includes(targetNum)){ /* off-cricket-number hit: just record as miss-equivalent */
       state.session.currentTurnDarts.push({label:'No Score', num:null, marksHit:0, pointsScored:0});
-      if(state.session.currentTurnDarts.length>=3){ cricketEndTurn(s); }
+      if(state.session.currentTurnDarts.length>=3 || s.complete){
+        cricketEndTurn(s);
+        if(s.complete){ finishCricketGame(s); }
+      }
       render(); return;
     }
     const marksHit = segType==='bull' ? 2 : segType==='double' ? 2 : segType==='triple' ? 3 : 1;
@@ -3531,13 +3534,13 @@ function toggleHalveitTarget(t){
 }
 /* ========================= CALL YOUR SHOT (standalone game) ========================= */
 function startCallShotSession(playerIds, opts){
-  const mode = opts.callShotMode || 'single';
+  const leaderMustProve = !!opts.callShotLeaderMustProve;
   return {
     kind:'callshot', maxDarts: opts.callShotMaxDarts||3, word: (opts.callShotWord||'').trim().toUpperCase() || 'HORSE',
-    mode, numTargets: mode==='multi' ? (opts.callShotNumTargets||2) : 1, orderMatters: opts.callShotOrderMatters!==false,
+    mode:'natural', numTargets: 1, orderMatters: true, leaderMustProve,
     participants: playerIds.map(pid=>({playerId:pid, letters:0, eliminated:false})),
     currentIdx:0, callerIdx:0,
-    stage: mode==='natural' ? 'callattempt' : 'callselect',
+    stage: 'callattempt',
     calledTargets:[], hitTargets:[], targetIndex:0, dartsUsedThisAttempt:0,
     attemptOrder:[], attemptPos:0, round:1,
     currentTurnDarts:[], turnHistory:[], complete:false, winnerId:null,
@@ -3624,10 +3627,18 @@ function callShotRegisterDart(hitZoneId){
   const thisPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
   if(thisPoint) s.turnHitPoints.push(thisPoint);
-  // Natural Call mode: the caller's single establishing dart defines the target on the spot.
+  // The leader's establishing dart defines the target on the spot. In "Lead &
+  // Lock" that single dart also completes their round automatically; in
+  // "Prove It" it only sets the target — they still have to hit it themselves
+  // on a following dart, same as everyone else, or take a letter.
   if(s.mode==='natural' && s.stage==='callattempt' && s.calledTargets.length===0){
     if(hitZoneId){
       s.calledTargets = [callShotCanonicalZone(hitZoneId)];
+      if(s.leaderMustProve){
+        s.dartsUsedThisAttempt = 0;
+        render();
+        return;
+      }
       callShotResolveAttempt(s, true);
     } else {
       callShotResolveAttempt(s, false);
@@ -4901,28 +4912,16 @@ function renderGameOptions(){
     body = `
     <div>
       <span class="field-label">Challenge Style</span>
-      <div class="chip-wrap">${chip('Single Call','callShotMode','single')}${chip('Multi Call','callShotMode','multi')}${chip('Follow the Leader','callShotMode','natural')}</div>
+      <div class="chip-wrap">${boolChip('Lead & Lock','callShotLeaderMustProve',false)}${boolChip('Prove It','callShotLeaderMustProve',true)}</div>
       <div class="option-legend">
-        <div class="leg-item ${o.callShotMode==='single'?'active-leg':''}"><b>Single Call</b> — the caller picks one exact spot on the board before throwing, then has their tries to hit it.</div>
-        <div class="leg-item ${o.callShotMode==='multi'?'active-leg':''}"><b>Multi Call</b> — the caller picks 2 or 3 spots before throwing and must hit all of them this turn. Tougher, for stronger players.</div>
-        <div class="leg-item ${o.callShotMode==='natural'?'active-leg':''}"><b>Follow the Leader</b> — no calling ahead of time. The caller just throws, and wherever it lands becomes the shot everyone else has to match. The easiest, most beginner-friendly version.</div>
+        <div class="leg-item ${!o.callShotLeaderMustProve?'active-leg':''}"><b>Lead & Lock</b> — the leader just throws, no calling ahead of time. Wherever it lands is what everyone else has to match — and that single throw is the leader's whole round, no extra risk for them.</div>
+        <div class="leg-item ${o.callShotLeaderMustProve?'active-leg':''}"><b>Prove It</b> — same idea, but the leader has to back it up: after their throw sets the target, they've got to hit it themselves too, or they take a letter just like everyone else.</div>
       </div>
     </div>
-    ${o.callShotMode==='multi' ? `
     <div>
-      <span class="field-label">Targets Per Turn</span>
-      <div class="chip-wrap">${numChip('2 Targets','callShotNumTargets',2)}${numChip('3 Targets','callShotNumTargets',3)}</div>
-    </div>
-    <div>
-      <span class="field-label">Order</span>
-      <div class="chip-wrap">${boolChip('Order Required','callShotOrderMatters',true)}${boolChip('Any Order','callShotOrderMatters',false)}</div>
-      <p class="info-note">${o.callShotOrderMatters ? 'Targets must be hit in the exact order they were called.' : 'Targets can be hit in any order, as long as all of them are hit by the end of the turn.'}</p>
-    </div>
-    ` : ''}
-    <div>
-      <span class="field-label">${o.callShotMode==='natural' ? 'Tries to Match' : 'Tries Per Target'}</span>
+      <span class="field-label">Tries to Match</span>
       <div class="chip-wrap">${[1,2,3].map(v=>numChip(v+' dart'+(v!==1?'s':''),'callShotMaxDarts',v)).join('')}</div>
-      <p class="info-note">${o.callShotMode==='natural' ? "Everyone else gets this many darts to match wherever the caller's dart landed." : "Everyone gets this many darts per target to hit whatever's been called — the caller included. Whether it's one target or several, missing means one letter, not one per target."}</p>
+      <p class="info-note">Everyone else gets this many darts to match wherever the leader's dart landed.${o.callShotLeaderMustProve ? ' The leader gets the same number of tries to hit their own call.' : ''}</p>
     </div>
     <div>
       <span class="field-label">Word to Spell</span>
