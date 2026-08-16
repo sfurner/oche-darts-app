@@ -221,7 +221,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .content{padding:0 var(--sp-page-margin) var(--sp-page-margin) var(--sp-page-margin); display:flex; flex-direction:column; gap:var(--sp-card-gap);}
 .content.content-grid{
   display:grid; grid-template-columns:repeat(auto-fill, minmax(230px,1fr));
-  gap:var(--sp-card-gap); align-items:start;
+  gap:var(--sp-card-gap);
 }
 /* Larger info cards (players, dart setups) get a wider minimum so they
    don't cram into the same column width as small game cards (spec #1). */
@@ -251,9 +251,15 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
    rows line up cleanly instead of "snaggly teeth" from varying description
    lengths — the description scrolls internally if it doesn't fit, rather
    than growing the card. */
-.content-grid .card{ display:flex; flex-direction:column; height:200px; }
+/* Cards deliberately have NO fixed height — CSS Grid's default row
+   stretching (align-items:stretch, the default we're no longer overriding
+   above) already makes every card in the same row match its tallest
+   sibling automatically. That's what actually solves uneven card heights:
+   short descriptions get natural breathing room, long ones are fully
+   visible instead of being clipped and scrollable inside a fixed box. */
+.content-grid .card{ display:flex; flex-direction:column; }
 .content-grid .card h3{ flex-shrink:0; }
-.content-grid .card p.desc{ flex:1; min-height:0; overflow-y:auto; padding-right:2px; }
+.content-grid .card p.desc{ flex:1; }
 .content-grid .card .meta-row{ flex-shrink:0; }
 .content-grid .card .btn-row{ flex-shrink:0; margin-top:auto; }
 .badge{
@@ -339,8 +345,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 }
 .big-section-header:first-child{ margin-top:0; }
 .big-section-header .count{
-  font-family:'JetBrains Mono',monospace; font-weight:400; font-size:12px;
+  font-family:'JetBrains Mono',monospace; font-weight:500; font-size:14px;
   color:var(--cream-dim); text-transform:none; letter-spacing:0;
+  background:var(--felt-light); border:1px solid var(--felt-lighter);
+  padding:2px 10px; border-radius:20px;
 }
 
 .active-top{padding:10px 18px 6px 18px;}
@@ -714,7 +722,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 4:05 PM';
+const BUILD_STAMP = '8/15/2026, 4:20 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
