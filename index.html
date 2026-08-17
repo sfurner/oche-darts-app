@@ -706,6 +706,10 @@ const GAMES = [
     goal:'Call a target and hit it before anyone else does — then make everyone match your shot or watch them pick up a letter.',
     score:'The caller gets a few darts to hit their called target. Miss entirely and it passes on with no penalty. Hit it, and everyone else gets the same number of darts to match it — anyone who fails picks up a letter.',
     win:'Spell out the whole word in missed letters and you\'re eliminated. Last player standing wins.'},
+  {id:'personalbest', name:'Personal Best', desc:'Beat your own score, not everyone else\'s — three darts a round, chasing your best.', players:'1-4', length:'10-20 min', difficulty:'Easy', status:'live',
+    goal:'Throw three darts a round and try to beat your own best round from earlier in this game.',
+    score:'Every dart\'s face value (doubled or tripled as usual) adds to your round total. Your first completed round sets your starting Personal Best — every round after that tries to beat it.',
+    win:'Depends on the mode you pick: no winner at all (just chasing yourself), highest single round, or highest overall average.'},
 ];
 
 const PRACTICES = [
@@ -733,7 +737,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 5:15 PM';
+const BUILD_STAMP = '8/15/2026, 6:10 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1714,7 +1718,153 @@ function startKillerSession(playerIds, opts){
     complete:false, winnerId:null,
   };
 }
+function startPersonalBestSession(playerIds, opts){
+  const mode = opts.personalBestMode || 'high'; // 'high' | 'average'
+  const competitionType = opts.personalBestCompetition || 'challenge'; // 'challenge' | 'bestscore' | 'bestaverage'
+  const totalRounds = opts.personalBestRounds || 8;
+  return {
+    kind:'personalbest', mode, competitionType, totalRounds,
+    participants: playerIds.map(pid=>{
+      const player = state.players.find(x=>x.id===pid);
+      const record = player && player.personalBestRecord;
+      return {
+        playerId: pid,
+        roundScores: [], // completed round totals, this game only
+        currentGameBest: null, // null until the first round completes
+        allTimeBestBeforeGame: record ? (record.highRound!=null ? record.highRound : null) : null,
+        allTimeAverageBeforeGame: record ? (record.highAverage!=null ? record.highAverage : null) : null,
+        newGameRecord: false,
+        newAllTimeRecord: false,
+      };
+    }),
+    currentIdx:0, round:1, currentTurnDarts:[], turnHitPoints:[], turnHistory:[],
+    complete:false, winnerId:null,
+  };
+}
+function personalBestCurrent(s){ return s.participants[s.currentIdx]; }
+function personalBestRoundTotal(darts){
+  return darts.reduce((sum,d)=> sum + (typeof d._score==='number' ? d._score : 0), 0);
+}
+function personalBestAverage(p){
+  if(p.roundScores.length===0) return 0;
+  return p.roundScores.reduce((a,b)=>a+b,0) / p.roundScores.length;
+}
+function personalBestDartValue(num, mult){
+  if(num==='B') return mult==='bull' ? 50 : 25;
+  const n = parseInt(num,10);
+  return mult==='double' ? n*2 : mult==='triple' ? n*3 : n;
+}
+function personalBestApplyDart(s, num, mult){
+  const value = personalBestDartValue(num, mult);
+  const label = mult==='miss' ? 'Miss' : num==='B' ? (mult==='bull'?'Bull':'Outer Bull') : (mult==='double'?'D':mult==='triple'?'T':'S')+num;
+  s.currentTurnDarts.push({_score:value, label, _num:num, _segType:mult});
+  return {turnOver: s.currentTurnDarts.length>=3};
+}
+function personalBestEndTurn(s){
+  const p = personalBestCurrent(s);
+  const roundTotal = personalBestRoundTotal(s.currentTurnDarts);
+  p.roundScores.push(roundTotal);
+  s.turnHistory.push({playerId:p.playerId, round:s.round, darts:s.currentTurnDarts.slice(), total:roundTotal});
+  p.newGameRecord = false;
+  p.newAllTimeRecord = false;
+
+  if(s.mode==='high'){
+    // First completed round always *establishes* the Personal Best rather
+    // than "beating" it — there's nothing to beat yet.
+    if(p.currentGameBest===null){
+      p.currentGameBest = roundTotal;
+    } else if(roundTotal > p.currentGameBest){
+      p.currentGameBest = roundTotal;
+      p.newGameRecord = true;
+      if(p.allTimeBestBeforeGame===null || roundTotal > p.allTimeBestBeforeGame) p.newAllTimeRecord = true;
+    }
+  } else {
+    if(p.roundScores.length===1){
+      p.currentGameBest = roundTotal; // first round sets the initial average
+    } else {
+      const prevAvg = p.currentGameBest;
+      const newAvg = personalBestAverage(p);
+      if(newAvg > prevAvg){
+        p.currentGameBest = newAvg;
+        p.newGameRecord = true;
+        if(p.allTimeAverageBeforeGame===null || newAvg > p.allTimeAverageBeforeGame) p.newAllTimeRecord = true;
+      } else {
+        p.currentGameBest = newAvg;
+      }
+    }
+  }
+
+  if(p.newGameRecord || p.newAllTimeRecord){
+    const label = p.newAllTimeRecord ? 'NEW ALL TIME PERSONAL BEST!' : 'NEW PERSONAL BEST!';
+    state.celebration = { winnerName: label };
+    if(state.celebrationTimer) clearTimeout(state.celebrationTimer);
+    state.celebrationTimer = setTimeout(()=>{ state.celebration=null; render(); }, 2200);
+  }
+
+  s.currentTurnDarts = [];
+  s.turnHitPoints = [];
+  const isLastParticipant = s.currentIdx === s.participants.length-1;
+  if(isLastParticipant){
+    if(p.roundScores.length >= s.totalRounds){
+      s.complete = true;
+      personalBestDetermineWinner(s);
+      return;
+    }
+    s.round++;
+    s.currentIdx = 0;
+  } else {
+    s.currentIdx++;
+  }
+}
+function personalBestDetermineWinner(s){
+  if(s.competitionType==='bestscore'){
+    let best = 0;
+    s.participants.forEach((p,i)=>{ if(p.currentGameBest > s.participants[best].currentGameBest) best = i; });
+    s.winnerId = s.participants[best].playerId;
+  } else if(s.competitionType==='bestaverage'){
+    let best = 0;
+    s.participants.forEach((p,i)=>{ if(personalBestAverage(p) > personalBestAverage(s.participants[best])) best = i; });
+    s.winnerId = s.participants[best].playerId;
+  } else {
+    s.winnerId = null; // Personal Challenge mode — no winner, everyone's just chasing themselves
+  }
+}
+function finishPersonalBestGame(s){
+  // Persist all-time records now that the game is actually over.
+  s.participants.forEach(p=>{
+    const player = state.players.find(x=>x.id===p.playerId);
+    if(!player) return;
+    if(!player.personalBestRecord) player.personalBestRecord = {};
+    const rec = player.personalBestRecord;
+    const bestRound = Math.max(...p.roundScores);
+    const avg = personalBestAverage(p);
+    if(rec.highRound==null || bestRound > rec.highRound){
+      rec.highRound = bestRound; rec.highRoundDate = Date.now(); rec.highRoundGame = 'Personal Best';
+    }
+    if(rec.highAverage==null || avg > rec.highAverage){
+      rec.highAverage = avg; rec.highAverageDate = Date.now(); rec.highAverageGame = 'Personal Best';
+    }
+  });
+  const winner = s.winnerId ? state.players.find(p=>p.id===s.winnerId) : null;
+  const resultsLines = s.participants.map(p=>{
+    const name = playerName(p.playerId);
+    const best = Math.max(...p.roundScores);
+    const avg = personalBestAverage(p);
+    return `${name}: best round ${best}, average ${avg.toFixed(1)}${p.newAllTimeRecord?' — new all-time record!':''}`;
+  });
+  const detail = s.competitionType==='challenge'
+    ? `Personal Challenge — no winner, just chasing yourself. ${resultsLines.join(' | ')}`
+    : (s.competitionType==='bestscore'
+      ? `Best Round wins. ${resultsLines.join(' | ')}`
+      : `Best Average wins. ${resultsLines.join(' | ')}`);
+  buildAndShowReview({
+    type:'Personal Best', gameType:'personalbest', name:'Personal Best',
+    winnerId: s.winnerId, winnerName: winner ? winner.name : (s.competitionType==='challenge' ? 'Everyone' : 'Unknown'),
+    detail, participantIds: s.participants.map(p=>p.playerId), throwCounts: participantThrowCounts(s), session:s,
+  });
+}
 function killerCurrent(s){ return s.participants[s.currentIdx]; }
+
 function killerMutateForDart(s, num, mult){
   const p = killerCurrent(s);
   let label='Miss';
@@ -2442,6 +2592,9 @@ function dispatchThrowCore(num, segType){
   } else if(s.kind==='killer'){
     const res = killerApplyDart(s, num, segType);
     if(res.turnOver){ killerEndTurn(s); if(s.complete) finishKillerGame(s); }
+  } else if(s.kind==='personalbest'){
+    const res = personalBestApplyDart(s, num, segType);
+    if(res.turnOver){ personalBestEndTurn(s); if(s.complete) finishPersonalBestGame(s); }
   }
   if(s.currentTurnDarts.length>0){
     const last = s.currentTurnDarts[s.currentTurnDarts.length-1];
@@ -2495,6 +2648,9 @@ function recordMissCore(){
     // reach the callshot state machine too, not just real hits.
     callShotRegisterDart(null);
     return;
+  } else if(s.kind==='personalbest'){
+    const res = personalBestApplyDart(s, 0, 'miss');
+    if(res.turnOver){ personalBestEndTurn(s); if(s.complete) finishPersonalBestGame(s); }
   }
   if(s.currentTurnDarts.length>0){
     const last = s.currentTurnDarts[s.currentTurnDarts.length-1];
@@ -3323,6 +3479,24 @@ function finishKillerGame(s){
     participantIds: s.participants.map(p=>p.playerId), throwCounts: participantThrowCounts(s), session:s,
   });
 }
+function personalBestUndo(s){
+  if(s.currentTurnDarts.length>0){
+    s.currentTurnDarts.pop();
+    return;
+  }
+  if(s.turnHistory.length===0) return;
+  const last = s.turnHistory.pop();
+  const p = s.participants.find(x=>x.playerId===last.playerId);
+  if(!p) return;
+  p.roundScores.pop();
+  if(p.roundScores.length===0){ p.currentGameBest = null; }
+  else if(s.mode==='high'){ p.currentGameBest = Math.max(...p.roundScores); }
+  else { p.currentGameBest = personalBestAverage(p); }
+  p.newGameRecord = false; p.newAllTimeRecord = false;
+  s.currentIdx = s.participants.indexOf(p);
+  s.round = last.round;
+  s.complete = false; s.winnerId = null;
+}
 const ENGINE_HOOKS = {
   atc:{undo:atcUndo, endTurn:atcEndTurn, finish:finishAtcGame},
   shanghai:{undo:shanghaiUndo, endTurn:shanghaiEndTurn, finish:finishShanghaiGame},
@@ -3330,6 +3504,7 @@ const ENGINE_HOOKS = {
   halveit:{undo:halveItUndo, endTurn:halveItEndTurn, finish:finishHalveItGame},
   killer:{undo:killerUndo, endTurn:killerEndTurn, finish:finishKillerGame},
   custom:{undo:customUndo, endTurn:customEndTurn, finish:finishCustomGame},
+  personalbest:{undo:personalBestUndo, endTurn:personalBestEndTurn, finish:finishPersonalBestGame},
 };
 function doUndo(){
   const s = state.session;
@@ -3856,6 +4031,7 @@ const GAME_LAUNCHERS = {
   halveit: startHalveItSession,
   killer: startKillerSession,
   callshot: startCallShotSession,
+  personalbest: startPersonalBestSession,
 };
 function launchGame(){
   const id = state.pendingGameId;
@@ -5017,6 +5193,30 @@ function renderGameOptions(){
       <p class="info-note">Spell this whole word in missed letters and you're eliminated. Leave it blank for the classic HORSE.</p>
     </div>
     <p class="info-note">One player calls a target (or, in Follow the Leader, just throws) and gets their tries to hit it. Miss it completely, and the caller takes a letter, just like anyone else would. Hit it, and everyone else takes a turn trying to match it; anyone who fails picks up a letter. Then the call passes to the next player and it starts again — last one standing wins.</p>`;
+  } else if(id==='personalbest'){
+    body = `
+    <div>
+      <span class="field-label">Number of Rounds</span>
+      <div class="chip-wrap">${[5,8,10,15].map(v=>numChip(v+' rounds','personalBestRounds',v)).join('')}</div>
+    </div>
+    <div>
+      <span class="field-label">Personal Best Type</span>
+      <div class="chip-wrap">${chip('High Score','personalBestMode','high')}${chip('Average','personalBestMode','average')}</div>
+      <div class="option-legend">
+        <div class="leg-item ${(o.personalBestMode||'high')==='high'?'active-leg':''}"><b>High Score</b> — chase your single best three-dart round of the game.</div>
+        <div class="leg-item ${o.personalBestMode==='average'?'active-leg':''}"><b>Average</b> — chase a higher overall three-dart average across every round.</div>
+      </div>
+    </div>
+    <div>
+      <span class="field-label">Competition Type</span>
+      <div class="chip-wrap">${chip('Personal Challenge','personalBestCompetition','challenge')}${chip('Best Score Wins','personalBestCompetition','bestscore')}${chip('Best Average Wins','personalBestCompetition','bestaverage')}</div>
+      <div class="option-legend">
+        <div class="leg-item ${(o.personalBestCompetition||'challenge')==='challenge'?'active-leg':''}"><b>Personal Challenge</b> — no winner, everyone's just working on their own record.</div>
+        <div class="leg-item ${o.personalBestCompetition==='bestscore'?'active-leg':''}"><b>Best Score Wins</b> — whoever ends the game with the highest single round wins.</div>
+        <div class="leg-item ${o.personalBestCompetition==='bestaverage'?'active-leg':''}"><b>Best Average Wins</b> — whoever ends the game with the highest overall average wins.</div>
+      </div>
+    </div>
+    <p class="info-note">Throw three darts, establish a score, then spend the rest of the game trying to beat yourself. Everyone's target is their own — no one else's score is ever the thing to beat.</p>`;
   }
   return `<div class="topbar">
     <div class="iconbtn" onclick="state.screen='playerSetup'; render();">&#8592;</div>
@@ -5294,7 +5494,7 @@ let cameraPendingTurnEnd = null;
 const ORIGINAL_END_TURN_FNS = {
   x01:x01EndTurn, cricket:cricketEndTurn, custom:customEndTurn,
   atc:atcEndTurn, shanghai:shanghaiEndTurn, baseball:baseballEndTurn,
-  halveit:halveItEndTurn, killer:killerEndTurn,
+  halveit:halveItEndTurn, killer:killerEndTurn, personalbest:personalBestEndTurn,
 };
 function wrapEndTurnForCamera(originalFn){
   return function(s){
@@ -5313,6 +5513,7 @@ shanghaiEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.shanghai);
 baseballEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.baseball);
 halveItEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.halveit);
 killerEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.killer);
+personalBestEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.personalbest);
 
 function handleCameraThrow(throwEntry){
   if(!state.settings.dartsCallerCameraMode) return;
@@ -5430,6 +5631,26 @@ function playerBoxData(s, p){
   return {stat:'', dim:false};
 }
 function renderPlayerBoxes(s){
+  if(s.kind==='personalbest'){
+    // Richer box than other games need — Personal Best has three distinct
+    // numbers worth showing (current round, score to beat, personal best),
+    // more than the generic single-stat pattern below accommodates.
+    return `<div class="panel-zone-players">
+      <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
+      <div class="panel-players-grid">${s.participants.map((p,i)=>{
+        const isCurrent = i===s.currentIdx;
+        const roundSoFar = isCurrent ? s.currentTurnDarts.reduce((sum,d)=>sum+(typeof d._score==='number'?d._score:0),0) : null;
+        const hasPB = p.roundScores.length>0;
+        const headline = (isCurrent && roundSoFar!==null) ? roundSoFar : (hasPB ? (s.mode==='average' ? personalBestAverage(p).toFixed(1) : p.currentGameBest) : '—');
+        const subLine = !hasPB ? 'No PB yet' : s.mode==='average' ? `Avg: ${personalBestAverage(p).toFixed(1)}` : `PB: ${p.currentGameBest}`;
+        return `<div class="panel-player-card ${isCurrent?'active':''}">
+          <div class="pp-name">${isCurrent?'&#9679; ':''}${playerName(p.playerId).toUpperCase()}</div>
+          <div class="pp-stat">${headline}</div>
+          <div style="font-size:11px; color:var(--cream-dim); margin-top:2px;">${subLine}</div>
+        </div>`;
+      }).join('')}</div>
+    </div>`;
+  }
   return `<div class="panel-zone-players">
     <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
     <div class="panel-players-grid">${s.participants.map((p,i)=>{
@@ -5456,6 +5677,7 @@ function renderRoundInfo(s){
   if(s.kind==='shanghai') total = s.rounds;
   else if(s.kind==='baseball') total = s.innings;
   else if(s.kind==='halveit') total = s.sequence.length;
+  else if(s.kind==='personalbest') total = s.totalRounds;
   else if(s.kind==='custom' && (s.cfg.winCondition==='highScore'||s.cfg.winCondition==='lowScore')) total = s.cfg.rounds||8;
   const label = s.kind==='baseball' ? 'INNING' : 'ROUND';
   return `<div><div class="round-label">${label}</div><div class="round-value">${s.round}${total?' of '+total:''}</div></div>`;
@@ -5569,7 +5791,7 @@ function renderActiveShell(){
   const s = state.session;
   if(!s) return renderHomeShell();
   if(s.kind==='callshot') return renderCallShotActiveShell(s);
-  const GNAMES = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer'};
+  const GNAMES = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer', personalbest:'Personal Best'};
   const gname = s.kind==='x01' ? (s.startScore+'') : s.kind==='custom' ? (s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':s.cfg.name) : (GNAMES[s.kind]||s.kind);
   return `<div class="game-header-row">
     ${renderRoundInfo(s)}
@@ -5704,6 +5926,34 @@ function turnHintTargetLabel(t){
 function renderTurnHint(s){
   const actor = s.participants[s.currentIdx];
   const name = playerName(actor.playerId);
+  if(s.kind==='personalbest'){
+    // Always computed fresh from whoever s.currentIdx points to right now —
+    // no cached "last summary" text to go stale here, unlike Call Your
+    // Shot's round-transition bug. New-record moments get their own brief
+    // celebration overlay (already wired in personalBestEndTurn) instead.
+    const darts = s.currentTurnDarts;
+    const roundTotalSoFar = darts.reduce((sum,d)=> sum + (typeof d._score==='number'?d._score:0), 0);
+    const isFirstRound = actor.roundScores.length===0;
+    if(isFirstRound){
+      return darts.length>0
+        ? `<b>${name}</b><br>Current: ${roundTotalSoFar}. Try for the highest score you can.`
+        : `<b>${name}</b><br>Try for the highest score you can.`;
+    }
+    if(s.mode==='average'){
+      const avg = personalBestAverage(actor);
+      const target = Math.floor(avg) + 1;
+      const needed = target - roundTotalSoFar;
+      return `<b>${name} — Current Average: ${avg.toFixed(1)}</b><br>${needed<=0 ? 'On pace for a new personal best average — keep going!' : `${needed} needed this round to raise your average.`}`;
+    }
+    if(actor.currentGameBest>=180){
+      return `<b>${name} — Personal Best: 180</b><br>Go for another perfect round!`;
+    }
+    const target = actor.currentGameBest + 1;
+    const needed = target - roundTotalSoFar;
+    return needed<=0
+      ? `<b>${name} — NEW PERSONAL BEST!</b><br>Score to beat was ${target-1}.`
+      : `<b>${name} — Score to Beat: ${target}</b><br>${needed} needed.`;
+  }
   if(s.kind==='callshot'){
     // Matches killer/halveit's existing convention: a brief "what just
     // happened" summary, set right before the state advances, shown until
@@ -7326,6 +7576,13 @@ function renderPlayerDetail(){
     </div>
     ${stats.games.favorite? `<p style="color:var(--cream-dim); font-size:13px;">Favorite game: <strong style="color:var(--brass);">${stats.games.favorite}</strong></p>` : ''}
     ${renderAccuracySection(p.id)}
+    <div class="content" style="padding:0 0 12px 0;">${sectionHeader('Personal Best')}</div>
+    ${p.personalBestRecord && (p.personalBestRecord.highRound!=null || p.personalBestRecord.highAverage!=null) ? `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="val">${p.personalBestRecord.highRound!=null ? p.personalBestRecord.highRound : '—'}</div><div class="lab">All Time Best Round</div></div>
+      <div class="stat-box"><div class="val">${p.personalBestRecord.highAverage!=null ? p.personalBestRecord.highAverage.toFixed(1) : '—'}</div><div class="lab">All Time Best Average</div></div>
+    </div>
+    ` : '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No Personal Best games yet</h3><p>Play a round of Personal Best to start tracking your all-time record.</p></div>'}
     ${stats.entries.length? `<div class="content" style="padding:0 0 12px 0;">${sectionHeader('Recent games')}</div>
       ${stats.entries.slice(0,8).map(h=>`<div class="co-row"><span class="co-route">${h.name}</span><span class="${h.winner===p.name?'co-score':''}" style="font-size:12px; color:${h.winner===p.name?'var(--brass)':'var(--cream-dim)'};">${h.winner===p.name?'Won':h.winner}</span></div>`).join('')}` :
       '<div class="empty-state"><div class="glyph">&#127919;</div><h3>No saved games yet</h3><p>Play and save a game with this player to start building stats.</p></div>'}
