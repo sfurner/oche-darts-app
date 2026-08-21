@@ -737,7 +737,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 6:50 PM';
+const BUILD_STAMP = '8/15/2026, 7:15 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5368,6 +5368,9 @@ let boardManagerPollTimer = null;
 let boardManagerLastThrowCount = 0;
 let boardManagerLastEvent = null;
 let boardManagerTakeoutStuckSince = null;
+let boardManagerResetAttempts = 0;
+let boardManagerStartAttempts = 0;
+const BOARD_MANAGER_MAX_AUTO_ATTEMPTS = 3; // cap auto-recovery so a genuinely broken engine gets surfaced instead of hammered with requests indefinitely
 const BOARD_MANAGER_STUCK_TIMEOUT_MS = 6000; // a real physical takeout takes 1-3s; this is a generous grace period before assuming the vision engine itself is stuck
 
 function boardManagerUrl(){
@@ -5421,6 +5424,18 @@ function resetBoardManagerNow(){
     .then(()=> console.log('Oche: Board Manager reset triggered'))
     .catch(err => console.warn('Oche: Board Manager reset failed', err && err.message));
 }
+// Different real action from reset — confirmed via Board Manager's own API
+// (button.py in the ha-autodarts-local integration): reset only clears a
+// confused detection state on an engine that's still running. If the
+// engine has actually stopped (data.running === false), reset does nothing
+// at all — this is what start_detection is for.
+function startBoardManagerDetection(){
+  const host = state.settings.boardManagerHost;
+  if(!host) return;
+  fetch('http://' + host + ':3180/api/start', { method:'PUT' })
+    .then(()=> console.log('Oche: Board Manager start triggered'))
+    .catch(err => console.warn('Oche: Board Manager start failed', err && err.message));
+}
 
 function handleBoardManagerState(data){
   const throws = Array.isArray(data.throws) ? data.throws : [];
@@ -5429,25 +5444,48 @@ function handleBoardManagerState(data){
     console.log('Oche: poll saw throws.length change', boardManagerLastThrowCount, '->', throws.length, JSON.stringify(data));
   }
 
-  // Confirmed the hard way, both at startup and now recurring mid-play
-  // roughly every few turns: Board Manager's own vision engine can get
-  // stuck believing a takeout is still in progress (status keeps reporting
-  // "Takeout in progress" and never resolves), even though the darts were
-  // physically already pulled. While stuck like this, Board Manager stops
-  // registering new throws entirely — nothing in Oche's own code can fix
-  // that engine, but we can detect the stuck pattern and auto-recover the
-  // same way a human would (hitting Reset on Board Manager's own page).
+  // Two genuinely different failure modes, confirmed the hard way:
+  // (1) detection fully stopped (data.running === false) — reset does
+  //     nothing here, only /api/start helps.
+  // (2) detection running but stuck believing a takeout is still in
+  //     progress — reset is the right fix.
+  // Both are capped at a few auto-attempts rather than retried forever:
+  // hammering an already-unstable Board Manager with repeated requests may
+  // itself have been part of what escalated a stuck state into a fully
+  // stopped one.
+  if(data.running === false){
+    boardManagerTakeoutStuckSince = null;
+    if(boardManagerStartAttempts < BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
+      boardManagerStartAttempts++;
+      console.warn(`Oche: Board Manager detection is stopped — attempting to start it (attempt ${boardManagerStartAttempts}/${BOARD_MANAGER_MAX_AUTO_ATTEMPTS})`);
+      startBoardManagerDetection();
+    } else if(boardManagerStartAttempts === BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
+      boardManagerStartAttempts++;
+      console.error('Oche: Board Manager still stopped after repeated auto-start attempts — this needs a manual look, not another automatic retry.');
+    }
+    return;
+  }
+  boardManagerStartAttempts = 0;
+
   const statusText = (data.status || '').toLowerCase();
   if(statusText.includes('takeout')){
     if(boardManagerTakeoutStuckSince === null){
       boardManagerTakeoutStuckSince = Date.now();
+      boardManagerResetAttempts = 0;
     } else if(Date.now() - boardManagerTakeoutStuckSince > BOARD_MANAGER_STUCK_TIMEOUT_MS){
-      console.warn('Oche: Board Manager looks stuck on takeout, auto-resetting');
-      resetBoardManagerNow();
-      boardManagerTakeoutStuckSince = null;
+      if(boardManagerResetAttempts < BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
+        boardManagerResetAttempts++;
+        console.warn(`Oche: Board Manager looks stuck on takeout — auto-resetting (attempt ${boardManagerResetAttempts}/${BOARD_MANAGER_MAX_AUTO_ATTEMPTS})`);
+        resetBoardManagerNow();
+        boardManagerTakeoutStuckSince = Date.now(); // wait a full fresh timeout before trying again, rather than immediately re-triggering
+      } else if(boardManagerResetAttempts === BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
+        boardManagerResetAttempts++;
+        console.error('Oche: Board Manager still stuck after repeated auto-reset attempts — this needs a manual look, not another automatic retry.');
+      }
     }
   } else {
     boardManagerTakeoutStuckSince = null;
+    boardManagerResetAttempts = 0;
   }
 
   // New dart(s) landed since our last poll.
@@ -5832,7 +5870,7 @@ function renderActiveShell(){
     ${renderRoundInfo(s)}
     <div class="game-title-center">${gname}</div>
     <div style="text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:10px;">
-      ${state.settings.dartsCallerCameraMode ? `<div class="iconbtn" style="width:32px;height:32px;font-size:15px;" onclick="resetBoardManagerNow()" title="Reset Board Manager">&#8635;</div>` : ''}
+      ${state.settings.dartsCallerCameraMode ? `<div class="iconbtn" style="width:32px;height:32px;font-size:15px;" onclick="resetBoardManagerNow()" title="Reset Board Manager (fixes stuck-on-takeout)">&#8635;</div><div class="iconbtn" style="width:32px;height:32px;font-size:14px;" onclick="startBoardManagerDetection()" title="Start Board Manager detection (fixes fully stopped)">&#9654;</div>` : ''}
       ${s.kind==='killer' ? '<div><div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:12px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div></div>' : ''}
     </div>
   </div>
@@ -5890,7 +5928,7 @@ function renderCallShotActiveShell(s){
   ${renderInstructionBox(s)}
   ${playerBoxes}
   <div class="panel-controls">
-    ${state.settings.dartsCallerCameraMode ? `<button class="btn-undo" onclick="resetBoardManagerNow()" title="Reset Board Manager">&#8635; Reset Board</button>` : ''}
+    ${state.settings.dartsCallerCameraMode ? `<button class="btn-undo" onclick="resetBoardManagerNow()" title="Fixes stuck-on-takeout">&#8635; Reset Board</button><button class="btn-undo" onclick="startBoardManagerDetection()" title="Fixes fully stopped detection">&#9654; Start Board</button>` : ''}
     <button class="btn-undo" onclick="callShotUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>
