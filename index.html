@@ -173,6 +173,35 @@ body{
 .panel-instruction-box{ border:1px solid rgba(255,210,63,0.4); background:rgba(255,210,63,0.08); border-radius:8px; padding:9px; }
 .panel-instruction-box .pi-label{ font-size:12px; color:var(--brass); font-weight:700; letter-spacing:0.04em; margin-bottom:3px; }
 .panel-instruction-box .pi-text{ font-size:13.5px; color:#fff; font-weight:600; line-height:1.35; }
+/* Collapsible per-player sections — fixed positions every turn, no
+   reshuffling, so everyone always knows exactly where their own section
+   lives on screen regardless of whose turn it is. */
+.player-sections{ display:flex; flex-direction:column; gap:6px; }
+.player-section{ border-radius:10px; overflow:hidden; }
+.player-section.active{ background:var(--felt-light); border:2px solid var(--brass); }
+.player-section.collapsed{ background:var(--felt-dark); border:1px solid var(--felt-lighter); }
+.ps-header{ display:flex; align-items:center; gap:8px; padding:8px 10px; }
+.ps-avatar{ width:26px; height:26px; border-radius:50%; background:var(--felt); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+.ps-avatar.small{ width:22px; height:22px; font-size:11px; }
+.ps-name{ font-family:'Oswald',sans-serif; font-weight:600; font-size:13px; color:var(--cream); }
+.ps-score{ margin-left:auto; font-family:'Oswald',sans-serif; font-size:19px; color:var(--cream); font-weight:700; }
+.ps-summary{ margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream-dim); }
+.ps-body{ padding:0 10px 10px 10px; }
+.ps-target{ text-align:center; padding:8px; background:var(--felt); border:1px solid var(--brass); border-radius:8px; margin-bottom:8px; }
+.ps-target-lab{ font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:0.05em; }
+.ps-target-val{ font-family:'Oswald',sans-serif; font-size:17px; color:var(--brass); margin-top:1px; }
+.ps-target-sub{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); margin-top:2px; }
+.turn-dart-row{ display:flex; align-items:center; gap:8px; background:var(--felt); border-radius:6px; padding:6px 8px; margin-bottom:5px; font-size:12px; }
+.turn-dart-row.pending{ opacity:0.4; border:1px dashed var(--felt-lighter); background:transparent; }
+.turn-dart-row.miss{ border:1px solid var(--red); }
+.turn-dart-num{ width:16px; height:16px; border-radius:50%; background:var(--felt-lighter); color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.turn-dart-label{ font-family:'Oswald',sans-serif; color:var(--cream); flex:1; }
+.turn-dart-val{ font-family:'JetBrains Mono',monospace; color:var(--brass); font-weight:600; }
+.turn-dart-val.miss{ color:#e08a7d; }
+.ps-editrow{ display:flex; gap:6px; margin-top:8px; }
+.ps-editbtn{ flex:1; text-align:center; padding:8px 5px; border-radius:8px; font-family:'Inter',sans-serif; font-weight:600; font-size:11px; border:1px solid var(--felt-lighter); color:var(--cream); cursor:pointer; }
+.ps-editbtn.danger{ border-color:var(--red); color:#e08a7d; }
+.ps-editbtn.disabled{ opacity:0.35; cursor:default; }
 @media (min-width:900px){
   .device.game-layout .device-body{ flex-direction:row; }
   .device.game-layout .screen{ flex:1; min-width:0; }
@@ -737,7 +766,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 8:10 PM';
+const BUILD_STAMP = '8/15/2026, 9:20 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1796,9 +1825,15 @@ function personalBestEndTurn(s){
 
   if(p.newGameRecord || p.newAllTimeRecord){
     const label = p.newAllTimeRecord ? 'NEW ALL TIME PERSONAL BEST!' : 'NEW PERSONAL BEST!';
-    state.celebration = { winnerName: label };
-    if(state.celebrationTimer) clearTimeout(state.celebrationTimer);
-    state.celebrationTimer = setTimeout(()=>{ state.celebration=null; render(); }, 2200);
+    // Dedicated mid-game flash, deliberately separate from state.celebration
+    // (the end-of-game winner overlay) — that one hardcodes "X wins!" onto
+    // whatever text it's given, which is exactly why this used to read
+    // "NEW PERSONAL BEST! wins!". It also has a "Continue" button that
+    // navigates to the game-review screen — fine at a real game's end, but
+    // dangerous here, since tapping it mid-round would have ended the game.
+    state.pbFlash = { text: label, allTime: p.newAllTimeRecord };
+    if(state.pbFlashTimer) clearTimeout(state.pbFlashTimer);
+    state.pbFlashTimer = setTimeout(()=>{ state.pbFlash=null; render(); }, 2200);
   }
 
   s.currentTurnDarts = [];
@@ -1852,15 +1887,17 @@ function finishPersonalBestGame(s){
     const avg = personalBestAverage(p);
     return `${name}: best round ${best}, average ${avg.toFixed(1)}${p.newAllTimeRecord?' — new all-time record!':''}`;
   });
-  const detail = s.competitionType==='challenge'
+  const isChallenge = s.competitionType==='challenge';
+  const detail = isChallenge
     ? `Personal Challenge — no winner, just chasing yourself. ${resultsLines.join(' | ')}`
     : (s.competitionType==='bestscore'
       ? `Best Round wins. ${resultsLines.join(' | ')}`
       : `Best Average wins. ${resultsLines.join(' | ')}`);
   buildAndShowReview({
     type:'Personal Best', gameType:'personalbest', name:'Personal Best',
-    winnerId: s.winnerId, winnerName: winner ? winner.name : (s.competitionType==='challenge' ? 'Everyone' : 'Unknown'),
+    winnerId: s.winnerId, winnerName: winner ? winner.name : null,
     detail, participantIds: s.participants.map(p=>p.playerId), throwCounts: participantThrowCounts(s), session:s,
+    skipCelebration: isChallenge,
   });
 }
 function killerCurrent(s){ return s.participants[s.currentIdx]; }
@@ -2481,6 +2518,7 @@ function handleBoardClick(evt){
 function commitBoardThrow(c){
   state.pendingBoard = null;
   state.pendingHitPoint = c.point || null;
+  state.returnedToPreviousPlayer = false;
   if(state.practiceSession && c.point) state.practiceSession.lastHitPoint = c.point;
   if(state.checkoutPractice && c.point) state.checkoutPractice.lastHitPoint = c.point;
   let num, mult;
@@ -2612,6 +2650,7 @@ function recordMiss(){
 }
 function recordMissCore(){
   const s = state.session;
+  state.returnedToPreviousPlayer = false;
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisMissPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
@@ -2660,6 +2699,10 @@ function recordMissCore(){
 }
 function finalizeBustThenAdvance(s){
   // score already reverted in x01ApplyDart (not applied), just end turn now
+  const p = x01Current(s);
+  const name = playerName(p.playerId);
+  const bustDart = s.currentTurnDarts[s.currentTurnDarts.length-1];
+  s.lastTurnSummary = `<b>${name} busted!</b><br>${bustDart ? bustDart.label+' — ' : ''}turn reverts to ${s.scoreBeforeTurn}.`;
   x01EndTurn(s);
 }
 
@@ -3377,6 +3420,14 @@ function buildAndShowReview(opts){
     rawSession: opts.session || null,
     extra: opts.extra || null,
   };
+  if(opts.skipCelebration){
+    // No real winner to celebrate (e.g. Personal Best's Personal Challenge
+    // mode) — go straight to the results screen instead of forcing an
+    // "Everyone wins!" confetti moment that doesn't actually fit.
+    state.screen = 'gameReview';
+    render();
+    return;
+  }
   state.celebration = { winnerName: opts.winnerName };
   if(state.celebrationTimer) clearTimeout(state.celebrationTimer);
   state.celebrationTimer = setTimeout(()=>{ advanceFromCelebration(); }, 14000);
@@ -3387,6 +3438,28 @@ function advanceFromCelebration(){
   state.screen = 'gameReview';
   render();
 }
+function renderPBFlashOverlay(){
+  const c = state.pbFlash;
+  if(!c) return '';
+  const confettiColors = ['#FFD23F','#5B9BF5','#4a9e5c','#e8a488','#c9584a','#9b6bc9'];
+  const pieces = Array.from({length:c.allTime?36:20},(_,i)=>{
+    const left = Math.round(Math.random()*100);
+    const delay = (Math.random()*0.4).toFixed(2);
+    const duration = (1.4+Math.random()*1.0).toFixed(2);
+    const color = confettiColors[i%confettiColors.length];
+    const size = 6+Math.round(Math.random()*6);
+    const rotate = Math.round(Math.random()*360);
+    return `<div class="confetti-piece" style="left:${left}%; background:${color}; width:${size}px; height:${size*0.4}px; animation-delay:${delay}s; animation-duration:${duration}s; transform:rotate(${rotate}deg);"></div>`;
+  }).join('');
+  return `<div class="celebration-overlay" style="pointer-events:none;">
+    <div class="confetti-field">${pieces}</div>
+    <div class="celebration-card" style="padding:24px 34px;">
+      <div class="celebration-trophy">${c.allTime ? '&#127775;' : '&#127942;'}</div>
+      <div class="celebration-winner" style="font-size:20px;">${c.text}</div>
+    </div>
+  </div>`;
+}
+
 function renderCelebrationOverlay(){
   const c = state.celebration;
   if(!c) return '';
@@ -3528,6 +3601,22 @@ function doClearTurn(){
     while(s.currentTurnDarts.length>0){ ENGINE_HOOKS[s.kind].undo(s); }
   }
   s.turnHitPoints = [];
+  render();
+}
+// "Return to Previous Player" only ever goes back exactly one player, and
+// only once per use — confirmed the underlying mechanism already exists:
+// every game's own undo function, once the current turn is already empty,
+// naturally pops turn history and reverts to the previous player. This
+// just clears the current turn first (if needed), then triggers that one
+// more time, and tracks that it's been used so the button greys out
+// afterward rather than allowing a second, deeper rewind.
+function returnToPreviousPlayer(){
+  const s = state.session;
+  if(!s || state.returnedToPreviousPlayer) return;
+  if(!s.turnHistory || s.turnHistory.length===0) return;
+  if(s.currentTurnDarts.length>0){ doClearTurn(); }
+  doUndo();
+  state.returnedToPreviousPlayer = true;
   render();
 }
 function doEndTurnManually(){
@@ -4640,6 +4729,7 @@ function render(){
   }
   if(state.emojiPickerPlayerId) html += renderEmojiPickerModal(state.emojiPickerPlayerId);
   if(state.celebration) html += renderCelebrationOverlay();
+  if(state.pbFlash) html += renderPBFlashOverlay();
   const footerSplit = html.split(FOOTER_MARKER);
   app.innerHTML = footerSplit[0];
   if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
@@ -5727,37 +5817,67 @@ function playerBoxData(s, p){
   return {stat:'', dim:false};
 }
 function renderPlayerBoxes(s){
-  if(s.kind==='personalbest'){
-    // Richer box than other games need — Personal Best has three distinct
-    // numbers worth showing (current round, score to beat, personal best),
-    // more than the generic single-stat pattern below accommodates.
-    return `<div class="panel-zone-players">
-      <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
-      <div class="panel-players-grid">${s.participants.map((p,i)=>{
-        const isCurrent = i===s.currentIdx;
-        const roundSoFar = isCurrent ? s.currentTurnDarts.reduce((sum,d)=>sum+(typeof d._score==='number'?d._score:0),0) : null;
-        const hasPB = p.roundScores.length>0;
-        const headline = (isCurrent && roundSoFar!==null) ? roundSoFar : (hasPB ? (s.mode==='average' ? personalBestAverage(p).toFixed(1) : p.currentGameBest) : '—');
-        const subLine = !hasPB ? 'No PB yet' : s.mode==='average' ? `Avg: ${personalBestAverage(p).toFixed(1)}` : `PB: ${p.currentGameBest}`;
-        return `<div class="panel-player-card ${isCurrent?'active':''}">
-          <div class="pp-name">${isCurrent?'&#9679; ':''}${playerName(p.playerId).toUpperCase()}</div>
-          <div class="pp-stat">${headline}</div>
-          <div style="font-size:11px; color:var(--cream-dim); margin-top:2px;">${subLine}</div>
-        </div>`;
-      }).join('')}</div>
-    </div>`;
-  }
   return `<div class="panel-zone-players">
     <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
-    <div class="panel-players-grid">${s.participants.map((p,i)=>{
-      const d = playerBoxData(s,p);
-      const isCurrent = i===s.currentIdx;
-      return `<div class="panel-player-card ${isCurrent?'active':''}" style="${d.dim?'opacity:0.5;':''}">
-        <div class="pp-name">${isCurrent?'&#9679; ':''}${playerName(p.playerId).toUpperCase()}</div>
-        <div class="pp-stat">${d.stat}</div>
-      </div>`;
-    }).join('')}</div>
+    <div class="player-sections">${s.participants.map((p,i)=>
+      i===s.currentIdx ? renderActivePlayerSection(s,p,i) : renderCollapsedPlayerSection(s,p,i)
+    ).join('')}</div>
   </div>`;
+}
+function collapsedSectionSummary(s,p){
+  if(s.kind==='personalbest'){
+    const hasPB = p.roundScores.length>0;
+    if(!hasPB) return 'No PB yet';
+    return s.mode==='average' ? `Avg: ${personalBestAverage(p).toFixed(1)}` : `PB: ${p.currentGameBest}`;
+  }
+  return playerBoxData(s,p).stat;
+}
+function renderActivePlayerSection(s,p,i){
+  const target = renderTargetBoxHtml(s,p);
+  const darts = s.currentTurnDarts;
+  const rows = [0,1,2].map(idx=>{
+    const d = darts[idx];
+    if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
+    const isMiss = d.label==='Miss' || d.bust;
+    const val = typeof d.value==='number' ? d.value : (typeof d._score==='number' ? d._score : (d.bust?'BUST':''));
+    return `<div class="turn-dart-row${isMiss?' miss':''}"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val${isMiss?' miss':''}">${val}</div></div>`;
+  }).join('');
+  const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
+  return `<div class="player-section active">
+    <div class="ps-header">
+      <div class="ps-avatar">${playerEmojiOrInitials(p.playerId)}</div>
+      <div class="ps-name">${playerName(p.playerId)}</div>
+      <div class="ps-score">${activeSectionHeadline(s,p)}</div>
+    </div>
+    <div class="ps-body">
+      <div class="ps-target"><div class="ps-target-lab">Target</div><div class="ps-target-val">${target.label}</div>${target.sub?`<div class="ps-target-sub">${target.sub}</div>`:''}</div>
+      ${rows}
+      <div class="ps-editrow">
+        <div class="ps-editbtn danger" onclick="doClearTurn()">Restart Turn</div>
+        <div class="ps-editbtn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Return to Previous Player</div>
+      </div>
+    </div>
+  </div>`;
+}
+function renderCollapsedPlayerSection(s,p,i){
+  return `<div class="player-section collapsed">
+    <div class="ps-header">
+      <div class="ps-avatar small">${playerEmojiOrInitials(p.playerId)}</div>
+      <div class="ps-name">${playerName(p.playerId)}</div>
+      <div class="ps-summary">${collapsedSectionSummary(s,p)}</div>
+    </div>
+  </div>`;
+}
+function playerEmojiOrInitials(pid){
+  const p = state.players.find(x=>x.id===pid);
+  return (p && p.emoji) || initials(p ? p.name : '?');
+}
+function activeSectionHeadline(s,p){
+  if(s.kind==='personalbest'){
+    const roundSoFar = s.currentTurnDarts.reduce((sum,d)=>sum+(typeof d._score==='number'?d._score:0),0);
+    return roundSoFar;
+  }
+  return playerBoxData(s,p).stat;
 }
 function renderInstructionBox(s){
   const hint = renderTurnHint(s);
@@ -6018,10 +6138,34 @@ function renderCricketBoard(s){
 }
 function turnHintTargetLabel(t){
   if(!t) return null;
-  if(Array.isArray(t)) return t.length ? 'one of the highlighted numbers' : null;
+  if(Array.isArray(t)) return t.length > 3 ? 'Highest possible score' : 'one of the highlighted numbers';
   if(t.num==='B') return t.seg==='bull' ? 'the Bullseye' : t.seg==='any' ? 'the Bull' : 'Outer Bull';
   const segWord = t.seg==='triple' ? 'Triple ' : t.seg==='double' ? 'Double ' : t.seg==='any' ? '' : 'Single ';
   return segWord + t.num;
+}
+// The single source of truth for the panel's "Target" box — deliberately
+// only names a specific board segment when the game genuinely requires
+// precision (Cricket's next number, an actual reachable 501 checkout).
+// Games where any hit counts (High Score, Count Up) get honest general
+// wording instead, so missing one specific segment never reads as failure.
+function renderTargetBoxHtml(s, actor){
+  if(s.kind==='personalbest'){
+    if(actor.roundScores.length===0) return {label:'Highest possible score', sub:null};
+    if(s.mode==='average'){
+      const avg = personalBestAverage(actor);
+      return {label:'Beat your average', sub:`Currently ${avg.toFixed(1)}`};
+    }
+    if(actor.currentGameBest>=180) return {label:'Perfect round again', sub:null};
+    return {label:`Score to beat: ${actor.currentGameBest+1}`, sub:null};
+  }
+  if(s.kind==='callshot'){
+    if(s.calledTargets.length===0) return {label:'Anywhere on the board', sub:'Wherever it lands sets the target'};
+    const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
+    return {label: currentTargetId ? sectionZoneLabel(currentTargetId) : 'the target', sub:null};
+  }
+  const t = s.kind==='x01' ? getCurrentGameTargetHighlightRaw(s) : getCurrentGameTargetHighlightRaw(s);
+  const label = turnHintTargetLabel(t);
+  return {label: label || 'Anywhere counts', sub:null};
 }
 function renderTurnHint(s){
   const actor = s.participants[s.currentIdx];
@@ -6034,25 +6178,33 @@ function renderTurnHint(s){
     const darts = s.currentTurnDarts;
     const roundTotalSoFar = darts.reduce((sum,d)=> sum + (typeof d._score==='number'?d._score:0), 0);
     const isFirstRound = actor.roundScores.length===0;
+    // Loaded correctly at session start but was never actually being shown
+    // anywhere — from the player's perspective that made history look
+    // ignored even though it was tracked the whole time. Shown on every
+    // branch below, not just some of them.
+    const allTimeVal = s.mode==='average' ? actor.allTimeAverageBeforeGame : actor.allTimeBestBeforeGame;
+    const allTimeLine = allTimeVal!=null
+      ? `<br><span style="font-size:12px; opacity:0.75;">All-Time Best: ${s.mode==='average' ? allTimeVal.toFixed(1) : allTimeVal}</span>`
+      : `<br><span style="font-size:12px; opacity:0.6;">No all-time record yet for this player</span>`;
     if(isFirstRound){
-      return darts.length>0
+      return (darts.length>0
         ? `<b>${name}</b><br>Current: ${roundTotalSoFar}. Try for the highest score you can.`
-        : `<b>${name}</b><br>Try for the highest score you can.`;
+        : `<b>${name}</b><br>Try for the highest score you can.`) + allTimeLine;
     }
     if(s.mode==='average'){
       const avg = personalBestAverage(actor);
       const target = Math.floor(avg) + 1;
       const needed = target - roundTotalSoFar;
-      return `<b>${name} — Current Average: ${avg.toFixed(1)}</b><br>${needed<=0 ? 'On pace for a new personal best average — keep going!' : `${needed} needed this round to raise your average.`}`;
+      return `<b>${name} — Current Average: ${avg.toFixed(1)}</b><br>${needed<=0 ? 'On pace for a new personal best average — keep going!' : `${needed} needed this round to raise your average.`}` + allTimeLine;
     }
     if(actor.currentGameBest>=180){
-      return `<b>${name} — Personal Best: 180</b><br>Go for another perfect round!`;
+      return `<b>${name} — Personal Best: 180</b><br>Go for another perfect round!` + allTimeLine;
     }
     const target = actor.currentGameBest + 1;
     const needed = target - roundTotalSoFar;
-    return needed<=0
+    return (needed<=0
       ? `<b>${name} — NEW PERSONAL BEST!</b><br>Score to beat was ${target-1}.`
-      : `<b>${name} — Score to Beat: ${target}</b><br>${needed} needed.`;
+      : `<b>${name} — Score to Beat: ${target}</b><br>${needed} needed.`) + allTimeLine;
   }
   if(s.kind==='callshot'){
     // Matches killer/halveit's existing convention: a brief "what just
@@ -6083,7 +6235,7 @@ function renderTurnHint(s){
   }
   const darts = s.currentTurnDarts;
   if(darts.length===0){
-    if((s.kind==='killer' || s.kind==='halveit') && s.lastTurnSummary) return s.lastTurnSummary;
+    if((s.kind==='killer' || s.kind==='halveit' || s.kind==='x01') && s.lastTurnSummary) return s.lastTurnSummary;
     const t = s.kind==='x01' ? botChooseX01Target(s) : getCurrentGameTargetHighlightRaw(s);
     const label = turnHintTargetLabel(t);
     return label ? `${name} is throwing for ${label}.` : `${name} is up.`;
