@@ -737,7 +737,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 7:15 PM';
+const BUILD_STAMP = '8/15/2026, 8:10 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4080,6 +4080,16 @@ function quitToHome(){
   forceQuitToHome();
 }
 function forceQuitToHome(){ state.confirmQuitGame=false; state.gameMenuOpen=false; state.session=null; state.screen='home'; state.navTab='play'; render(); }
+// Deliberately does NOT touch state.session at all — the whole point is
+// that the game stays completely intact in this window while the kiosk
+// launcher's window comes to the front. Switching back to Oche later (via
+// the launcher's own OCHE tile) picks up exactly where this was left,
+// rather than losing anything the way "Quit to Home" intentionally does.
+function returnToLauncherHome(){
+  state.gameMenuOpen = false;
+  render();
+  fetch(`http://${window.location.hostname}:9090/api/home`, { method: 'POST' }).catch(()=>{});
+}
 function goHomeFromWin(){ state.session=null; state.screen='home'; render(); }
 
 /* Practice handlers */
@@ -5436,6 +5446,19 @@ function startBoardManagerDetection(){
     .then(()=> console.log('Oche: Board Manager start triggered'))
     .catch(err => console.warn('Oche: Board Manager start failed', err && err.message));
 }
+// Genuinely stronger than Reset/Start above — those only act on Board
+// Manager's own detection API, which isn't enough when the whole service
+// itself came up broken (confirmed the hard way: a full PC restart alone
+// didn't fix it, restarting the actual autodarts.service afterward did).
+// Goes through the launcher helper (port 9090), not Board Manager directly,
+// since only the launcher has permission to run systemctl.
+function hardRestartBoardManager(){
+  const host = state.settings.boardManagerHost;
+  if(!host) return;
+  fetch('http://' + host + ':9090/api/board-manager/hard-restart', { method:'POST' })
+    .then(()=> console.log('Oche: Board Manager hard restart triggered'))
+    .catch(err => console.warn('Oche: Board Manager hard restart failed', err && err.message));
+}
 
 function handleBoardManagerState(data){
   const throws = Array.isArray(data.throws) ? data.throws : [];
@@ -5870,7 +5893,7 @@ function renderActiveShell(){
     ${renderRoundInfo(s)}
     <div class="game-title-center">${gname}</div>
     <div style="text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:10px;">
-      ${state.settings.dartsCallerCameraMode ? `<div class="iconbtn" style="width:32px;height:32px;font-size:15px;" onclick="resetBoardManagerNow()" title="Reset Board Manager (fixes stuck-on-takeout)">&#8635;</div><div class="iconbtn" style="width:32px;height:32px;font-size:14px;" onclick="startBoardManagerDetection()" title="Start Board Manager detection (fixes fully stopped)">&#9654;</div>` : ''}
+      ${state.settings.dartsCallerCameraMode ? `<div class="iconbtn" style="width:32px;height:32px;font-size:15px;" onclick="resetBoardManagerNow()" title="Reset Board Manager (fixes stuck-on-takeout)">&#8635;</div><div class="iconbtn" style="width:32px;height:32px;font-size:14px;" onclick="startBoardManagerDetection()" title="Start Board Manager detection (fixes fully stopped)">&#9654;</div><div class="iconbtn" style="width:32px;height:32px;font-size:13px;" onclick="hardRestartBoardManager()" title="Hard restart Board Manager entirely (fixes it when Reset/Start don't help)">&#9850;</div>` : ''}
       ${s.kind==='killer' ? '<div><div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:12px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div></div>' : ''}
     </div>
   </div>
@@ -5928,7 +5951,7 @@ function renderCallShotActiveShell(s){
   ${renderInstructionBox(s)}
   ${playerBoxes}
   <div class="panel-controls">
-    ${state.settings.dartsCallerCameraMode ? `<button class="btn-undo" onclick="resetBoardManagerNow()" title="Fixes stuck-on-takeout">&#8635; Reset Board</button><button class="btn-undo" onclick="startBoardManagerDetection()" title="Fixes fully stopped detection">&#9654; Start Board</button>` : ''}
+    ${state.settings.dartsCallerCameraMode ? `<button class="btn-undo" onclick="resetBoardManagerNow()" title="Fixes stuck-on-takeout">&#8635; Reset Board</button><button class="btn-undo" onclick="startBoardManagerDetection()" title="Fixes fully stopped detection">&#9654; Start Board</button><button class="btn-undo" onclick="hardRestartBoardManager()" title="Fixes it when Reset/Start don't help">&#9850; Hard Restart</button>` : ''}
     <button class="btn-undo" onclick="callShotUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>
@@ -6548,6 +6571,7 @@ function renderGameMenu(s){
       ${rulesId ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="state.gameMenuOpen=false; state.screen='rules'; state.rulesGameId='${rulesId}'; render();">View Rules</button>` : ''}
       <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="openSettingsFromGameMenu()">Settings</button>
       ${s.kind==='custom' && s.cfg.winCondition==='manual' ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="state.gameMenuOpen=false; endCustomGameManually(state.session); finishCustomGame(state.session); render();">End Game Now &amp; Tally Score</button>` : ''}
+      <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="returnToLauncherHome()">Return to Home Screen</button>
       <button class="btn btn-danger btn-full" onclick="quitToHome()">Quit to Home</button>
     </div>
   </div>`;
