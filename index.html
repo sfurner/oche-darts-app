@@ -154,6 +154,8 @@ body{
 .screen-footer:empty{ display:none; }
 .panel-controls{ display:flex; gap:8px; padding-top:12px; margin-top:auto; }
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
+.header-action-btn{ background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; }
+.header-action-btn:active{ transform:scale(0.96); }
 .panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
 .panel-controls .btn-leave{ background:rgba(160,60,50,0.16); border-color:rgba(200,120,110,0.3); color:#e8a488; }
 .panel-zone-players{ flex:1; display:flex; flex-direction:column; }
@@ -766,7 +768,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 9:20 PM';
+const BUILD_STAMP = '8/15/2026, 9:40 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5879,6 +5881,19 @@ function activeSectionHeadline(s,p){
   }
   return playerBoxData(s,p).stat;
 }
+// Replaces the old permanent top instruction box, which duplicated what
+// the player panel's own Target box already shows. The one thing worth
+// keeping from it — a bust/kill/halve-it "what just happened" message —
+// now surfaces right here instead, in the same spot deeper checkout tips
+// already live, rather than as a separate always-present banner.
+function renderPriorityOrTips(s){
+  const darts = s.currentTurnDarts;
+  const showSummary = darts.length===0 && s.lastTurnSummary && (s.kind==='killer' || s.kind==='halveit' || s.kind==='x01');
+  if(showSummary){
+    return `<div class="panel-zone-tips"><div class="objective-banner" style="border-color:var(--brass);">${s.lastTurnSummary}</div></div>`;
+  }
+  return `<div class="panel-zone-tips">${renderCheckoutOptionsLine(s)}${renderTipsSection(s)}</div>`;
+}
 function renderInstructionBox(s){
   const hint = renderTurnHint(s);
   return `<div class="panel-zone-instruction">
@@ -6012,16 +6027,15 @@ function renderActiveShell(){
   return `<div class="game-header-row">
     ${renderRoundInfo(s)}
     <div class="game-title-center">${gname}</div>
-    <div style="text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:10px;">
-      ${state.settings.dartsCallerCameraMode ? `<div class="iconbtn" style="width:32px;height:32px;font-size:15px;" onclick="resetBoardManagerNow()" title="Reset Board Manager (fixes stuck-on-takeout)">&#8635;</div><div class="iconbtn" style="width:32px;height:32px;font-size:14px;" onclick="startBoardManagerDetection()" title="Start Board Manager detection (fixes fully stopped)">&#9654;</div><div class="iconbtn" style="width:32px;height:32px;font-size:13px;" onclick="hardRestartBoardManager()" title="Hard restart Board Manager entirely (fixes it when Reset/Start don't help)">&#9850;</div>` : ''}
+    <div style="text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:8px;">
+      ${state.settings.dartsCallerCameraMode ? `<button class="header-action-btn" onclick="resetBoardManagerNow()">&#8635; Reset Board</button><button class="header-action-btn" onclick="startBoardManagerDetection()">&#9654; Start Board</button><button class="header-action-btn" onclick="hardRestartBoardManager()">&#9850; Hard Restart</button>` : ''}
       ${s.kind==='killer' ? '<div><div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:12px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div></div>' : ''}
     </div>
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
-  ${renderInstructionBox(s)}
   ${renderPlayerBoxes(s)}
-  <div class="panel-zone-tips">${renderCheckoutOptionsLine(s)}${renderTipsSection(s)}</div>
+  ${renderPriorityOrTips(s)}
   ${renderBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
@@ -6693,7 +6707,6 @@ function renderNumberGrid(s){
 }
 function renderBottomControls(s){
   return `<div class="panel-controls">
-    <button class="btn-undo" onclick="doUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>`;
 }
