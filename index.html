@@ -737,7 +737,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 6:10 PM';
+const BUILD_STAMP = '8/15/2026, 6:50 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5352,7 +5352,7 @@ function renderGameplaySettings(){
       <input type="checkbox" ${s.dartsCallerCameraMode?'checked':''} onchange="setSetting('dartsCallerCameraMode', ${!s.dartsCallerCameraMode})">
       Camera Mode — real throws from the board drive gameplay instead of taps/clicks
     </div>
-    <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered.</p>
+    <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered. Oche also auto-resets Board Manager on its own if throws stop registering for more than a few seconds. If you need to reset it by hand, there's a button for that directly on the gameplay screen itself — no need to come here mid-game.</p>
     <div style="font-size:8px; color:var(--cream-dim); opacity:0.4; text-align:center; padding-top:16px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">${APP_VERSION} &middot; ${BUILD_STAMP}</div>
   </div>`;
 }
@@ -5367,6 +5367,8 @@ function renderGameplaySettings(){
 let boardManagerPollTimer = null;
 let boardManagerLastThrowCount = 0;
 let boardManagerLastEvent = null;
+let boardManagerTakeoutStuckSince = null;
+const BOARD_MANAGER_STUCK_TIMEOUT_MS = 6000; // a real physical takeout takes 1-3s; this is a generous grace period before assuming the vision engine itself is stuck
 
 function boardManagerUrl(){
   const host = (state.settings.boardManagerHost || '').trim();
@@ -5408,11 +5410,44 @@ function pollBoardManagerOnce(url, isFirst){
     });
 }
 
+// Manually or automatically triggers Board Manager's own /api/reset — the
+// exact same action as clicking "Reset" on Board Manager's own web page.
+// Confirmed endpoint (from the ha-autodarts-local Home Assistant
+// integration's source, which implements the same button).
+function resetBoardManagerNow(){
+  const host = state.settings.boardManagerHost;
+  if(!host) return;
+  fetch('http://' + host + ':3180/api/reset', { method:'POST' })
+    .then(()=> console.log('Oche: Board Manager reset triggered'))
+    .catch(err => console.warn('Oche: Board Manager reset failed', err && err.message));
+}
+
 function handleBoardManagerState(data){
   const throws = Array.isArray(data.throws) ? data.throws : [];
   const eventText = data.event || null;
   if(throws.length !== boardManagerLastThrowCount){
     console.log('Oche: poll saw throws.length change', boardManagerLastThrowCount, '->', throws.length, JSON.stringify(data));
+  }
+
+  // Confirmed the hard way, both at startup and now recurring mid-play
+  // roughly every few turns: Board Manager's own vision engine can get
+  // stuck believing a takeout is still in progress (status keeps reporting
+  // "Takeout in progress" and never resolves), even though the darts were
+  // physically already pulled. While stuck like this, Board Manager stops
+  // registering new throws entirely — nothing in Oche's own code can fix
+  // that engine, but we can detect the stuck pattern and auto-recover the
+  // same way a human would (hitting Reset on Board Manager's own page).
+  const statusText = (data.status || '').toLowerCase();
+  if(statusText.includes('takeout')){
+    if(boardManagerTakeoutStuckSince === null){
+      boardManagerTakeoutStuckSince = Date.now();
+    } else if(Date.now() - boardManagerTakeoutStuckSince > BOARD_MANAGER_STUCK_TIMEOUT_MS){
+      console.warn('Oche: Board Manager looks stuck on takeout, auto-resetting');
+      resetBoardManagerNow();
+      boardManagerTakeoutStuckSince = null;
+    }
+  } else {
+    boardManagerTakeoutStuckSince = null;
   }
 
   // New dart(s) landed since our last poll.
@@ -5796,7 +5831,10 @@ function renderActiveShell(){
   return `<div class="game-header-row">
     ${renderRoundInfo(s)}
     <div class="game-title-center">${gname}</div>
-    <div style="text-align:right;">${s.kind==='killer' ? '<div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:12px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div>' : ''}</div>
+    <div style="text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:10px;">
+      ${state.settings.dartsCallerCameraMode ? `<div class="iconbtn" style="width:32px;height:32px;font-size:15px;" onclick="resetBoardManagerNow()" title="Reset Board Manager">&#8635;</div>` : ''}
+      ${s.kind==='killer' ? '<div><div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:12px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div></div>' : ''}
+    </div>
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
@@ -5852,6 +5890,7 @@ function renderCallShotActiveShell(s){
   ${renderInstructionBox(s)}
   ${playerBoxes}
   <div class="panel-controls">
+    ${state.settings.dartsCallerCameraMode ? `<button class="btn-undo" onclick="resetBoardManagerNow()" title="Reset Board Manager">&#8635; Reset Board</button>` : ''}
     <button class="btn-undo" onclick="callShotUndo()">Undo</button>
     <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
   </div>
