@@ -156,10 +156,10 @@ body{
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .header-action-btn{ background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; }
 .header-action-btn:active{ transform:scale(0.96); }
-.camera-controls-corner{ position:absolute; left:10px; bottom:6px; display:flex; flex-direction:column; gap:3px; z-index:5; background:rgba(18,32,25,0.4); border-radius:6px; padding:5px 6px; }
-.tiny-cam-btn{ background:transparent; border:none; color:rgba(174,188,175,0.5); border-radius:5px; padding:2px 4px; font-size:8px; font-weight:400; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; text-align:left; }
-.tiny-cam-btn:hover, .tiny-cam-btn:active{ color:var(--cream-dim); background:rgba(38,64,47,0.5); }
-.cam-box-label{ font-family:'JetBrains Mono',monospace; font-size:7px; color:rgba(174,188,175,0.35); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:1px; }
+.camera-controls-corner{ position:absolute; left:14px; bottom:18px; display:flex; flex-direction:column; gap:3px; z-index:5; background:var(--felt-dark); border-radius:6px; padding:5px 6px; }
+.tiny-cam-btn{ background:transparent; border:none; color:var(--cream-dim); opacity:0.5; border-radius:5px; padding:2px 4px; font-size:8px; font-weight:400; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; text-align:left; }
+.tiny-cam-btn:hover, .tiny-cam-btn:active{ opacity:1; background:var(--felt-light); }
+.cam-box-label{ font-family:'JetBrains Mono',monospace; font-size:7px; color:var(--cream-dim); opacity:0.4; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:1px; }
 .tiny-cam-btn:active{ transform:scale(0.95); }
 .panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
 .panel-controls .btn-leave{ background:rgba(160,60,50,0.16); border-color:rgba(200,120,110,0.3); color:#e8a488; }
@@ -777,7 +777,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 11:10 PM';
+const BUILD_STAMP = '8/15/2026, 11:25 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
