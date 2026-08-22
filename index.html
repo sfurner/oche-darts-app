@@ -382,6 +382,37 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .player-card .player-name{ font-size:15px; font-weight:600; color:var(--cream); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .player-card .player-meta{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream-dim); margin-top:2px; }
 .player-card.is-bot{ opacity:0.82; }
+/* Unified, compact player list — one flat list instead of grouped
+   sections, drag handle for reordering, inline type tag instead of a
+   separate label, one meaningful stat instead of a decorative empty area. */
+.unified-list-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.ulh-title{ font-family:'Oswald',sans-serif; font-weight:700; font-size:19px; color:var(--brass); margin:0; }
+.ulh-plus{ width:32px; height:32px; border-radius:50%; background:var(--brass); color:var(--ink); font-size:18px; font-weight:700; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+.player-list{ display:flex; flex-direction:column; gap:5px; max-width:560px; }
+.player-row-unified{ display:flex; align-items:center; gap:8px; background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:8px; padding:8px 10px; }
+.remembered-note{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); opacity:0.7; margin-bottom:10px; }
+.expandable-opt-row{ background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:8px; margin-bottom:6px; overflow:hidden; }
+.eor-header{ display:flex; align-items:center; justify-content:space-between; padding:11px 14px; cursor:pointer; }
+.eor-label{ font-family:'Inter',sans-serif; font-weight:600; font-size:14px; color:var(--cream); }
+.eor-val{ font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--brass); display:flex; align-items:center; gap:6px; }
+.eor-chev{ font-size:10px; opacity:0.6; }
+.eor-choices{ border-top:1px solid var(--felt-lighter); }
+.eor-choice{ padding:10px 14px; border-bottom:1px solid var(--felt-lighter); cursor:pointer; }
+.eor-choice:last-child{ border-bottom:none; }
+.eor-choice.selected{ background:rgba(204,154,61,0.1); }
+.eor-choice-label{ font-family:'Inter',sans-serif; font-weight:600; font-size:13px; color:var(--cream); }
+.eor-choice-desc{ font-size:12px; color:var(--cream-dim); margin-top:2px; line-height:1.4; }
+.prow-drag{ color:var(--felt-lighter); font-size:16px; cursor:grab; padding:0 2px; touch-action:none; }
+.prow-avatar{ width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; cursor:pointer; color:#1a1206; }
+.prow-name{ font-family:'Inter',sans-serif; font-weight:600; font-size:13px; color:var(--cream); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+.prow-tag{ font-family:'JetBrains Mono',monospace; font-size:9px; padding:2px 7px; border-radius:20px; text-transform:uppercase; letter-spacing:0.04em; flex-shrink:0; }
+.prow-tag.perm{ background:rgba(204,154,61,0.15); color:var(--brass); }
+.prow-tag.guest{ background:rgba(178,58,58,0.15); color:#e08a7d; }
+.prow-tag.bot{ background:rgba(174,188,175,0.15); color:var(--cream-dim); }
+.prow-stat{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); width:64px; text-align:right; flex-shrink:0; }
+.prow-dart{ display:flex; align-items:center; gap:5px; font-size:11px; color:var(--cream-dim); cursor:pointer; flex-shrink:0; max-width:130px; overflow:hidden; }
+.prow-dart span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.prow-checkbox{ width:20px; height:20px; flex-shrink:0; }
 .player-avatar{
   width:44px;height:44px;border-radius:50%; display:flex;align-items:center;justify-content:center;
   font-weight:700; font-size:20px; color:#1a1206; flex-shrink:0;
@@ -781,7 +812,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 12:05 AM';
+const BUILD_STAMP = '8/16/2026, 1:15 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -921,6 +952,8 @@ let state = {
   pendingCustomGame: null,
   checkoutReturnScreen: null,
   checkoutOutRule: 'double',
+  rememberedGameOptions: {},
+  expandedOptionRow: null,
 };
 
 let uid = 1;
@@ -937,7 +970,7 @@ const PERSISTENT_STATE_KEYS = [
   'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance', 'playerAttributePerformance', 'playerAccuracy',
   'savedGames', 'customPractices', 'customGames', 'history',
   'sectionSessions', 'precisionSessions', 'settings', 'playerSettings',
-  'dartFieldOptions',
+  'dartFieldOptions', 'rememberedGameOptions',
 ];
 function persistState(){
   try{
@@ -3449,6 +3482,7 @@ function buildAndShowReview(opts){
       type: opts.type, name: opts.name, date: new Date().toLocaleString(),
       winner: opts.winnerName, detail: opts.detail,
       participantIds: opts.participantIds, createdAt: Date.now(),
+      throwCounts: opts.throwCounts || {},
     },
     title: opts.name+' Complete',
     players: reviewPlayers,
@@ -3693,6 +3727,25 @@ document.addEventListener('fullscreenchange', function(){
     render();
   }
 });
+// The Fullscreen API only fires when a page explicitly requests it — it
+// never fires for a browser launched with a kiosk command-line flag
+// (`firefox --kiosk ...`), even though the window genuinely is fullscreen
+// at the OS level. Confirmed the hard way: this is exactly why the device
+// box was sitting inset with padding and rounded corners on the real TV,
+// even in "full screen." Detect that case directly by checking whether
+// the window's own outer dimensions match the physical screen.
+function detectKioskFullscreen(){
+  if(document.fullscreenElement) return; // already handled by the real API
+  const looksFullscreen = window.outerWidth>=screen.width-2 && window.outerHeight>=screen.height-2;
+  if(looksFullscreen !== state.isFullscreen){
+    state.isFullscreen = looksFullscreen;
+    const shell = document.getElementById('appShell');
+    if(shell) shell.classList.toggle('fullscreen-mode', looksFullscreen);
+    render();
+  }
+}
+window.addEventListener('load', detectKioskFullscreen);
+window.addEventListener('resize', detectKioskFullscreen);
 function openRules(gameId){ state.rulesGameId = gameId; state.screen='rules'; render(); }
 function backFromRules(){ state.screen='home'; render(); }
 function defaultSelectedPlayerIds(){
@@ -3822,6 +3875,75 @@ function confirmDeletePlayer(id){
 }
 const PRACTICE_HISTORY_TYPES = ['Practice','Section Trainer'];
 function isPracticeHistoryType(type){ return PRACTICE_HISTORY_TYPES.includes(type); }
+// Only counts games saved after throwCounts started being persisted to
+// history — older games never recorded this per-player, so this
+// intentionally starts from zero rather than showing an inflated or
+// silently-incomplete "lifetime" number.
+function totalDartsThrown(playerId){
+  return state.history.reduce((sum,h)=> sum + ((h.throwCounts && h.throwCounts[playerId]) || 0), 0);
+}
+function getManagementPlayerOrder(){ return state.players.map(p=>p.id); }
+function setManagementPlayerOrder(newOrder){
+  const byId = {}; state.players.forEach(p=>{ byId[p.id]=p; });
+  state.players = newOrder.map(id=>byId[id]).filter(Boolean);
+}
+function getSetupPlayerOrder(){ return state.selectedPlayerIds; }
+function setSetupPlayerOrder(newOrder){ state.selectedPlayerIds = newOrder; }
+// Generic pointer-based drag-to-reorder, reused by both Player Management
+// (reorders your saved roster) and Who's Playing (reorders turn order).
+// listGetter/listSetter let each screen supply its own array without this
+// function needing to know which one it's touching.
+function beginPlayerRowDrag(evt, id, listGetter, listSetter){
+  evt.preventDefault();
+  const container = evt.target.closest('.player-list');
+  if(!container) return;
+  const startY = evt.clientY;
+  const rows = Array.from(container.querySelectorAll('.player-row-unified'));
+  if(rows.length<2) return;
+  const rowHeight = rows[0].offsetHeight + 6;
+  const list = listGetter();
+  const startIndex = list.indexOf(id);
+  if(startIndex===-1) return;
+  function onMove(e){
+    const dy = e.clientY - startY;
+    const shift = Math.round(dy / rowHeight);
+    const newIndex = Math.max(0, Math.min(list.length-1, startIndex + shift));
+    const current = listGetter();
+    if(current.indexOf(id)!==newIndex){
+      const next = current.slice();
+      next.splice(next.indexOf(id),1);
+      next.splice(newIndex,0,id);
+      listSetter(next);
+      render();
+    }
+  }
+  function onUp(){
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', onUp);
+  }
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp);
+}
+// The shared row look used by both Player Management and Who's Playing —
+// avatar, name, type tag, darts-thrown stat, drag handle, with optional
+// checkbox + dart-setup picker for the pre-game selection context.
+function renderUnifiedPlayerRow(p, opts){
+  opts = opts || {};
+  const idx = state.players.indexOf(p);
+  const tagClass = p.isBot ? 'bot' : p.isGuest ? 'guest' : 'perm';
+  const tagText = p.isBot ? `Bot &middot; ${p.botRating}/10` : p.isGuest ? 'Guest' : 'Permanent';
+  const darts = totalDartsThrown(p.id);
+  const dartId = state.playerDartSelections[p.id];
+  const dart = dartId ? state.dartSetups.find(x=>x.id===dartId) : null;
+  return `<div class="player-row-unified" data-pid="${p.id}">
+    <span class="prow-drag" onpointerdown="${opts.dragListGetter?`beginPlayerRowDrag(event,'${p.id}',${opts.dragListGetter},${opts.dragListSetter})`:''}">&#10241;</span>
+    <div class="prow-avatar" style="background:${playerColor(p,idx)};" onclick="event.stopPropagation(); openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
+    <div class="prow-name" onclick="${opts.onNameClick||''}">${p.name}</div>
+    <span class="prow-tag ${tagClass}">${tagText}</span>
+    ${opts.showDartPicker && !p.isBot ? `<div class="prow-dart" onclick="openDartPicker('${p.id}','playerSetup')">${dart?dartAvatarHtml(dart,16):''}<span>${dart?dartSetupDisplayName(dart):'No Dart'}</span></div>` : `<div class="prow-stat">${darts?darts+' darts':'—'}</div>`}
+    ${opts.showCheckbox ? `<input type="checkbox" ${state.selectedPlayerIds.includes(p.id)?'checked':''} onchange="togglePlayerSelect('${p.id}')" class="prow-checkbox">` : ''}
+  </div>`;
+}
 function playerStatsFor(id){
   const allEntries = state.history.filter(h=>h.participantIds && h.participantIds.includes(id));
   const gameEntries = allEntries.filter(h=>!isPracticeHistoryType(h.type));
@@ -3867,11 +3989,14 @@ function proceedToOptions(){
     return;
   }
   state.screen='gameOptions';
+  state.expandedOptionRow = null;
+  const remembered = (state.rememberedGameOptions && state.rememberedGameOptions[state.pendingGameId]) || {};
   state.gameOptions = {
     startScore: state.pendingGameId==='301'?301:501, inRule:'straight', outRule:'double', guidance:'beginner', variant:'standard',
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
+    ...remembered,
   };
   render();
 }
@@ -3884,6 +4009,30 @@ function launchCustomGame(){
   render();
 }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
+// Prototype for 501/301 only — compact row showing the current choice,
+// expands in place to show every option with its description (reusing
+// the exact same copy the old always-visible legend blocks had), rather
+// than a permanent spread of chips + descriptions taking much more room.
+function renderExpandableOptionRow(r){
+  const o = state.gameOptions;
+  const isOpen = state.expandedOptionRow===r.key;
+  const current = r.choices.find(c=>c.val===o[r.key]);
+  return `<div class="expandable-opt-row">
+    <div class="eor-header" onclick="toggleOptionRow('${r.key}')">
+      <span class="eor-label">${r.label}</span>
+      <span class="eor-val">${current?current.label:''} <span class="eor-chev">${isOpen?'&#9652;':'&#9662;'}</span></span>
+    </div>
+    ${isOpen ? `<div class="eor-choices">${r.choices.map(c=>`
+      <div class="eor-choice ${c.val===o[r.key]?'selected':''}" onclick="setOption('${r.key}','${c.val}'); state.expandedOptionRow=null; render();">
+        <div class="eor-choice-label">${c.label}</div>
+        <div class="eor-choice-desc">${c.desc}</div>
+      </div>`).join('')}</div>` : ''}
+  </div>`;
+}
+function toggleOptionRow(key){
+  state.expandedOptionRow = state.expandedOptionRow===key ? null : key;
+  render();
+}
 function toggleHalveitTarget(t){
   const o = state.gameOptions;
   if(!o.halveitTargets) o.halveitTargets = [];
@@ -4160,6 +4309,12 @@ const GAME_LAUNCHERS = {
 };
 function launchGame(){
   const id = state.pendingGameId;
+  // Remembering choices, scoped to 301/501 as a first test before rolling
+  // this out to every game's options screen.
+  if(id==='301' || id==='501'){
+    if(!state.rememberedGameOptions) state.rememberedGameOptions = {};
+    state.rememberedGameOptions[id] = { inRule: state.gameOptions.inRule, outRule: state.gameOptions.outRule, guidance: state.gameOptions.guidance };
+  }
   if(GAME_LAUNCHERS[id]){
     state.session = GAME_LAUNCHERS[id](state.selectedPlayerIds, state.gameOptions);
   } else {
@@ -4715,6 +4870,19 @@ function closeCheckoutTable(){
 /* ========================= RENDER: SHELL ========================= */
 function render(){
   applyTheme();
+  // Kiosk mode (Firefox launched with --kiosk) makes the whole browser
+  // window borderless at the OS/window-manager level — a completely
+  // different mechanism from the page's own Fullscreen API. Oche was only
+  // ever checking document.fullscreenElement, which kiosk mode never sets,
+  // so it kept treating itself as "just a normal window" (24px padding,
+  // rounded corners) even on a real fullscreen TV. This catches that case
+  // too by checking whether the window itself already fills the screen.
+  const looksKiosk = window.outerWidth >= screen.width && window.outerHeight >= screen.height;
+  if(looksKiosk && !state.isFullscreen){
+    state.isFullscreen = true;
+    const shell = document.getElementById('appShell');
+    if(shell) shell.classList.add('fullscreen-mode');
+  }
   document.documentElement.style.setProperty('--dartboard-scale', state.settings.dartboardScale||1);
   document.documentElement.style.setProperty('--chalkboard-scale', state.settings.chalkboardScale||1);
   document.documentElement.style.setProperty('--heatmap-scale', state.settings.heatmapScale||1);
@@ -5112,30 +5280,6 @@ function renderRulesScreen(){
 function renderPlayerSetup(){
   const g = state.pendingCustomGame ? null : GAMES.find(x=>x.id===state.pendingGameId);
   const titleName = state.pendingCustomGame ? state.pendingCustomGame.name : g.name;
-  const permanentPlayers = state.players.filter(p=>!p.isGuest && !p.isBot);
-  const guestPlayers = state.players.filter(p=>p.isGuest);
-  const botPlayers = state.players.filter(p=>p.isBot);
-  function playerCard(p, idx){
-    const dartId = state.playerDartSelections[p.id];
-    const dart = dartId ? state.dartSetups.find(x=>x.id===dartId) : null;
-    const selected = state.selectedPlayerIds.includes(p.id);
-    return `<div class="card" style="padding:14px; ${selected?'border-color:var(--brass);':''}">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-          <div style="display:flex; align-items:center; gap:12px; min-width:0;">
-            <div class="player-avatar" style="background:${playerColor(p,idx)}; cursor:pointer; flex-shrink:0;" onclick="openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
-            <div style="min-width:0;">
-              <div style="font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.name}</div>
-              ${p.isGuest ? `<div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream-dim); cursor:pointer;" onclick="togglePlayerPermanence('${p.id}')">Guest &middot; tap to make permanent</div>` : ''}
-            </div>
-          </div>
-          <input type="checkbox" ${selected?'checked':''} onchange="togglePlayerSelect('${p.id}')" style="width:22px;height:22px; flex-shrink:0;">
-        </div>
-        ${!p.isBot ? `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px; background:var(--felt); border-radius:8px; cursor:pointer; margin-top:10px;" onclick="openDartPicker('${p.id}','playerSetup')">
-          <span style="font-size:12px; color:var(--cream-dim); display:flex; align-items:center; gap:8px; min-width:0;">${dart?dartAvatarHtml(dart,20):''}<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Dart: <span style="color:var(--brass);">${dart?dartSetupDisplayName(dart):'No Dart Selected'}</span></span></span>
-          <span style="font-size:12px; color:var(--cream-dim); flex-shrink:0;">Change &#9656;</span>
-        </div>` : ''}
-      </div>`;
-  }
   return `<div class="topbar">
     <div class="iconbtn" onclick="state.screen='home'; render();">&#8592;</div>
     <h1 style="color:var(--brass); font-size:19px;">Who's Playing?</h1>
@@ -5143,18 +5287,29 @@ function renderPlayerSetup(){
   </div>
   <div class="subtitle">${titleName} &middot; select players or add a guest</div>
   <div class="content" style="padding-bottom:0;">
-    <div style="display:flex; gap:8px;">
-      <input class="input" id="newPlayerName" placeholder="Add a guest by name" onkeydown="if(event.key==='Enter')addGuestPlayer()">
-      <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="addGuestPlayer()">Add</button>
+    <div class="unified-list-header">
+      <h1 class="ulh-title">Players</h1>
+      <div class="ulh-plus" onclick="state.addingGuestInline=!state.addingGuestInline; render();">+</div>
     </div>
-    <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first. Tap a player's avatar to change their emoji.</p>
+    ${state.addingGuestInline ? `<div style="display:flex; gap:8px; margin-bottom:10px;">
+      <input class="input" id="newPlayerName" placeholder="Guest name" onkeydown="if(event.key==='Enter')addGuestPlayer()">
+      <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="addGuestPlayer()">Add</button>
+    </div>` : ''}
+    <div class="player-list">
+      ${state.players.map(p=>{
+        const selected = state.selectedPlayerIds.includes(p.id);
+        return renderUnifiedPlayerRow(p, {
+          showCheckbox: true,
+          showDartPicker: true,
+          dragListGetter: selected ? 'getSetupPlayerOrder' : '',
+          dragListSetter: selected ? 'setSetupPlayerOrder' : '',
+          onNameClick: p.isGuest ? `togglePlayerPermanence('${p.id}')` : '',
+        });
+      }).join('')}
+    </div>
+    <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first. Drag the handle to set turn order for selected players.</p>
   </div>
-  <div class="content" style="padding-bottom:0;">${sectionHeader('Permanent players', permanentPlayers.length)}</div>
-  ${permanentPlayers.length ? `<div class="content content-grid wide-cards">${permanentPlayers.map((p)=>playerCard(p, state.players.indexOf(p))).join('')}</div>` : '<div class="content" style="padding-top:0;"><p style="color:var(--cream-dim); font-size:13px;">No permanent players yet. Add a guest above, then tap their name to make them permanent.</p></div>'}
-  ${guestPlayers.length ? `<div class="content" style="padding-bottom:0;">${sectionHeader('Guests', guestPlayers.length)}</div><div class="content content-grid wide-cards">${guestPlayers.map((p)=>playerCard(p, state.players.indexOf(p))).join('')}</div>` : ''}
-  ${botPlayers.length ? `<div class="content" style="padding-bottom:0;">${sectionHeader('Bot opponents', botPlayers.length)}</div><div class="content content-grid wide-cards">${botPlayers.map((p)=>playerCard(p, state.players.indexOf(p))).join('')}</div>` : ''}
   <div class="content" style="padding-top:var(--sp-section-gap);">
-    <button class="btn btn-secondary btn-full" ${state.selectedPlayerIds.length<2?'disabled':''} onclick="randomizeOrder()">Randomize Player Order</button>
     <button class="btn btn-primary btn-full btn-lg" ${state.selectedPlayerIds.length===0?'disabled':''} onclick="proceedToOptions()">Continue</button>
   </div>`;
 }
@@ -5192,37 +5347,29 @@ function renderGameOptions(){
     return `<span class="chip ${o[key]===val?'selected':''}" onclick="setOption('${key}',${val})">${label}</span>`;
   }
   const title = isX01 ? o.startScore+' Options' : g.name+' Options';
+  const rememberedForThisGame = isX01 && state.rememberedGameOptions && state.rememberedGameOptions[id];
   let body = '';
   if(isX01){
-    body = `
-    <div>
-      <span class="field-label">Entering In</span>
-      <div class="chip-wrap">${chip('Straight In','inRule','straight')}${chip('Double In','inRule','double')}</div>
-      <div class="option-legend">
-        <div class="leg-item ${o.inRule==='straight'?'active-leg':''}"><b>Straight In</b> — every dart counts from your very first throw.</div>
-        <div class="leg-item ${o.inRule==='double'?'active-leg':''}"><b>Double In</b> — nothing scores until you hit a double. Once you do, every dart after that counts normally.</div>
-      </div>
-    </div>
-    <div>
-      <span class="field-label">Finishing Out</span>
-      <div class="chip-wrap">${chip('Straight Out','outRule','straight')}${chip('Double Out','outRule','double')}${chip('Master Out','outRule','master')}</div>
-      <div class="option-legend">
-        <div class="leg-item ${o.outRule==='straight'?'active-leg':''}"><b>Straight Out</b> — hit exactly zero with any dart and you're done.</div>
-        <div class="leg-item ${o.outRule==='double'?'active-leg':''}"><b>Double Out</b> — the traditional way to finish. Your last dart must land in a double (or the bull, which counts as one). Reaching zero any other way is a bust.</div>
-        <div class="leg-item ${o.outRule==='master'?'active-leg':''}"><b>Master Out</b> — a middle ground. Your last dart must land in a double or a triple.</div>
-      </div>
-    </div>
-    <div>
-      <span class="field-label">${o.startScore} Guidance</span>
-      <div class="chip-wrap">${chip('None','guidance','none')}${chip('Basic','guidance','basic')}${chip('Beginner','guidance','beginner')}${chip('Standard Checkout','guidance','standard')}</div>
-      <div class="option-legend">
-        <div class="leg-item ${o.guidance==='none'?'active-leg':''}"><b>None</b> — just the remaining score, no suggestions.</div>
-        <div class="leg-item ${o.guidance==='basic'?'active-leg':''}"><b>Basic</b> — remaining score plus a simple "aim here" target.</div>
-        <div class="leg-item ${o.guidance==='beginner'?'active-leg':''}"><b>Beginner</b> — favors easy routes and common doubles (40, 32, 24, 16, 8) instead of assuming you'll hit hard triples.</div>
-        <div class="leg-item ${o.guidance==='standard'?'active-leg':''}"><b>Standard Checkout</b> — the conventional finishing route, looked up live from a full checkout table as your score changes.</div>
-      </div>
-      <p style="margin-top:8px;"><a class="linklike" onclick="openCheckoutTable('gameOptions', state.gameOptions.outRule)">Preview the checkout table &#9656;</a></p>
-    </div>`;
+    const rows = [
+      { key:'inRule', label:'Entering In', choices:[
+        {val:'straight', label:'Straight In', desc:'Every dart counts from your very first throw.'},
+        {val:'double', label:'Double In', desc:"Nothing scores until you hit a double. Once you do, every dart after that counts normally."},
+      ]},
+      { key:'outRule', label:'Finishing Out', choices:[
+        {val:'straight', label:'Straight Out', desc:"Hit exactly zero with any dart and you're done."},
+        {val:'double', label:'Double Out', desc:'The traditional way to finish. Your last dart must land in a double (or the bull, which counts as one). Reaching zero any other way is a bust.'},
+        {val:'master', label:'Master Out', desc:'A middle ground. Your last dart must land in a double or a triple.'},
+      ]},
+      { key:'guidance', label: o.startScore+' Guidance', choices:[
+        {val:'none', label:'None', desc:'Just the remaining score, no suggestions.'},
+        {val:'basic', label:'Basic', desc:'Remaining score plus a simple "aim here" target.'},
+        {val:'beginner', label:'Beginner', desc:'Favors easy routes and common doubles (40, 32, 24, 16, 8) instead of assuming you\'ll hit hard triples.'},
+        {val:'standard', label:'Standard Checkout', desc:'The conventional finishing route, looked up live from a full checkout table as your score changes.'},
+      ]},
+    ];
+    body = (rememberedForThisGame ? `<div class="remembered-note">&#8634; Remembered from last time you played ${o.startScore}</div>` : '') +
+      rows.map(r=>renderExpandableOptionRow(r)).join('') +
+      `<p style="margin-top:4px;"><a class="linklike" onclick="openCheckoutTable('gameOptions', state.gameOptions.outRule)">Preview the checkout table &#9656;</a></p>`;
   } else if(id==='cricket'){
     body = `
     <div>
@@ -7777,28 +7924,21 @@ function renderDartDetail(){
 /* ========================= RENDER: PLAYER MANAGEMENT ========================= */
 const BOT_RATING_LABELS = {1:'Total Newbie',2:'Beginner',3:'Casual',4:'Club Regular',5:'Solid Player',6:'Above Average',7:'Strong',8:'Very Strong',9:'Elite',10:'Professional'};
 function renderPlayerManager(){
-  const permanentPlayers = state.players.filter(p=>!p.isGuest && !p.isBot);
-  const guestPlayers = state.players.filter(p=>p.isGuest);
-  const botPlayers = state.players.filter(p=>p.isBot);
-  function card(p,idx){
-    return `<div class="player-card ${p.isBot?'is-bot':''}" onclick="openPlayerDetail('${p.id}')">
-      <div class="player-avatar" style="background:${playerColor(p,idx)}; cursor:pointer;" onclick="event.stopPropagation(); openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
-      <div class="player-info">
-        <div class="player-name">${p.name}</div>
-        <div class="player-meta">${p.isBot?`Bot &middot; ${BOT_RATING_LABELS[p.botRating]||''} (${p.botRating}/10)`:p.isGuest?'Guest':'Permanent'}</div>
-      </div>
-    </div>`;
-  }
   return `<div class="content">
-    <div style="display:flex; gap:8px;">
-      <input class="input" id="newManagedPlayerName" placeholder="Add a new player" onkeydown="if(event.key==='Enter')addManagedPlayer()">
-      <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="addManagedPlayer()">Add</button>
+    <div class="unified-list-header">
+      <h1 class="ulh-title">Players</h1>
+      <div class="ulh-plus" onclick="state.addingPlayer=!state.addingPlayer; render();">+</div>
     </div>
-    <p class="info-note">Tap any player to edit their name and avatar, or see their stats.</p>
-    ${sectionHeader('Permanent Players', permanentPlayers.length)}
-    ${permanentPlayers.length ? `<div class="content-grid wide-cards" style="padding:0;">${permanentPlayers.map((p)=>card(p, state.players.indexOf(p))).join('')}</div>` : '<p style="color:var(--cream-dim); font-size:13px;">None yet — add one above.</p>'}
-    ${guestPlayers.length ? `${sectionHeader('Guests', guestPlayers.length)}<div class="content-grid wide-cards" style="padding:0;">${guestPlayers.map((p)=>card(p, state.players.indexOf(p))).join('')}</div>` : ''}
-    ${botPlayers.length ? `${sectionHeader('Bot Opponents', botPlayers.length)}<div class="content-grid wide-cards" style="padding:0;">${botPlayers.map((p)=>card(p, state.players.indexOf(p))).join('')}</div>` : ''}
+    ${state.addingPlayer ? `<div style="display:flex; gap:8px; margin-bottom:10px;">
+      <input class="input" id="newManagedPlayerName" placeholder="Player name" onkeydown="if(event.key==='Enter')addManagedPlayer()">
+      <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="addManagedPlayer()">Add</button>
+    </div>` : ''}
+    <div class="player-list">
+      ${state.players.map(p=>renderUnifiedPlayerRow(p, {
+        dragListGetter:'getManagementPlayerOrder', dragListSetter:'setManagementPlayerOrder',
+        onNameClick:`openPlayerDetail('${p.id}')`,
+      })).join('')}
+    </div>
     ${state.addingBot ? `
       <div class="rule-block" style="margin-top:var(--sp-section-gap);">
         <h4>New Bot Opponent</h4>
