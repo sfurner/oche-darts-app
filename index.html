@@ -156,11 +156,6 @@ body{
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .header-action-btn{ background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; }
 .header-action-btn:active{ transform:scale(0.96); }
-.camera-controls-corner{ position:absolute; left:14px; bottom:18px; display:flex; flex-direction:column; gap:3px; z-index:5; background:var(--felt-dark); border-radius:6px; padding:5px 6px; }
-.tiny-cam-btn{ background:transparent; border:none; color:var(--cream-dim); opacity:0.5; border-radius:5px; padding:2px 4px; font-size:8px; font-weight:400; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; text-align:left; }
-.tiny-cam-btn:hover, .tiny-cam-btn:active{ opacity:1; background:var(--felt-light); }
-.cam-box-label{ font-family:'JetBrains Mono',monospace; font-size:7px; color:var(--cream-dim); opacity:0.4; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:1px; }
-.tiny-cam-btn:active{ transform:scale(0.95); }
 .panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
 .panel-controls .btn-leave{ background:rgba(160,60,50,0.16); border-color:rgba(200,120,110,0.3); color:#e8a488; }
 .panel-zone-players{ flex:1; display:flex; flex-direction:column; }
@@ -206,7 +201,10 @@ body{
 .turn-dart-val{ font-family:'JetBrains Mono',monospace; color:var(--brass); font-weight:600; }
 .turn-dart-val.miss{ color:#e08a7d; }
 .ps-editrow{ display:flex; gap:6px; margin-top:8px; }
-.edit-turn-row{ display:flex; gap:5px; margin-bottom:6px; }
+.home-base{ display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+.controls-subgroup{ display:flex; flex-direction:column; gap:3px; }
+.subgroup-label{ font-family:'JetBrains Mono',monospace; font-size:8px; color:var(--cream-dim); opacity:0.5; text-transform:uppercase; letter-spacing:0.05em; }
+.subgroup-row{ display:flex; gap:5px; }
 .tiny-edit-btn{ flex:1; text-align:center; padding:5px 4px; border-radius:6px; font-family:'Inter',sans-serif; font-weight:500; font-size:10px; border:1px solid var(--felt-lighter); color:var(--cream-dim); cursor:pointer; }
 .tiny-edit-btn.danger{ border-color:var(--red); color:#e08a7d; }
 .tiny-edit-btn.disabled{ opacity:0.35; cursor:default; }
@@ -594,6 +592,12 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 
 .board-area{display:flex; justify-content:center; padding:8px 18px; position:relative;}
 .board-area.bot-dimmed{ opacity:0.85; pointer-events:none; }
+.board-corner-note{ position:absolute; left:18px; bottom:18px; max-width:160px; z-index:3; }
+.board-corner-note .objective-banner{ background:none; border:none; padding:0; margin:0; }
+.board-corner-note .objective-banner .big{ display:none; }
+.board-corner-note .objective-banner .small{ font-size:11px; color:var(--cream-dim); line-height:1.4; opacity:0.75; }
+.checkout-table-corner{ position:absolute; right:18px; bottom:18px; z-index:3; }
+.checkout-table-corner .linklike{ font-size:11px; }
 .board-wrap{display:inline-block; position:relative; line-height:0; transform:scale(var(--dartboard-scale, 1)); transform-origin:center center;}
 .board-miss-btn{
   position:absolute; top:2px; left:20px; z-index:5;
@@ -777,7 +781,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 11:25 PM';
+const BUILD_STAMP = '8/16/2026, 12:05 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5891,11 +5895,29 @@ function renderActivePlayerSection(s,p,i){
 // don't need prime real estate) and because it trims real height out of
 // the active player's section, which helps the "too much stacked content"
 // issue on real 1080p screens.
+// The "home base" for technical, non-gameplay controls — grouped into two
+// clearly labeled sub-sections (Cameras / This Turn) rather than one flat
+// row, so it's obvious which category a given button belongs to before
+// tapping it. Only shows the Cameras group when Camera Mode is actually on.
 function renderEditTurnRow(s){
   const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
-  return `<div class="edit-turn-row">
-    <div class="tiny-edit-btn danger" onclick="doClearTurn()">Restart Turn</div>
-    <div class="tiny-edit-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous Player</div>
+  const cameraGroup = state.settings.dartsCallerCameraMode ? `<div class="controls-subgroup">
+    <div class="subgroup-label">Cameras</div>
+    <div class="subgroup-row">
+      <div class="tiny-edit-btn" onclick="startBoardManagerDetection()">&#9654; Start</div>
+      <div class="tiny-edit-btn" onclick="resetBoardManagerNow()">&#8635; Soft Reset</div>
+      <div class="tiny-edit-btn" onclick="hardRestartBoardManager()">&#9850; Hard Reset</div>
+    </div>
+  </div>` : '';
+  return `<div class="home-base">
+    ${cameraGroup}
+    <div class="controls-subgroup">
+      <div class="subgroup-label">This Turn</div>
+      <div class="subgroup-row">
+        <div class="tiny-edit-btn danger" onclick="doClearTurn()">Restart Turn</div>
+        <div class="tiny-edit-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous Player</div>
+      </div>
+    </div>
   </div>`;
 }
 function renderCollapsedPlayerSection(s,p,i){
@@ -5945,13 +5967,25 @@ function activeSectionHeadline(s,p){
 // keeping from it — a bust/kill/halve-it "what just happened" message —
 // now surfaces right here instead, in the same spot deeper checkout tips
 // already live, rather than as a separate always-present banner.
+// Only for genuinely important "something just happened" moments (bust,
+// kill/halve-it turn summary) — routine strategy tips live in the board's
+// own corner now instead (see renderBoardCornerNote), not in the sidebar.
 function renderPriorityOrTips(s){
   const darts = s.currentTurnDarts;
   const showSummary = darts.length===0 && s.lastTurnSummary && (s.kind==='killer' || s.kind==='halveit' || s.kind==='x01');
   if(showSummary){
     return `<div class="panel-zone-tips"><div class="objective-banner" style="border-color:var(--brass);">${s.lastTurnSummary}</div></div>`;
   }
-  return `<div class="panel-zone-tips">${renderCheckoutOptionsLine(s)}${renderTipsSection(s)}</div>`;
+  return '';
+}
+// The routine, non-urgent strategy note (checkout suggestions, "aim for
+// the biggest number", etc.) — reuses the exact same per-game text logic
+// as before, just displayed as a brief, quiet corner note on the board
+// itself rather than a block in the sidebar.
+function renderBoardCornerNote(s){
+  const tips = renderTipsSection(s);
+  if(!tips) return '';
+  return `<div class="board-corner-note">${tips}</div>`;
 }
 function renderInstructionBox(s){
   const hint = renderTurnHint(s);
@@ -6000,7 +6034,6 @@ function renderTipsSection(s){
       guideBig = p.score+' remaining'; guideSmall='';
     }
     objective = `<div class="objective-banner"><div class="big">${guideBig}</div>${guideSmall?`<div class="small">${guideSmall}</div>`:''}
-      <div style="margin-top:10px;"><a class="linklike" onclick="openCheckoutTable('active','${s.outRule}')">View full checkout table &#9656;</a></div>
     </div>`;
     if(isBotPlayerId(p.playerId)){
       objective = `<div class="objective-banner"><div class="big">&#129302; ${playerName(p.playerId)} is throwing&hellip;</div><div class="small">${p.score} remaining — sit back, the bot's got this turn.</div></div>`;
@@ -6092,8 +6125,8 @@ function renderActiveShell(){
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
-  ${renderPriorityOrTips(s)}
   ${renderPlayerBoxes(s)}
+  ${renderPriorityOrTips(s)}
   ${renderBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
@@ -6619,13 +6652,9 @@ function renderEntryArea(s){
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
-    const cameraControls = state.settings.dartsCallerCameraMode ? `<div class="camera-controls-corner">
-      <div class="cam-box-label">CAMERAS</div>
-      <button class="tiny-cam-btn" onclick="startBoardManagerDetection()">&#9654; Start</button>
-      <button class="tiny-cam-btn" onclick="resetBoardManagerNow()">&#8635; Soft Reset</button>
-      <button class="tiny-cam-btn" onclick="hardRestartBoardManager()">&#9850; Hard Reset</button>
-    </div>` : '';
-    entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}</div>${cameraControls}</div>`;
+    const cornerNote = renderBoardCornerNote(s);
+    const checkoutCorner = s.kind==='x01' ? `<div class="checkout-table-corner"><a class="linklike" onclick="openCheckoutTable('active','${s.outRule}')">Checkout Table &#9656;</a></div>` : '';
+    entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}</div>${cornerNote}${checkoutCorner}</div>`;
   }
   const toggle = isCricket
     ? `<div class="entry-toggle">
