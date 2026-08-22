@@ -156,7 +156,8 @@ body{
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .header-action-btn{ background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; }
 .header-action-btn:active{ transform:scale(0.96); }
-.camera-controls-corner{ position:absolute; left:10px; bottom:6px; display:flex; flex-direction:column; gap:4px; z-index:5; }
+.camera-controls-corner{ position:absolute; left:10px; bottom:6px; display:flex; flex-direction:column; gap:4px; z-index:5; background:rgba(18,32,25,0.75); border:1px solid var(--felt-lighter); border-radius:8px; padding:6px 7px; }
+.cam-box-label{ font-family:'JetBrains Mono',monospace; font-size:8px; color:var(--cream-dim); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:1px; }
 .tiny-cam-btn{ background:rgba(38,64,47,0.75); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:6px; padding:3px 7px; font-size:9px; font-weight:500; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; text-align:left; }
 .tiny-cam-btn:active{ transform:scale(0.95); }
 .panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
@@ -204,6 +205,10 @@ body{
 .turn-dart-val{ font-family:'JetBrains Mono',monospace; color:var(--brass); font-weight:600; }
 .turn-dart-val.miss{ color:#e08a7d; }
 .ps-editrow{ display:flex; gap:6px; margin-top:8px; }
+.edit-turn-row{ display:flex; gap:5px; margin-bottom:6px; }
+.tiny-edit-btn{ flex:1; text-align:center; padding:5px 4px; border-radius:6px; font-family:'Inter',sans-serif; font-weight:500; font-size:10px; border:1px solid var(--felt-lighter); color:var(--cream-dim); cursor:pointer; }
+.tiny-edit-btn.danger{ border-color:var(--red); color:#e08a7d; }
+.tiny-edit-btn.disabled{ opacity:0.35; cursor:default; }
 .ps-editbtn{ flex:1; text-align:center; padding:8px 5px; border-radius:8px; font-family:'Inter',sans-serif; font-weight:600; font-size:11px; border:1px solid var(--felt-lighter); color:var(--cream); cursor:pointer; }
 .ps-editbtn.danger{ border-color:var(--red); color:#e08a7d; }
 .ps-editbtn.disabled{ opacity:0.35; cursor:default; }
@@ -771,7 +776,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 10:05 PM';
+const BUILD_STAMP = '8/15/2026, 10:50 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -968,6 +973,27 @@ function hydrateState(){
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
 function playerColor(p, idx){ return p.color || AVATAR_COLORS[idx % AVATAR_COLORS.length]; }
 function initials(name){ return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+// The one shared label generator for an actual thrown dart — "Single 1",
+// "Double 12", "Triple 20", not the old abbreviated "S1"/"D12"/"T20". Safe
+// to use everywhere a dart gets recorded, since these display labels are
+// never parsed back into {num,seg} anywhere (only checkout-route labels
+// are, via parseThrowLabel, which keeps its own separate abbreviated
+// format below — deliberately untouched).
+function fullDartLabel(num, mult){
+  if(num==='B') return mult==='bull' ? 'Bull' : 'Outer Bull';
+  if(mult==='miss') return 'Miss';
+  const word = mult==='double' ? 'Double' : mult==='triple' ? 'Triple' : 'Single';
+  return `${word} ${num}`;
+}
+// Converts an internal checkout-route label ("T20", "D8", "DB", "SB") to
+// full words for display only — the underlying route data (used by
+// findCheckout/parseThrowLabel/bot logic) keeps its abbreviated form.
+function prettifyRouteLabel(label){
+  if(label==='DB') return 'Bullseye';
+  if(label==='SB') return 'Outer Bull';
+  const seg = label[0]==='T' ? 'Triple' : label[0]==='D' ? 'Double' : 'Single';
+  return `${seg} ${label.slice(1)}`;
+}
 
 /* ========================= X01 ENGINE ========================= */
 const ALL_THROWS = (() => {
@@ -1046,7 +1072,7 @@ function renderCheckoutOptionsLine(s){
   if(!options.length) return '';
   return `<div class="checkout-options">
     <span class="checkout-options-label">Ways to finish:</span>
-    ${options.map(route=>`<span class="chip">${route.join(' &middot; ')}</span>`).join('')}
+    ${options.map(route=>`<span class="chip">${route.map(prettifyRouteLabel).join(' &middot; ')}</span>`).join('')}
   </div>`;
 }
 function findCheckout(remaining, dartsLeft, outRule){
@@ -1322,7 +1348,7 @@ function customMutateForDart(s, num, mult){
   const p = customCurrent(s);
   p.darts = (p.darts||0)+1;
   const qualifies = customDartQualifies(s, num, mult);
-  let label = num==='B' ? (mult==='bull'?'Bull':'Outer Bull') : ((mult==='double'?'D':mult==='triple'?'T':'S')+num);
+  let label = fullDartLabel(num, mult);
   let pointsGained = 0;
   if(qualifies){
     pointsGained = customDartPoints(cfg, num, mult);
@@ -1344,8 +1370,8 @@ function customMutateForDartCountdown(s, num, mult){
   const p = customCurrent(s);
   let value, label;
   if(mult==='miss'){ value=0; label='Miss'; }
-  else if(num==='B'){ value = mult==='bull'?50:25; label = mult==='bull'?'DB':'SB'; }
-  else { value = num * (mult==='double'?2:mult==='triple'?3:1); label = (mult==='double'?'D':mult==='triple'?'T':'S')+num; }
+  else if(num==='B'){ value = mult==='bull'?50:25; label = fullDartLabel(num, mult); }
+  else { value = num * (mult==='double'?2:mult==='triple'?3:1); label = fullDartLabel(num, mult); }
   const remaining = p.score - value;
   const isDoubleOrBull = mult==='double' || (num==='B'&&mult==='bull');
   const isDoubleOrTripleOrBull = isDoubleOrBull || mult==='triple';
@@ -1475,7 +1501,7 @@ function atcMutateForDart(s, num, mult){
     else if(s.advanceMode==='triplesOnly'){ advance = (mult==='triple') ? 1 : 0; }
     else { advance = mult==='triple'?3 : (mult==='double'||mult==='bull')?2 : 1; }
   }
-  const label = (hit && advance>0) ? ((mult==='double'?'D':mult==='triple'?'T':'S')+(target==='B'?'Bull':target)) : 'Miss';
+  const label = (hit && advance>0) ? fullDartLabel(target, mult) : 'Miss';
   p.idx = Math.min(p.idx+advance, s.sequence.length);
   if(p.idx>=s.sequence.length) p.finished=true;
   return {label, num, mult};
@@ -1532,7 +1558,7 @@ function shanghaiMutateForDart(s, num, mult){
     points = mult==='triple'?target*3 : mult==='double'?target*2 : target;
     p.score += points;
     if(!p.hitTypesThisRound.includes(mult)) p.hitTypesThisRound.push(mult);
-    label = (mult==='double'?'D':mult==='triple'?'T':'S')+target;
+    label = fullDartLabel(target, mult);
   }
   return {label, points, num, mult};
 }
@@ -1595,7 +1621,7 @@ function baseballMutateForDart(s, num, mult){
   if(num===target){
     runs = mult==='triple'?3:mult==='double'?2:1;
     p.score += runs;
-    label = (mult==='double'?'D':mult==='triple'?'T':'S')+target;
+    label = fullDartLabel(target, mult);
   }
   return {label, runs, num, mult};
 }
@@ -1677,9 +1703,9 @@ function halveItMutateForDart(s, num, mult){
     points = dartValue;
     p.score += points;
     p.hitThisRound = true;
-    label = num==='B' ? (mult==='bull'?'Bull':'Outer Bull') : (mult==='double'?'D':mult==='triple'?'T':'S')+num;
+    label = fullDartLabel(num, mult);
   } else if(s.halveitBooster && s.halveitBooster!=='off' && mult!=='miss' && dartValue>0){
-    label = num==='B' ? (mult==='bull'?'Bull':'Outer Bull') : (mult==='double'?'D':mult==='triple'?'T':'S')+num;
+    label = fullDartLabel(num, mult);
   }
   return {label, points, num, mult, dartValue, hit};
 }
@@ -1790,7 +1816,7 @@ function personalBestDartValue(num, mult){
 }
 function personalBestApplyDart(s, num, mult){
   const value = personalBestDartValue(num, mult);
-  const label = mult==='miss' ? 'Miss' : num==='B' ? (mult==='bull'?'Bull':'Outer Bull') : (mult==='double'?'D':mult==='triple'?'T':'S')+num;
+  const label = fullDartLabel(num, mult);
   s.currentTurnDarts.push({_score:value, label, _num:num, _segType:mult});
   return {turnOver: s.currentTurnDarts.length>=3};
 }
@@ -1913,12 +1939,12 @@ function killerMutateForDart(s, num, mult){
   let victimId=null, livesAfter=null;
   if(num===p.number){
     if(!p.isKiller){
-      if(mult==='double'||mult==='bull'){ p.isKiller=true; label='D'+num+' — Killer!'; }
-      else { label=(mult==='triple'?'T':'S')+num; }
+      if(mult==='double'||mult==='bull'){ p.isKiller=true; label=fullDartLabel(num,mult)+' — Killer!'; }
+      else { label=fullDartLabel(num,mult); }
     } else {
       p.lives = Math.max(0,p.lives-1);
       if(p.lives<=0) p.eliminated=true;
-      label=(mult==='double'?'D':mult==='triple'?'T':'S')+num+' (self hit)';
+      label=fullDartLabel(num,mult)+' (self hit)';
       victimId = p.playerId; livesAfter = p.lives;
     }
   } else if(typeof num==='number' && num>=1 && num<=20){
@@ -1927,13 +1953,13 @@ function killerMutateForDart(s, num, mult){
       if(victim){
         victim.lives = Math.max(0, victim.lives-1);
         if(victim.lives<=0) victim.eliminated=true;
-        label=(mult==='double'?'D':mult==='triple'?'T':'S')+num+' — hit!';
+        label=fullDartLabel(num,mult)+' — hit!';
         victimId = victim.playerId; livesAfter = victim.lives;
       } else {
-        label=(mult==='double'?'D':mult==='triple'?'T':'S')+num;
+        label=fullDartLabel(num,mult);
       }
     } else {
-      label=(mult==='double'?'D':mult==='triple'?'T':'S')+num;
+      label=fullDartLabel(num,mult);
     }
   }
   return {label, num, mult, victimId, livesAfter};
@@ -2125,7 +2151,7 @@ function checkoutPracticeApplyDart(cp, num, mult){
   const isFinishThrow = num==='B' ? mult==='bull' : mult==='double';
   if(remaining<0) bust=true;
   else if(remaining===0){ if(isFinishThrow) finished=true; else bust=true; }
-  const label = num==='B' ? (mult==='bull'?'Bull':'Outer Bull') : (mult==='double'?'D':mult==='triple'?'T':'S')+num;
+  const label = fullDartLabel(num, mult);
   cp.dartsThisAttempt.push({label, bust, finished});
   if(!bust) cp.currentScore = remaining;
   if(finished) cp.successes++;
@@ -2583,13 +2609,13 @@ function dispatchThrowCore(num, segType){
   if(thisPoint) s.turnHitPoints.push(thisPoint);
   if(s.kind==='x01'){
     let throwObj;
-    if(num==='B' && segType==='bull') throwObj = {label:'DB',value:50,type:'bull'};
-    else if(num==='B' && segType==='single') throwObj = {label:'SB',value:25,type:'bull'};
+    if(num==='B' && segType==='bull') throwObj = {label:fullDartLabel('B','bull'),value:50,type:'bull'};
+    else if(num==='B' && segType==='single') throwObj = {label:fullDartLabel('B','single'),value:25,type:'bull'};
     else {
       const n = num;
-      if(segType==='single') throwObj = {label:'S'+n,value:n,type:'single',n};
-      else if(segType==='double') throwObj = {label:'D'+n,value:n*2,type:'double',n};
-      else throwObj = {label:'T'+n,value:n*3,type:'triple',n};
+      if(segType==='single') throwObj = {label:fullDartLabel(n,'single'),value:n,type:'single',n};
+      else if(segType==='double') throwObj = {label:fullDartLabel(n,'double'),value:n*2,type:'double',n};
+      else throwObj = {label:fullDartLabel(n,'triple'),value:n*3,type:'triple',n};
     }
     const res = x01ApplyDart(s, throwObj);
     if(res.turnOver){
@@ -5844,10 +5870,9 @@ function renderActivePlayerSection(s,p,i){
     const d = darts[idx];
     if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
     const isMiss = d.label==='Miss' || d.bust;
-    const val = typeof d.value==='number' ? d.value : (typeof d._score==='number' ? d._score : (d.bust?'BUST':''));
+    const val = dartDisplayValue(d);
     return `<div class="turn-dart-row${isMiss?' miss':''}"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val${isMiss?' miss':''}">${val}</div></div>`;
   }).join('');
-  const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
   return `<div class="player-section active">
     <div class="ps-header">
       <div class="ps-avatar">${playerEmojiOrInitials(p.playerId)}</div>
@@ -5857,11 +5882,19 @@ function renderActivePlayerSection(s,p,i){
     <div class="ps-body">
       <div class="ps-target"><div class="ps-target-lab">Target</div><div class="ps-target-val">${target.label}</div>${target.sub?`<div class="ps-target-sub">${target.sub}</div>`:''}</div>
       ${rows}
-      <div class="ps-editrow">
-        <div class="ps-editbtn danger" onclick="doClearTurn()">Restart Turn</div>
-        <div class="ps-editbtn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Return to Previous Player</div>
-      </div>
     </div>
+  </div>`;
+}
+// Session-level actions, not really tied to any one player's box — moved
+// here, right above Leave Game, both because they're used rarely (so they
+// don't need prime real estate) and because it trims real height out of
+// the active player's section, which helps the "too much stacked content"
+// issue on real 1080p screens.
+function renderEditTurnRow(s){
+  const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
+  return `<div class="edit-turn-row">
+    <div class="tiny-edit-btn danger" onclick="doClearTurn()">Restart Turn</div>
+    <div class="tiny-edit-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Return to Previous Player</div>
   </div>`;
 }
 function renderCollapsedPlayerSection(s,p,i){
@@ -5876,6 +5909,21 @@ function renderCollapsedPlayerSection(s,p,i){
 function playerEmojiOrInitials(pid){
   const p = state.players.find(x=>x.id===pid);
   return (p && p.emoji) || initials(p ? p.name : '?');
+}
+// Every game stores its own dart record shape (x01 uses .value, Cricket
+// uses .pointsScored, Shanghai/Baseball use .runs, Personal Best uses
+// ._score, and so on) — this checks each in the order a real dart record
+// would actually have one. Killer and Call Your Shot genuinely have no
+// points concept (lives and hit/miss respectively), so those correctly
+// show nothing rather than a fabricated number.
+function dartDisplayValue(d){
+  if(typeof d.value==='number') return d.value;
+  if(typeof d._score==='number') return d._score;
+  if(typeof d.points==='number') return d.points;
+  if(typeof d.pointsScored==='number') return d.pointsScored;
+  if(typeof d.runs==='number') return d.runs;
+  if(d.bust) return 'BUST';
+  return '';
 }
 // Deliberately separate from playerName(), which already prepends the
 // emoji to the name string — using that here alongside the dedicated
@@ -6571,9 +6619,10 @@ function renderEntryArea(s){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
     const cameraControls = state.settings.dartsCallerCameraMode ? `<div class="camera-controls-corner">
-      <button class="tiny-cam-btn" onclick="resetBoardManagerNow()">&#8635; Reset Cameras</button>
-      <button class="tiny-cam-btn" onclick="startBoardManagerDetection()">&#9654; Start Cameras</button>
-      <button class="tiny-cam-btn" onclick="hardRestartBoardManager()">&#9850; Hard Restart Cameras</button>
+      <div class="cam-box-label">CAMERAS</div>
+      <button class="tiny-cam-btn" onclick="startBoardManagerDetection()">&#9654; Start</button>
+      <button class="tiny-cam-btn" onclick="resetBoardManagerNow()">&#8635; Soft Reset</button>
+      <button class="tiny-cam-btn" onclick="hardRestartBoardManager()">&#9850; Hard Reset</button>
     </div>` : '';
     entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}</div>${cameraControls}</div>`;
   }
@@ -6720,8 +6769,11 @@ function renderNumberGrid(s){
   </div>`;
 }
 function renderBottomControls(s){
-  return `<div class="panel-controls">
-    <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
+  return `<div class="panel-controls-wrap">
+    ${renderEditTurnRow(s)}
+    <div class="panel-controls">
+      <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
+    </div>
   </div>`;
 }
 function renderGameMenu(s){
