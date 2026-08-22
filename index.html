@@ -156,9 +156,10 @@ body{
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .header-action-btn{ background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; }
 .header-action-btn:active{ transform:scale(0.96); }
-.camera-controls-corner{ position:absolute; left:10px; bottom:6px; display:flex; flex-direction:column; gap:4px; z-index:5; background:rgba(18,32,25,0.75); border:1px solid var(--felt-lighter); border-radius:8px; padding:6px 7px; }
-.cam-box-label{ font-family:'JetBrains Mono',monospace; font-size:8px; color:var(--cream-dim); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:1px; }
-.tiny-cam-btn{ background:rgba(38,64,47,0.75); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:6px; padding:3px 7px; font-size:9px; font-weight:500; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; text-align:left; }
+.camera-controls-corner{ position:absolute; left:10px; bottom:6px; display:flex; flex-direction:column; gap:3px; z-index:5; background:rgba(18,32,25,0.4); border-radius:6px; padding:5px 6px; }
+.tiny-cam-btn{ background:transparent; border:none; color:rgba(174,188,175,0.5); border-radius:5px; padding:2px 4px; font-size:8px; font-weight:400; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; text-align:left; }
+.tiny-cam-btn:hover, .tiny-cam-btn:active{ color:var(--cream-dim); background:rgba(38,64,47,0.5); }
+.cam-box-label{ font-family:'JetBrains Mono',monospace; font-size:7px; color:rgba(174,188,175,0.35); letter-spacing:0.06em; text-transform:uppercase; margin-bottom:1px; }
 .tiny-cam-btn:active{ transform:scale(0.95); }
 .panel-controls .btn-undo{ background:var(--felt-light); border-color:var(--felt-lighter); color:var(--cream-dim); }
 .panel-controls .btn-leave{ background:rgba(160,60,50,0.16); border-color:rgba(200,120,110,0.3); color:#e8a488; }
@@ -166,7 +167,7 @@ body{
 .panel-zone-instruction{ flex:1; display:flex; flex-direction:column; justify-content:center; }
 .panel-zone-tips{ flex:1; display:flex; flex-direction:column; justify-content:flex-end; }
 .panel-zone-tips .objective-banner{ background:none; border:none; padding:0; margin:0; }
-.panel-zone-tips .objective-banner .big{ font-size:13px; color:var(--brass); }
+.panel-zone-tips .objective-banner .big{ display:none; }
 .panel-zone-tips .objective-banner .small{ font-size:10.5px; color:var(--cream-dim); }
 .panel-zone-tips .checkout-options{ padding:0 0 8px 0; }
 .panel-players-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }
@@ -209,9 +210,8 @@ body{
 .tiny-edit-btn{ flex:1; text-align:center; padding:5px 4px; border-radius:6px; font-family:'Inter',sans-serif; font-weight:500; font-size:10px; border:1px solid var(--felt-lighter); color:var(--cream-dim); cursor:pointer; }
 .tiny-edit-btn.danger{ border-color:var(--red); color:#e08a7d; }
 .tiny-edit-btn.disabled{ opacity:0.35; cursor:default; }
-.ps-editbtn{ flex:1; text-align:center; padding:8px 5px; border-radius:8px; font-family:'Inter',sans-serif; font-weight:600; font-size:11px; border:1px solid var(--felt-lighter); color:var(--cream); cursor:pointer; }
-.ps-editbtn.danger{ border-color:var(--red); color:#e08a7d; }
-.ps-editbtn.disabled{ opacity:0.35; cursor:default; }
+.tiny-edit-btn.danger{ border-color:var(--red); color:#e08a7d; }
+.tiny-edit-btn.disabled{ opacity:0.35; cursor:default; }
 @media (min-width:900px){
   .device.game-layout .device-body{ flex-direction:row; }
   .device.game-layout .screen{ flex:1; min-width:0; }
@@ -593,6 +593,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .bottom-controls button.warn{color:color-mix(in srgb, var(--red) 75%, white);}
 
 .board-area{display:flex; justify-content:center; padding:8px 18px; position:relative;}
+.board-area.bot-dimmed{ opacity:0.85; pointer-events:none; }
 .board-wrap{display:inline-block; position:relative; line-height:0; transform:scale(var(--dartboard-scale, 1)); transform-origin:center center;}
 .board-miss-btn{
   position:absolute; top:2px; left:20px; z-index:5;
@@ -776,7 +777,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/15/2026, 10:50 PM';
+const BUILD_STAMP = '8/15/2026, 11:10 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5894,7 +5895,7 @@ function renderEditTurnRow(s){
   const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
   return `<div class="edit-turn-row">
     <div class="tiny-edit-btn danger" onclick="doClearTurn()">Restart Turn</div>
-    <div class="tiny-edit-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Return to Previous Player</div>
+    <div class="tiny-edit-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous Player</div>
   </div>`;
 }
 function renderCollapsedPlayerSection(s,p,i){
@@ -6091,8 +6092,8 @@ function renderActiveShell(){
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
-  ${renderPlayerBoxes(s)}
   ${renderPriorityOrTips(s)}
+  ${renderPlayerBoxes(s)}
   ${renderBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
@@ -6638,7 +6639,7 @@ function renderEntryArea(s){
       </div>`;
   if(botTurn){
     return `${toggle}
-    <div style="pointer-events:none; opacity:0.85;">${entryHtml}</div>
+    ${entryHtml.replace('class="board-area"', 'class="board-area bot-dimmed"')}
     <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is throwing — no input needed</div>`;
   }
   return `${toggle}${entryHtml}`;
