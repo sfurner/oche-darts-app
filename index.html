@@ -812,7 +812,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 1:15 AM';
+const BUILD_STAMP = '8/16/2026, 2:20 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -954,6 +954,7 @@ let state = {
   checkoutOutRule: 'double',
   rememberedGameOptions: {},
   expandedOptionRow: null,
+  throwAnalyzer: null,
 };
 
 let uid = 1;
@@ -2294,6 +2295,162 @@ function boardDistanceToMm(normDist){
   return Math.round(normDist * 170);
 }
 
+/* ========================= THROW ANALYZER: CORE MATH ========================= */
+// Converts a raw pixel distance (in the same SVG coordinate space every dart
+// hit already arrives in, whether tapped or camera-detected) into real-world
+// millimeters, using the same 170mm double-ring reference boardDistanceToMm
+// already relies on — so this is exact, not a separate approximation.
+function pxToMm(px){ return (px / R_DOUBLE_OUT) * 170; }
+// dyMm follows the SVG convention (down is positive) — meaning a positive
+// dyMm genuinely means "landed below the target," matching how a person
+// would naturally describe their own miss.
+function throwErrorVector(target, hit){
+  return { dxMm: pxToMm(hit.x-target.x), dyMm: pxToMm(hit.y-target.y) };
+}
+// The actual statistics behind the diagnosis — bias (centroid, i.e. where
+// your average dart lands relative to the target) is a completely separate
+// question from dispersion (how tightly you group), and conflating them is
+// exactly the mistake worth avoiding here.
+function computeThrowStats(errors){
+  const n = errors.length;
+  const centroidDx = errors.reduce((s,e)=>s+e.dxMm,0)/n;
+  const centroidDy = errors.reduce((s,e)=>s+e.dyMm,0)/n;
+  const centroidDist = Math.sqrt(centroidDx*centroidDx + centroidDy*centroidDy);
+  const dispersion = Math.sqrt(errors.reduce((s,e)=>s+Math.pow(e.dxMm-centroidDx,2)+Math.pow(e.dyMm-centroidDy,2),0)/n);
+  const varX = errors.reduce((s,e)=>s+Math.pow(e.dxMm-centroidDx,2),0)/n;
+  const varY = errors.reduce((s,e)=>s+Math.pow(e.dyMm-centroidDy,2),0)/n;
+  const dominantAxis = varY > varX*1.4 ? 'vertical' : varX > varY*1.4 ? 'horizontal' : 'mixed';
+  return { n, centroidDx, centroidDy, centroidDist, dispersion, varX, varY, dominantAxis };
+}
+// The diagnostic matrix itself — grounded specifically in what search
+// actually turned up (not invented), and deliberately hedged: every
+// suggestion is framed as "worth testing," never a diagnosis. Horizontal
+// bias points at stance/alignment first because that's what the darts
+// coaching sources converge on; vertical bias points at release
+// timing/follow-through first, since multiple independent sources draw
+// that same distinction. A confirmed-tight group that's simply off-target
+// gets a different, much simpler answer: aim calibration, not mechanics.
+const THROW_DIAGNOSTIC_MATRIX = {
+  vertical_low: { title:'Your throw tends low', suggestion:'Check your follow-through',
+    body:"A consistent low miss with a tight group is often linked to release timing or a shortened follow-through — releasing a touch late tends to send darts low. This isn't necessarily your cause, but it's the most common one for this exact pattern, and it's easy to test." },
+  vertical_high: { title:'Your throw tends high', suggestion:'Check your release timing',
+    body:"Consistently landing high, with your left-right aim staying tight, is usually linked to releasing a touch early or with extra lift. Worth testing whether releasing a fraction later brings it back down." },
+  horizontal_left: { title:'Your throw drifts left', suggestion:'Check your stance angle',
+    body:"For a right-handed thrower, consistently drifting left is commonly tied to stance alignment — the body angled slightly across the throw, or the elbow drifting out during release. A small adjustment to your back foot, angling your stance a bit more toward the board, is the most commonly cited fix for exactly this pattern." },
+  horizontal_right: { title:'Your throw drifts right', suggestion:'Check your stance angle',
+    body:"Consistently drifting right is the mirror of the left-drift pattern — commonly tied to stance alignment or the arm moving outward through release. Moving your back foot the other way to adjust your facing angle is the most commonly suggested fix." },
+  tight_off_target: { title:"You're tight, just not on target", suggestion:'This looks like aim, not mechanics',
+    body:"Your grouping is genuinely tight — that's a sign your mechanics are already repeatable. This isn't a mechanical issue at all; it's simply aim calibration. Try consciously aiming a little in the opposite direction of your average miss." },
+  wide_dispersion: { title:"Your grouping is spread out", suggestion:'Focus on rhythm and grip pressure',
+    body:"Without a strong directional bias, a wide spread usually points to general consistency — grip tension, rushing the throw, or body movement during release, rather than any single specific fix. Slowing down and keeping a consistent pre-throw routine is the most broadly supported starting point." },
+};
+function diagnoseThrowStats(stats){
+  if(stats.dispersion < 12 && stats.centroidDist < 8) return null; // genuinely on target, nothing to suggest
+  if(stats.dispersion < 15 && stats.centroidDist >= 8) return {...THROW_DIAGNOSTIC_MATRIX.tight_off_target, axis:'bias'};
+  if(stats.dominantAxis==='vertical') return {...THROW_DIAGNOSTIC_MATRIX[stats.centroidDy>0?'vertical_low':'vertical_high'], axis:'vertical'};
+  if(stats.dominantAxis==='horizontal') return {...THROW_DIAGNOSTIC_MATRIX[stats.centroidDx>0?'horizontal_right':'horizontal_left'], axis:'horizontal'};
+  return {...THROW_DIAGNOSTIC_MATRIX.wide_dispersion, axis:'dispersion'};
+}
+function angleForBoardNumber(num){ return BOARD_ORDER.indexOf(num)*18 + WEDGE_ROTATION; }
+const THROW_ANALYZER_PRESETS = (()=>{
+  const tripleR = (R_TRIPLE_IN+R_TRIPLE_OUT)/2;
+  const mk = (id,label,num)=>{ const [x,y]=polar(BOARD_CX,BOARD_CY,tripleR,angleForBoardNumber(num)); return {id,label,x:parseFloat(x),y:parseFloat(y)}; };
+  return [
+    mk('upper','Upper board (near 20)',20),
+    mk('lower','Lower board (near 3)',3),
+    mk('left','Left side (near 11)',11),
+    mk('right','Right side (near 6)',6),
+    {id:'center', label:'Center (bullseye)', x:BOARD_CX, y:BOARD_CY},
+  ];
+})();
+const THROW_ANALYZER_WARMUP_DARTS = 12;
+const THROW_ANALYZER_MIN_DARTS = 9;
+const THROW_ANALYZER_MAX_DARTS = 18;
+function startThrowAnalyzer(presetId){
+  const preset = THROW_ANALYZER_PRESETS.find(p=>p.id===presetId) || THROW_ANALYZER_PRESETS[0];
+  state.throwAnalyzer = {
+    phase:'warmup', preset, target:preset,
+    warmupThrown:0, warmupTarget: randomBoardPoint(),
+    diagnosticErrors: [], testErrors: [], suggestion:null, priorSuggestion:null,
+  };
+  state.screen = 'throwAnalyzer';
+  render();
+}
+function randomBoardPoint(){
+  const r = Math.random()*R_DOUBLE_OUT*0.85;
+  const a = Math.random()*360;
+  const [x,y] = polar(BOARD_CX,BOARD_CY,r,a);
+  return {x:parseFloat(x), y:parseFloat(y)};
+}
+// No feedback shown while actually throwing, by explicit request — darts
+// just land, and every stat/diagnosis appears only once a whole block
+// (warmup, diagnostic, or test) genuinely completes.
+function throwAnalyzerRecordDart(point){
+  const t = state.throwAnalyzer;
+  if(!t) return;
+  if(t.phase==='warmup'){
+    t.warmupThrown++;
+    if(t.warmupThrown>=THROW_ANALYZER_WARMUP_DARTS){
+      t.phase='diagnostic';
+    } else {
+      t.warmupTarget = randomBoardPoint();
+    }
+  } else if(t.phase==='diagnostic'){
+    t.diagnosticErrors.push(throwErrorVector(t.target, point));
+    if(throwAnalyzerBlockDone(t.diagnosticErrors)){
+      t.stats = computeThrowStats(t.diagnosticErrors);
+      t.suggestion = diagnoseThrowStats(t.stats);
+      t.phase = 'results';
+    }
+  } else if(t.phase==='testing'){
+    t.testErrors.push(throwErrorVector(t.target, point));
+    if(throwAnalyzerBlockDone(t.testErrors)){
+      t.testStats = computeThrowStats(t.testErrors);
+      t.phase = 'testResult';
+      const before = t.stats[t.suggestion.axis==='vertical' ? 'centroidDy' : t.suggestion.axis==='horizontal' ? 'centroidDx' : 'centroidDist'];
+      const after = t.testStats[t.suggestion.axis==='vertical' ? 'centroidDy' : t.suggestion.axis==='horizontal' ? 'centroidDx' : 'centroidDist'];
+      const improvementPct = before!==0 ? Math.round((1 - Math.abs(after)/Math.abs(before))*100) : 0;
+      const groupingHeld = t.testStats.dispersion <= t.stats.dispersion*1.25;
+      t.testHelped = improvementPct >= 25 && groupingHeld;
+      t.testImprovementPct = improvementPct;
+    }
+  }
+  render();
+}
+// Adaptive count — stop at the minimum once the signal is already clear,
+// extend up to the max only when it genuinely isn't (bias too small to
+// tell apart from ordinary dispersion yet).
+function throwAnalyzerBlockDone(errors){
+  if(errors.length < THROW_ANALYZER_MIN_DARTS) return false;
+  if(errors.length >= THROW_ANALYZER_MAX_DARTS) return true;
+  const s = computeThrowStats(errors);
+  const ambiguous = s.centroidDist < s.dispersion*0.5;
+  return !ambiguous;
+}
+function throwAnalyzerStartTest(){
+  const t = state.throwAnalyzer;
+  if(!t) return;
+  t.testErrors = [];
+  t.phase = 'testing';
+  render();
+}
+function throwAnalyzerTryDifferentCause(){
+  const t = state.throwAnalyzer;
+  if(!t) return;
+  // Deliberately deprioritizes rather than deletes — throw issues can be a
+  // culmination of more than one factor, so a cause that didn't help this
+  // time may still be worth revisiting later once something else is fixed.
+  t.priorSuggestion = t.suggestion;
+  t.diagnosticErrors = [];
+  t.phase = 'diagnostic';
+  render();
+}
+function exitThrowAnalyzer(){
+  state.throwAnalyzer = null;
+  state.screen = 'practice';
+  render();
+}
+
 /* ========================= SECTION TRAINER: ZONE MODEL ========================= */
 const SECTION_BAND_LABELS = {inner:'Inner Single', triple:'Triple', outer:'Outer Single', double:'Double', over:'Just Outside the Board', 'bull-outer':'Outer Bull', 'bull-inner':'Bull'};
 function buildSectionZones(){
@@ -2585,6 +2742,10 @@ function handleBoardClick(evt){
   commitBoardThrow({num, seg, label, point});
 }
 function commitBoardThrow(c){
+  if(state.screen==='throwAnalyzer'){
+    if(c.point) throwAnalyzerRecordDart(c.point);
+    return;
+  }
   state.pendingBoard = null;
   state.pendingHitPoint = c.point || null;
   state.returnedToPreviousPlayer = false;
@@ -4919,6 +5080,8 @@ function render(){
     case 'gameHistoryList': html = renderGameHistoryList(); break;
     case 'practiceHistoryList': html = renderPracticeHistoryList(); break;
     case 'sectionSetup': html = renderSectionSetup(); break;
+    case 'throwAnalyzerSetup': html = renderThrowAnalyzerSetup(); break;
+    case 'throwAnalyzer': html = renderThrowAnalyzer(); break;
     case 'sectionActive': html = renderSectionActive(); break;
     case 'sectionResults': html = renderSectionResults(); break;
     case 'sectionProgress': html = renderSectionProgress(); break;
@@ -5091,6 +5254,13 @@ function renderPlayTab(){
 function renderPracticeTab(){
   return `<div class="content" style="padding-bottom:0;">${sectionHeader('Featured')}</div>
   <div class="content content-grid">
+    <div class="card" style="border:1px solid var(--brass);">
+      <div class="card-row"><h3>Throw Analyzer</h3><span class="badge live">New</span></div>
+      <p class="desc">A precise dot appears on the board. Throw a block of darts at it with no feedback shown, then get one honest, hedged suggestion based on exactly where your darts actually landed — never a diagnosis, since the camera can see the board but not your throw.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="state.screen='throwAnalyzerSetup'; render();">Start</button>
+      </div>
+    </div>
     <div class="card" style="border:1px solid var(--brass);">
       <h3>Section Trainer</h3>
       <p class="desc">A random section of the board lights up. Throw three darts at it, then tap the section where each one landed. Score is based on distance between sections — so a close miss on a triple counts for more than a close miss on a big outer ring. Fast and simple: answers "did you hit the right section?"</p>
@@ -7420,6 +7590,98 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
     ${missRing2}
     ${wedges}${labels}${highlight}${hitMarker}${missLabel2}
   </svg>`;
+}
+function renderThrowAnalyzerSetup(){
+  return `<div class="topbar"><div class="iconbtn" onclick="state.screen='home'; state.navTab='practice'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Throw Analyzer</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <div class="rule-block"><h4>How It Works</h4><p>A precise dot appears on the board — not a whole segment, an exact spot. After a short warm-up, you'll throw a block of darts at it with no feedback shown while you throw. Once the pattern is clear, you'll get one honest, hedged suggestion worth testing — never a diagnosis, since the app can see exactly where your darts land, but has no way to see your actual throwing motion.</p></div>
+    <div>
+      <span class="field-label">Pick a Spot to Work On</span>
+      <div class="content-grid">
+        ${THROW_ANALYZER_PRESETS.map(p=>`
+          <div class="card" onclick="startThrowAnalyzer('${p.id}')" style="cursor:pointer;">
+            <h3 style="font-size:15px;">${p.label}</h3>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+function throwAnalyzerBoardSVG(target){
+  const svg = renderDartboardSVG(null, null, null, null);
+  const dot = `<circle cx="${target.x}" cy="${target.y}" r="4" fill="#4a90e2" stroke="#fff" stroke-width="1.5"><animate attributeName="r" values="4;6;4" dur="1.2s" repeatCount="indefinite"/></circle>`;
+  return svg.replace('</svg>', dot+'</svg>');
+}
+function renderThrowAnalyzer(){
+  const t = state.throwAnalyzer;
+  if(!t) return renderThrowAnalyzerSetup();
+  if(t.phase==='results') return renderThrowAnalyzerResults();
+  if(t.phase==='testResult') return renderThrowAnalyzerTestResult();
+  // warmup, diagnostic, and testing all share the same "just throw, no
+  // feedback" screen — the phase only changes which target/dart-count
+  // applies and where the darts get recorded.
+  const isWarmup = t.phase==='warmup';
+  const target = isWarmup ? t.warmupTarget : t.target;
+  const count = isWarmup ? t.warmupThrown : (t.phase==='testing' ? t.testErrors.length : t.diagnosticErrors.length);
+  const total = isWarmup ? THROW_ANALYZER_WARMUP_DARTS : THROW_ANALYZER_MIN_DARTS;
+  const label = isWarmup ? 'Warm-Up' : t.phase==='testing' ? 'Testing' : 'Measuring';
+  const sub = isWarmup ? 'Random targets — just loosen up, no need to aim carefully' : `Aim for the dot &middot; ${t.preset.label}`;
+  return `<div class="topbar"><div class="iconbtn" onclick="exitThrowAnalyzer()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${label}</h1><div style="width:38px;"></div></div>
+  <div class="content" style="text-align:center;">
+    <p style="color:var(--cream-dim); font-size:13px; margin-bottom:4px;">${sub}</p>
+    <p style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); opacity:0.6;">Dart ${count+1}${isWarmup?'':' of at least '+total}</p>
+    <div class="board-area">${throwAnalyzerBoardSVG(target)}</div>
+  </div>`;
+}
+function renderThrowAnalyzerResults(){
+  const t = state.throwAnalyzer;
+  const s = t.stats;
+  if(!t.suggestion){
+    return `<div class="topbar"><div class="iconbtn" onclick="exitThrowAnalyzer()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Right on Target</h1><div style="width:38px;"></div></div>
+    <div class="content">
+      <div class="rule-block"><h4>Nothing to flag here</h4><p>Your average landed within ${Math.round(s.centroidDist)}mm of the dot with a tight group. That's genuinely solid — nothing worth suggesting a change for at ${t.preset.label}.</p></div>
+      <button class="btn btn-secondary btn-full" onclick="state.throwAnalyzer=null; state.screen='throwAnalyzerSetup'; render();">Try a Different Spot</button>
+    </div>`;
+  }
+  const secondaryAxisNote = t.suggestion.axis==='vertical'
+    ? `Your left-right aim, for reference: ${Math.round(Math.abs(s.centroidDx))}mm ${s.centroidDx>0?'right':'left'}.`
+    : t.suggestion.axis==='horizontal'
+    ? `Your up-down aim, for reference: ${Math.round(Math.abs(s.centroidDy))}mm ${s.centroidDy>0?'low':'high'}.`
+    : '';
+  return `<div class="topbar"><div class="iconbtn" onclick="exitThrowAnalyzer()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${t.preset.label}</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <div class="rule-block"><h4>${t.suggestion.title}</h4><p>Based on ${s.n} darts &middot; average miss ${Math.round(s.centroidDist)}mm &middot; grouping ${s.dispersion<15?'tight':s.dispersion<30?'moderate':'spread out'}${secondaryAxisNote?'<br>'+secondaryAxisNote:''}</p></div>
+    <div class="expandable-opt-row" style="border-color:var(--brass);">
+      <div class="eor-header" style="cursor:default;"><span class="eor-label" style="color:var(--brass); font-size:11px; text-transform:uppercase; letter-spacing:0.04em;">Worth Trying — Not a Diagnosis</span></div>
+      <div class="eor-choices" style="border-top:none; padding:0 14px 12px 14px;">
+        <div style="font-weight:700; font-size:14px; color:var(--cream); margin-bottom:4px;">${t.suggestion.suggestion}</div>
+        <div style="font-size:12.5px; color:var(--cream-dim); line-height:1.5;">${t.suggestion.body}</div>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="throwAnalyzerStartTest()">Test This — ${THROW_ANALYZER_MIN_DARTS}+ More Darts</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="throwAnalyzerTryDifferentCause()">Skip — Try a Different Angle</button>
+  </div>`;
+}
+function renderThrowAnalyzerTestResult(){
+  const t = state.throwAnalyzer;
+  const before = t.stats, after = t.testStats;
+  const axisLabel = t.suggestion.axis==='vertical' ? 'Vertical Miss' : t.suggestion.axis==='horizontal' ? 'Horizontal Miss' : 'Miss from Target';
+  const beforeVal = t.suggestion.axis==='vertical' ? Math.abs(before.centroidDy) : t.suggestion.axis==='horizontal' ? Math.abs(before.centroidDx) : before.centroidDist;
+  const afterVal = t.suggestion.axis==='vertical' ? Math.abs(after.centroidDy) : t.suggestion.axis==='horizontal' ? Math.abs(after.centroidDx) : after.centroidDist;
+  return `<div class="topbar"><div class="iconbtn" onclick="exitThrowAnalyzer()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${t.testHelped?'That Helped':"Didn't Move the Needle"}</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <div style="display:flex; gap:10px; margin-bottom:14px;">
+      <div class="panel-player-card" style="flex:1; text-align:center;"><div class="pp-name">BEFORE</div><div class="pp-stat">${Math.round(beforeVal)}mm</div></div>
+      <div class="panel-player-card" style="flex:1; text-align:center; ${t.testHelped?'border-color:var(--green);':''}"><div class="pp-name">AFTER</div><div class="pp-stat" style="${t.testHelped?'color:var(--green);':''}">${Math.round(afterVal)}mm</div></div>
+    </div>
+    <div class="rule-block" style="${t.testHelped?'border-color:var(--green);':''}">
+      <h4>${t.testHelped ? `${axisLabel} improved ${Math.max(0,t.testImprovementPct)}%` : "No real change this time"}</h4>
+      <p>${t.testHelped
+        ? "Your grouping held steady while the miss shrank — that's a real sign this was likely a genuine factor, not just luck this round. Worth keeping as a habit."
+        : "This particular adjustment didn't clearly move your numbers. That doesn't rule it out forever — throw issues can be a mix of a few things at once — but it's worth trying a different angle for now and coming back to this one later."}</p>
+    </div>
+    <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="throwAnalyzerTryDifferentCause()">${t.testHelped ? 'Nice — Try Another Spot' : 'Try a Different Angle'}</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exitThrowAnalyzer()">Done for Now</button>
+  </div>`;
 }
 function renderSectionSetup(){
   const opts = [10,20,30,50];
