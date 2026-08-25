@@ -812,7 +812,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 2:45 AM';
+const BUILD_STAMP = '8/16/2026, 3:35 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -955,6 +955,7 @@ let state = {
   rememberedGameOptions: {},
   expandedOptionRow: null,
   throwAnalyzer: null,
+  proRoutine: null,
 };
 
 let uid = 1;
@@ -2741,6 +2742,178 @@ function handleBoardClick(evt){
   else { label = (seg==='single'?'Single ':seg==='double'?'Double ':'Triple ')+num; }
   commitBoardThrow({num, seg, label, point});
 }
+/* ========================= PRO ROUTINE: SIX-PHASE PRACTICE SESSION ========================= */
+// Adapted from a real coaching-style routine, converted from time-boxed
+// (5 min, 10 min, etc.) into dart-count-boxed phases, since Oche is
+// inherently turn-based rather than clock-based — a more natural fit for
+// the same structure, not a compromise of it.
+const PRO_ROUTINE_WARMUP_TARGETS = [20,19,18,'B',20,19,18,'B']; // 2 cycles, 3 darts each = 24 darts
+const PRO_ROUTINE_PRECISION_TARGETS = ['t20-center','t20-outer','t19-center']; // 10 rounds total, cycling through these 3
+const PRO_ROUTINE_DOUBLES_ORDER = [20,10,16,8,4,12,18];
+const PRO_ROUTINE_CHECKOUTS = [40,32,48,52,60,64,68,72,76,80,81];
+function proRoutinePrecisionPoint(id){
+  // "Center" = the middle of the triple ring at that number's angle.
+  // "Outer" = the outer edge of the same triple ring — a distinct, testable
+  // radial precision point rather than an ambiguous "upper" direction that
+  // doesn't have one clear meaning on a wedge already at the board's top.
+  const tripleMidR = (R_TRIPLE_IN+R_TRIPLE_OUT)/2;
+  if(id==='t20-center'){ const [x,y]=polar(BOARD_CX,BOARD_CY,tripleMidR,angleForBoardNumber(20)); return {x:parseFloat(x),y:parseFloat(y),label:'Center of Triple 20'}; }
+  if(id==='t20-outer'){ const [x,y]=polar(BOARD_CX,BOARD_CY,R_TRIPLE_OUT-4,angleForBoardNumber(20)); return {x:parseFloat(x),y:parseFloat(y),label:'Outer Edge of Triple 20'}; }
+  if(id==='t19-center'){ const [x,y]=polar(BOARD_CX,BOARD_CY,tripleMidR,angleForBoardNumber(19)); return {x:parseFloat(x),y:parseFloat(y),label:'Center of Triple 19'}; }
+}
+function startProRoutine(){
+  state.proRoutine = {
+    phase:'warmup',
+    warmup:{idx:0, thrownAtCurrent:0},
+    precision:{round:0, thrownThisRound:0, errorsByTarget:{'t20-center':[],'t20-outer':[],'t19-center':[]}},
+    scoring:{stage:'t20', visitsAtT20:0, visitsAtT19:0, currentVisit:[], t20:{darts:[], visits:[]}, t19:{darts:[], visits:[]}},
+    doubles:{idx:0, dartsThisDouble:0, hitsThisDouble:0, results:{}, extra:false, extraQueue:[]},
+    finishing:{idx:0, remaining:PRO_ROUTINE_CHECKOUTS[0], dartsThisCheckout:0, results:{}},
+    pressure:{challenge:'checkout40x3', successes:0, attempts:0, needed:3},
+  };
+  state.screen = 'proRoutine';
+  render();
+}
+function exitProRoutine(){ state.proRoutine=null; state.screen='practice'; render(); }
+function proRoutineAdvancePhase(){
+  const order = ['warmup','precision','scoring','doubles','finishing','pressure','summary'];
+  const t = state.proRoutine;
+  const i = order.indexOf(t.phase);
+  t.phase = order[i+1];
+}
+function proRoutineDartValue(num, mult){
+  if(mult==='miss') return 0;
+  return personalBestDartValue(num, mult);
+}
+function proRoutineWarmupDart(){
+  const w = state.proRoutine.warmup;
+  w.thrownAtCurrent++;
+  if(w.thrownAtCurrent>=3){
+    w.idx++;
+    w.thrownAtCurrent=0;
+    if(w.idx>=PRO_ROUTINE_WARMUP_TARGETS.length) proRoutineAdvancePhase();
+  }
+}
+function proRoutinePrecisionDart(point){
+  if(!point) return; // a genuine off-board miss has no coordinate to measure — silently skipped, same convention Throw Analyzer uses
+  const p = state.proRoutine.precision;
+  const targetId = PRO_ROUTINE_PRECISION_TARGETS[p.round % 3];
+  const target = proRoutinePrecisionPoint(targetId);
+  p.errorsByTarget[targetId].push(throwErrorVector(target, point));
+  p.thrownThisRound++;
+  if(p.thrownThisRound>=3){
+    p.thrownThisRound=0;
+    p.round++;
+    if(p.round>=10) proRoutineAdvancePhase();
+  }
+}
+function proRoutineScoringDart(num, mult){
+  const sc = state.proRoutine.scoring;
+  const stageKey = sc.stage;
+  const value = proRoutineDartValue(num, mult);
+  const isTreble = mult==='triple';
+  const adjacent = stageKey==='t20' ? [1,5] : [3,7];
+  const isAdjacent = mult!=='miss' && num!=='B' && adjacent.includes(parseInt(num,10));
+  const isTargetNumber = mult!=='miss' && num!=='B' && String(parseInt(num,10))===String(stageKey==='t20'?20:19);
+  sc.currentVisit.push({num, mult, value, isTreble, isAdjacent, isTargetNumber});
+  if(sc.currentVisit.length>=3){
+    const visitTotal = sc.currentVisit.reduce((s,d)=>s+d.value,0);
+    sc[stageKey].darts.push(...sc.currentVisit);
+    sc[stageKey].visits.push(visitTotal);
+    sc.currentVisit = [];
+    if(stageKey==='t20'){
+      sc.visitsAtT20++;
+      if(sc.visitsAtT20>=10) sc.stage='t19';
+    } else {
+      sc.visitsAtT19++;
+      if(sc.visitsAtT19>=5) proRoutineAdvancePhase();
+    }
+  }
+}
+function proRoutineDoublesDart(num, mult){
+  const d = state.proRoutine.doubles;
+  const currentTargets = d.extra ? d.extraQueue : PRO_ROUTINE_DOUBLES_ORDER;
+  const targetNum = currentTargets[d.idx];
+  const isHit = mult==='double' && num!=='B' && String(parseInt(num,10))===String(targetNum);
+  if(isHit) d.hitsThisDouble++;
+  d.dartsThisDouble++;
+  const dartsNeeded = d.extra ? 3 : 6;
+  if(d.dartsThisDouble>=dartsNeeded){
+    d.results[targetNum+(d.extra?'-extra':'')] = {hits:d.hitsThisDouble, of:dartsNeeded};
+    d.dartsThisDouble=0; d.hitsThisDouble=0;
+    d.idx++;
+    if(!d.extra && d.idx>=PRO_ROUTINE_DOUBLES_ORDER.length){
+      const rates = PRO_ROUTINE_DOUBLES_ORDER.map(n=>({n, rate: d.results[n].hits/d.results[n].of}));
+      rates.sort((a,b)=>a.rate-b.rate);
+      d.extraQueue = [rates[0].n, rates[1].n];
+      d.extra = true;
+      d.idx = 0;
+    } else if(d.extra && d.idx>=d.extraQueue.length){
+      proRoutineAdvancePhase();
+    }
+  }
+}
+function proRoutineFinishingDart(num, mult){
+  const f = state.proRoutine.finishing;
+  const value = proRoutineDartValue(num, mult);
+  const target = PRO_ROUTINE_CHECKOUTS[f.idx];
+  const isFinishDart = (mult==='double' || (num==='B'&&mult==='bull')) && value===f.remaining;
+  f.dartsThisCheckout++;
+  if(isFinishDart){
+    f.results[target] = {success:true, dartsUsed:f.dartsThisCheckout};
+    proRoutineFinishingNext();
+    return;
+  }
+  const newRemaining = f.remaining - value;
+  const busted = newRemaining<0 || newRemaining===1;
+  if(busted || f.dartsThisCheckout>=3){
+    f.results[target] = {success:false, dartsUsed:f.dartsThisCheckout};
+    proRoutineFinishingNext();
+    return;
+  }
+  f.remaining = newRemaining;
+}
+function proRoutineFinishingNext(){
+  const f = state.proRoutine.finishing;
+  f.idx++;
+  f.dartsThisCheckout=0;
+  if(f.idx>=PRO_ROUTINE_CHECKOUTS.length) proRoutineAdvancePhase();
+  else f.remaining = PRO_ROUTINE_CHECKOUTS[f.idx];
+}
+function proRoutinePressureDart(num, mult){
+  const pr = state.proRoutine.pressure;
+  if(pr.remaining===undefined) pr.remaining = 40;
+  if(!pr.currentVisit) pr.currentVisit = [];
+  const value = proRoutineDartValue(num, mult);
+  const isFinishDart = mult==='double' && value===pr.remaining;
+  pr.currentVisit.push({num,mult,value});
+  if(isFinishDart){
+    pr.successes++; pr.attempts++;
+    pr.currentVisit=[]; pr.remaining=40;
+    if(pr.successes>=pr.needed) proRoutineAdvancePhase();
+    return;
+  }
+  const newRemaining = pr.remaining - value;
+  const busted = newRemaining<0 || newRemaining===1;
+  if(busted || pr.currentVisit.length>=3){
+    pr.attempts++;
+    pr.currentVisit=[]; pr.remaining=40;
+    return;
+  }
+  pr.remaining = newRemaining;
+}
+function proRoutineRecordDart(num, mult, point){
+  const t = state.proRoutine;
+  if(!t) return;
+  if(t.phase==='warmup') proRoutineWarmupDart();
+  else if(t.phase==='precision') proRoutinePrecisionDart(point);
+  else if(t.phase==='scoring') proRoutineScoringDart(num, mult);
+  else if(t.phase==='doubles') proRoutineDoublesDart(num, mult);
+  else if(t.phase==='finishing') proRoutineFinishingDart(num, mult);
+  else if(t.phase==='pressure') proRoutinePressureDart(num, mult);
+  render();
+}
+
 function commitBoardThrow(c){
   if(state.screen==='throwAnalyzer'){
     if(c.point) throwAnalyzerRecordDart(c.point);
@@ -2755,6 +2928,10 @@ function commitBoardThrow(c){
   if(c.seg==='bullinner'){ num='B'; mult='bull'; }
   else if(c.seg==='bullouter'){ num='B'; mult='single'; }
   else { num=parseInt(c.num,10); mult=c.seg; }
+  if(state.screen==='proRoutine'){
+    proRoutineRecordDart(num, mult, c.point);
+    return;
+  }
   if(state.screen==='practiceActive'){
     const ps = state.practiceSession;
     const aimedAt = practiceCurrentTarget(ps);
@@ -2871,6 +3048,7 @@ function dispatchThrowCore(num, segType){
   render();
 }
 function recordMiss(){
+  if(state.screen==='proRoutine'){ proRoutineRecordDart(0,'miss',null); return; }
   const s = state.session;
   if(!s) return;
   const pid = currentSessionPlayerId(s);
@@ -5082,6 +5260,7 @@ function render(){
     case 'sectionSetup': html = renderSectionSetup(); break;
     case 'throwAnalyzerSetup': html = renderThrowAnalyzerSetup(); break;
     case 'throwAnalyzer': html = renderThrowAnalyzer(); break;
+    case 'proRoutine': html = renderProRoutine(); break;
     case 'sectionActive': html = renderSectionActive(); break;
     case 'sectionResults': html = renderSectionResults(); break;
     case 'sectionProgress': html = renderSectionProgress(); break;
@@ -5254,6 +5433,13 @@ function renderPlayTab(){
 function renderPracticeTab(){
   return `<div class="content" style="padding-bottom:0;">${sectionHeader('Featured')}</div>
   <div class="content content-grid">
+    <div class="card" style="border:1px solid var(--brass);">
+      <div class="card-row"><h3>Pro Routine</h3><span class="badge live">New</span></div>
+      <p class="desc">A full six-phase practice session, adapted from real coaching material: warm-up, precision & grouping (with millimeter-precise camera feedback), scoring, doubles, finishing, and a pressure round to close it out. About 130 darts total.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="startProRoutine()">Start</button>
+      </div>
+    </div>
     <div class="card" style="border:1px solid var(--brass);">
       <div class="card-row"><h3>Throw Analyzer</h3><span class="badge live">New</span></div>
       <p class="desc">A precise dot appears on the board. Throw a block of darts at it with no feedback shown, then get one honest, hedged suggestion based on exactly where your darts actually landed — never a diagnosis, since the camera can see the board but not your throw.</p>
@@ -7706,6 +7892,85 @@ function renderThrowAnalyzerTestResult(){
     </div>
     <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="throwAnalyzerTryDifferentCause()">${t.testHelped ? 'Nice — Try Another Spot' : 'Try a Different Angle'}</button>
     <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exitThrowAnalyzer()">Done for Now</button>
+  </div>`;
+}
+function proRoutinePhaseBoardSVG(target){
+  const svg = renderDartboardSVG(null, null, null, null);
+  if(!target) return svg;
+  const dot = `<circle cx="${target.x}" cy="${target.y}" r="4" fill="#4a90e2" stroke="#fff" stroke-width="1.5"><animate attributeName="r" values="4;6;4" dur="1.2s" repeatCount="indefinite"/></circle>`;
+  return svg.replace('</svg>', dot+'</svg>');
+}
+function renderProRoutine(){
+  const t = state.proRoutine;
+  if(!t) return renderPracticeTab();
+  if(t.phase==='summary') return renderProRoutineSummary();
+  const phaseNames = {warmup:'Warm-Up', precision:'Precision & Grouping', scoring:'Scoring', doubles:'Doubles', finishing:'Finishing', pressure:'Pressure Finish'};
+  let sub = '', target = null, progressText = '';
+  if(t.phase==='warmup'){
+    const cur = PRO_ROUTINE_WARMUP_TARGETS[t.warmup.idx];
+    sub = `Just loosen up — aim for ${cur==='B'?'the bull':cur}, no need to be precise`;
+    progressText = `Target ${t.warmup.idx+1} of ${PRO_ROUTINE_WARMUP_TARGETS.length} &middot; dart ${t.warmup.thrownAtCurrent+1} of 3`;
+  } else if(t.phase==='precision'){
+    const targetId = PRO_ROUTINE_PRECISION_TARGETS[t.precision.round % 3];
+    const pt = proRoutinePrecisionPoint(targetId);
+    target = pt;
+    sub = `Aim for the dot &middot; ${pt.label}`;
+    progressText = `Round ${t.precision.round+1} of 10 &middot; dart ${t.precision.thrownThisRound+1} of 3`;
+  } else if(t.phase==='scoring'){
+    const stageNum = t.scoring.stage==='t20' ? 20 : 19;
+    sub = `Score normally, aiming for ${stageNum}`;
+    const visitNum = t.scoring.stage==='t20' ? t.scoring.visitsAtT20+1 : t.scoring.visitsAtT19+1;
+    const visitTotal = t.scoring.stage==='t20' ? 10 : 5;
+    progressText = `Visit ${visitNum} of ${visitTotal} &middot; dart ${t.scoring.currentVisit.length+1} of 3`;
+  } else if(t.phase==='doubles'){
+    const list = t.doubles.extra ? t.doubles.extraQueue : PRO_ROUTINE_DOUBLES_ORDER;
+    const cur = list[t.doubles.idx];
+    sub = `${t.doubles.extra?'Extra practice — ':''}Aim for Double ${cur}`;
+    progressText = `${t.doubles.extra?'Extra round':'Double '+(t.doubles.idx+1)+' of '+PRO_ROUTINE_DOUBLES_ORDER.length} &middot; dart ${t.doubles.dartsThisDouble+1} of ${t.doubles.extra?3:6}`;
+  } else if(t.phase==='finishing'){
+    sub = `Checkout ${t.finishing.remaining}`;
+    progressText = `Checkout ${t.finishing.idx+1} of ${PRO_ROUTINE_CHECKOUTS.length} &middot; dart ${t.finishing.dartsThisCheckout+1} of 3`;
+  } else if(t.phase==='pressure'){
+    sub = `Checkout ${t.pressure.remaining||40} &middot; need ${t.pressure.needed-t.pressure.successes} more clean finish${t.pressure.needed-t.pressure.successes===1?'':'es'}`;
+    progressText = `${t.pressure.successes} of ${t.pressure.needed} completed &middot; ${t.pressure.attempts} attempt${t.pressure.attempts===1?'':'s'} so far`;
+  }
+  return `<div class="topbar"><div class="iconbtn" onclick="exitProRoutine()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${phaseNames[t.phase]}</h1><div style="width:38px;"></div></div>
+  <div class="content" style="text-align:center;">
+    <p style="color:var(--cream-dim); font-size:13px; margin-bottom:4px;">${sub}</p>
+    <p style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); opacity:0.6;">${progressText}</p>
+    <div class="board-area">${proRoutinePhaseBoardSVG(target)}</div>
+  </div>`;
+}
+function proRoutineDoublesRateStr(d, n, key){
+  const r = d.results[key!==undefined?key:n];
+  return r ? `${r.hits}/${r.of}` : '—';
+}
+function renderProRoutineSummary(){
+  const t = state.proRoutine;
+  const sc = t.scoring, d = t.doubles, f = t.finishing, p = t.precision;
+  const t20Avg = sc.t20.visits.length ? (sc.t20.visits.reduce((a,b)=>a+b,0)/sc.t20.visits.length) : 0;
+  const t19Avg = sc.t19.visits.length ? (sc.t19.visits.reduce((a,b)=>a+b,0)/sc.t19.visits.length) : 0;
+  const t20Trebles = sc.t20.darts.filter(x=>x.isTreble).length;
+  const t20HitPct = sc.t20.darts.length ? Math.round(100*sc.t20.darts.filter(x=>x.isTargetNumber).length/sc.t20.darts.length) : 0;
+  const sixtyPlus = sc.t20.visits.filter(v=>v>=60).length + sc.t19.visits.filter(v=>v>=60).length;
+  const hundredPlus = sc.t20.visits.filter(v=>v>=100).length + sc.t19.visits.filter(v=>v>=100).length;
+  const precisionRows = PRO_ROUTINE_PRECISION_TARGETS.map(id=>{
+    const errors = p.errorsByTarget[id];
+    if(!errors.length) return null;
+    const stats = computeThrowStats(errors);
+    return {label: proRoutinePrecisionPoint(id).label, stats};
+  }).filter(Boolean);
+  const doublesHitTotal = PRO_ROUTINE_DOUBLES_ORDER.reduce((s,n)=>s+(d.results[n]?d.results[n].hits:0),0);
+  const doublesOfTotal = PRO_ROUTINE_DOUBLES_ORDER.reduce((s,n)=>s+(d.results[n]?d.results[n].of:0),0);
+  const finishSuccesses = Object.values(f.results).filter(r=>r.success).length;
+  return `<div class="topbar"><div class="iconbtn" onclick="exitProRoutine()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Routine Complete</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <div class="rule-block"><h4>Precision</h4>${precisionRows.map(r=>`<p style="margin-bottom:6px;">${r.label}: avg miss ${Math.round(r.stats.centroidDist)}mm, grouping ${Math.round(r.stats.dispersion)}mm</p>`).join('')}</div>
+    <div class="rule-block"><h4>Scoring</h4><p>T20 average: ${t20Avg.toFixed(1)} &middot; T19 average: ${t19Avg.toFixed(1)}<br>Trebles hit at T20: ${t20Trebles} of ${sc.t20.darts.length} &middot; T20 hit rate: ${t20HitPct}%<br>60+ visits: ${sixtyPlus} &middot; 100+ visits: ${hundredPlus}</p></div>
+    <div class="rule-block"><h4>Doubles</h4><p>Overall: ${doublesHitTotal} of ${doublesOfTotal}<br>${PRO_ROUTINE_DOUBLES_ORDER.map(n=>`D${n}: ${proRoutineDoublesRateStr(d,n)}`).join(' &middot; ')}</p></div>
+    <div class="rule-block"><h4>Finishing</h4><p>${finishSuccesses} of ${PRO_ROUTINE_CHECKOUTS.length} checkouts completed<br>${PRO_ROUTINE_CHECKOUTS.map(n=>`${n}${f.results[n]&&f.results[n].success?'&#10003;':'&#10007;'}`).join(' ')}</p></div>
+    <div class="rule-block"><h4>Pressure</h4><p>${t.pressure.successes} of ${t.pressure.needed} completed in ${t.pressure.attempts} attempt${t.pressure.attempts===1?'':'s'}</p></div>
+    <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="exitProRoutine()">Done</button>
   </div>`;
 }
 function renderSectionSetup(){
