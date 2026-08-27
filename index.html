@@ -634,6 +634,12 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .precision-corner-right{ position:absolute; right:16px; bottom:14px; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); opacity:0.6; text-align:right; z-index:3; }
 .precision-hint-toggle{ position:absolute; top:10px; right:14px; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); opacity:0.6; cursor:pointer; padding:4px 8px; border:1px solid var(--felt-lighter); border-radius:6px; z-index:4; }
 .precision-hint-toggle:active{ opacity:1; }
+.camera-help-wrap{ position:relative; display:inline-block; }
+.camera-help-trigger{ display:flex; align-items:center; gap:5px; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); opacity:0.65; cursor:pointer; padding:4px 8px; border:1px solid var(--felt-lighter); border-radius:20px; }
+.camera-help-trigger:active{ opacity:1; }
+.camera-help-dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.camera-help-panel{ position:absolute; top:calc(100% + 6px); right:0; width:210px; background:var(--felt); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; box-shadow:var(--shadow); z-index:20; text-align:left; }
+.camera-help-stats{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--cream-dim); line-height:1.6; margin-bottom:8px; }
 .board-wrap{display:inline-block; position:relative; line-height:0; transform:scale(var(--dartboard-scale, 1)); transform-origin:center center;}
 .board-miss-btn{
   position:absolute; top:2px; left:20px; z-index:5;
@@ -817,7 +823,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 5:40 AM';
+const BUILD_STAMP = '8/16/2026, 5:55 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -6486,23 +6492,32 @@ function renderActivePlayerSection(s,p,i){
 // exposes (confirmed directly against a real curl of /api/state; there's
 // no richer FPS/per-camera data available to show beyond this). Shared
 // across every game's Cameras group rather than duplicated per shell.
-function renderBoardHealthDropdown(){
+// The whole Cameras story now lives behind one pulldown in the header —
+// health readout AND the reset buttons both hidden until tapped, nothing
+// sitting permanently visible in the sidebar. Shared across every game.
+function renderCameraHelpTrigger(){
+  if(!state.settings.dartsCallerCameraMode) return '';
   const h = state.boardManagerHealth;
   const isStale = h && (Date.now() - h.updatedAt > 5000);
   const hasWarning = h && (h.status==='Error' || (h.event && h.event.toLowerCase().includes('failed')) || h.running===false || h.connected===false);
   const dotColor = !h ? 'var(--cream-dim)' : hasWarning ? 'var(--red)' : isStale ? 'var(--brass)' : 'var(--green)';
-  const summaryText = !h ? 'No data yet' : (h.status || '—');
-  return `<div class="controls-subgroup">
-    <div class="subgroup-label" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="state.boardHealthExpanded=!state.boardHealthExpanded; render();">
-      <span>Cameras <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${dotColor}; margin:0 4px;"></span>${summaryText}</span>
-      <span>${state.boardHealthExpanded?'&#9652;':'&#9662;'}</span>
+  return `<div class="camera-help-wrap">
+    <div class="camera-help-trigger" onclick="state.boardHealthExpanded=!state.boardHealthExpanded; render();">
+      <span class="camera-help-dot" style="background:${dotColor};"></span>Camera Help
     </div>
-    ${state.boardHealthExpanded ? `<div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); padding:2px 2px 6px 2px; line-height:1.6;">
+    ${state.boardHealthExpanded ? renderCameraHelpPanel() : ''}
+  </div>`;
+}
+function renderCameraHelpPanel(){
+  const h = state.boardManagerHealth;
+  return `<div class="camera-help-panel">
+    <div class="camera-help-stats">
       Connected: ${h?(h.connected?'Yes':'No'):'—'}<br>
       Running: ${h?(h.running?'Yes':'No'):'—'}<br>
+      Status: ${h?h.status:'—'}<br>
       Last Event: ${h?h.event:'—'}<br>
       Darts This Turn: ${h?h.numThrows:'—'}
-    </div>` : ''}
+    </div>
     <div class="subgroup-row">
       <div class="tiny-edit-btn" onclick="startBoardManagerDetection()">&#9654; Start</div>
       <div class="tiny-edit-btn" onclick="resetBoardManagerNow()">&#8635; Soft Reset</div>
@@ -6512,9 +6527,7 @@ function renderBoardHealthDropdown(){
 }
 function renderEditTurnRow(s){
   const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
-  const cameraGroup = state.settings.dartsCallerCameraMode ? renderBoardHealthDropdown() : '';
   return `<div class="home-base">
-    ${cameraGroup}
     <div class="controls-subgroup">
       <div class="subgroup-label">This Turn</div>
       <div class="subgroup-row">
@@ -6724,6 +6737,7 @@ function renderActiveShell(){
     ${renderRoundInfo(s)}
     <div class="game-title-center">${gname}</div>
     <div style="text-align:right;">
+      ${renderCameraHelpTrigger()}
       ${s.kind==='killer' ? '<div><div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:12px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div></div>' : ''}
     </div>
   </div>
@@ -6785,11 +6799,11 @@ function renderCallShotActiveShell(s){
       i===s.currentIdx ? renderCallShotActiveSection(s,p,i) : renderCallShotCollapsedSection(s,p)
     ).join('')}</div>
   </div>`;
-  const cameraGroup = state.settings.dartsCallerCameraMode ? renderBoardHealthDropdown() : '';
+  const cameraGroup = '';
   return `<div class="game-header-row">
     <div><div class="round-label">ROUND</div><div class="round-value">${s.round}</div></div>
     <div class="game-title-center">Call Your Shot</div>
-    <div></div>
+    <div>${renderCameraHelpTrigger()}</div>
   </div>
   ${board}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${playerBoxes}
