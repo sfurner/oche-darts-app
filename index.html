@@ -640,6 +640,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .camera-help-dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; }
 .camera-help-panel{ position:absolute; top:calc(100% + 6px); right:0; width:210px; background:var(--felt); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; box-shadow:var(--shadow); z-index:20; text-align:left; }
 .camera-help-stats{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--cream-dim); line-height:1.6; margin-bottom:8px; }
+.ladder-stat-row{ display:flex; gap:10px; margin-bottom:8px; }
+.ladder-stat{ flex:1; background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; text-align:center; }
+.ladder-stat-lab{ font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:0.05em; }
+.ladder-stat-val{ font-family:'Oswald',sans-serif; font-size:24px; color:var(--cream); margin-top:2px; }
 .board-wrap{display:inline-block; position:relative; line-height:0; transform:scale(var(--dartboard-scale, 1)); transform-origin:center center;}
 .board-miss-btn{
   position:absolute; top:2px; left:20px; z-index:5;
@@ -823,7 +827,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 6:10 AM';
+const BUILD_STAMP = '8/16/2026, 6:50 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -973,6 +977,8 @@ let state = {
   proRoutineShowHints: true,
   boardManagerHealth: null,
   boardHealthExpanded: false,
+  theLadder: null,
+  ladderBestAvg: null,
 };
 
 let uid = 1;
@@ -989,7 +995,7 @@ const PERSISTENT_STATE_KEYS = [
   'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance', 'playerAttributePerformance', 'playerAccuracy',
   'savedGames', 'customPractices', 'customGames', 'history',
   'sectionSessions', 'precisionSessions', 'settings', 'playerSettings',
-  'dartFieldOptions', 'rememberedGameOptions',
+  'dartFieldOptions', 'rememberedGameOptions', 'ladderBestAvg',
 ];
 function persistState(){
   try{
@@ -2989,6 +2995,10 @@ function commitBoardThrow(c){
     closeoutTrainerRecordDart(num, mult);
     return;
   }
+  if(state.screen==='theLadderActive'){
+    ladderRecordDart(num, mult, c.point);
+    return;
+  }
   if(state.screen==='practiceActive'){
     const ps = state.practiceSession;
     const aimedAt = practiceCurrentTarget(ps);
@@ -3114,6 +3124,7 @@ function dispatchThrowCore(num, segType){
 function recordMiss(){
   if(state.screen==='proRoutine'){ proRoutineRecordDart(0,'miss',null); return; }
   if(state.screen==='closeoutTrainerActive'){ closeoutTrainerRecordDart(0,'miss'); return; }
+  if(state.screen==='theLadderActive'){ ladderRecordDart(0,'miss',null); return; }
   const s = state.session;
   if(!s) return;
   const pid = currentSessionPlayerId(s);
@@ -5330,6 +5341,8 @@ function render(){
     case 'closeoutTrainerSetup': html = renderCloseoutTrainerSetup(); break;
     case 'closeoutTrainerActive': html = renderCloseoutTrainerActive(); break;
     case 'closeoutTrainerSummary': html = renderCloseoutTrainerSummary(); break;
+    case 'theLadderSetup': html = renderTheLadderSetup(); break;
+    case 'theLadderActive': html = renderTheLadderActive(); break;
     case 'sectionActive': html = renderSectionActive(); break;
     case 'sectionResults': html = renderSectionResults(); break;
     case 'sectionProgress': html = renderSectionProgress(); break;
@@ -5502,6 +5515,13 @@ function renderPlayTab(){
 function renderPracticeTab(){
   return `<div class="content" style="padding-bottom:0;">${sectionHeader('Featured')}</div>
   <div class="content content-grid">
+    <div class="card" style="border:1px solid var(--brass);">
+      <div class="card-row"><h3>The Ladder</h3><span class="badge live">New</span></div>
+      <p class="desc">Warm up at the 20 and bull, then work around the board 1 through 20 — any part of the number clears it, no double or triple required. A live average (scored like a real darts average) shows right on screen as you play, racing your own best-ever lap.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="state.screen='theLadderSetup'; render();">Start</button>
+      </div>
+    </div>
     <div class="card" style="border:1px solid var(--brass);">
       <div class="card-row"><h3>Closeout Trainer</h3><span class="badge live">New</span></div>
       <p class="desc">Same order as Around the Clock, but each number needs three hits of one specific segment type — single, triple, or double, your choice — before you move on, not just one.</p>
@@ -8017,7 +8037,71 @@ function renderThrowAnalyzerTestResult(){
 // Goes around the board in the same numeric order Around the Clock uses,
 // but each number requires three hits of one specific segment type
 // (single, triple, or double — chosen once for the whole session) before
-// advancing, rather than ATC's single-hit-clears-it rule.
+/* ========================= THE LADDER ========================= */
+// A beginner-appropriate accuracy routine, sourced from a real under-40-
+// average practice routine: warm up at the 20 and bull, then go around
+// the board 1-20 (+bull optional) — any part of the number clears it and
+// advances, no ring requirement to make progress at all. The average
+// naturally rewards better rings without ever demanding them: single=1,
+// double=2, triple=3 point per hit, so aim improving toward doubles and
+// triples raises the number on its own.
+const LADDER_WARMUP_DARTS = 9; // at the 20, then again at the bull — 18 total
+function startTheLadder(includeBull){
+  const sequence = Array.from({length:20},(_,i)=>i+1);
+  if(includeBull) sequence.push('B');
+  state.theLadder = {
+    phase:'warmup', warmupStage:'20', warmupThrown:0,
+    sequence, idx:0, dartsThisNumber:0, pointsThisNumber:0,
+    totalDarts:0, totalPoints:0, perNumberResults:{},
+  };
+  state.screen = 'theLadderActive';
+  render();
+}
+function exitTheLadder(){ state.theLadder=null; state.screen='practice'; render(); }
+function ladderDartPoints(mult, isBullTarget){
+  if(mult==='triple') return 3;
+  if(mult==='double') return 2;
+  if(isBullTarget && mult==='bull') return 2; // inner bull treated like a double-tier hit
+  return 1; // any other hit on the correct number — single, or outer bull
+}
+function ladderRecordDart(num, mult, point){
+  const t = state.theLadder;
+  if(!t) return;
+  if(t.phase==='warmup'){
+    t.warmupThrown++;
+    if(t.warmupThrown>=LADDER_WARMUP_DARTS){
+      if(t.warmupStage==='20'){ t.warmupStage='bull'; t.warmupThrown=0; }
+      else { t.phase='active'; }
+    }
+    render();
+    return;
+  }
+  if(t.phase!=='active') return;
+  const target = t.sequence[t.idx];
+  const isHit = target==='B' ? (num==='B') : (num!=='B' && String(parseInt(num,10))===String(target));
+  if(!isHit){
+    t.dartsThisNumber++;
+    t.totalDarts++;
+    render();
+    return;
+  }
+  const pts = ladderDartPoints(mult, target==='B');
+  t.dartsThisNumber++;
+  t.pointsThisNumber += pts;
+  t.totalDarts++;
+  t.totalPoints += pts;
+  deferPracticeAdvance(()=>{
+    t.perNumberResults[target] = { darts:t.dartsThisNumber, points:t.pointsThisNumber };
+    t.idx++;
+    t.dartsThisNumber=0; t.pointsThisNumber=0;
+    if(t.idx>=t.sequence.length){
+      const finalAvg = t.totalPoints/t.totalDarts;
+      if(!state.ladderBestAvg || finalAvg>state.ladderBestAvg) state.ladderBestAvg = finalAvg;
+      t.phase='summary';
+    }
+  });
+}
+
 function startCloseoutTrainer(segType, includeBull){
   const sequence = Array.from({length:20},(_,i)=>i+1);
   if(includeBull) sequence.push('B');
@@ -8103,6 +8187,74 @@ function renderCloseoutTrainerSummary(){
     <div class="rule-block"><h4>${t.segType.charAt(0).toUpperCase()+t.segType.slice(1)}s, ${t.sequence.length} numbers</h4><p>${totalDarts} darts total &middot; ${(totalDarts/t.sequence.length).toFixed(1)} average per number</p></div>
     <div class="rule-block"><h4>Toughest Numbers</h4><p>${worst.map(([n,d])=>`${closeoutTrainerLabel(n==='B'?'B':parseInt(n,10), t.segType)}: ${d} darts`).join('<br>')}</p></div>
     <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="exitCloseoutTrainer()">Done</button>
+  </div>`;
+}
+
+function renderTheLadderSetup(){
+  const includeBull = !!state.ladderSetupBull;
+  return `<div class="topbar"><div class="iconbtn" onclick="state.screen='practice'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">The Ladder</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <div class="rule-block"><h4>How It Works</h4><p>Warm up at the 20, then the bull. Then go around the board, 1 through 20 — any part of the number clears it, no double or triple required. Your average is scored like a real darts average (single = 1, double = 2, triple = 3), so it naturally climbs as your aim improves, without ever demanding it just to make progress.</p></div>
+    <label style="display:flex; align-items:center; gap:8px; margin-top:14px; cursor:pointer;">
+      <input type="checkbox" ${includeBull?'checked':''} onchange="state.ladderSetupBull=this.checked; render();"/>
+      <span>Include the bull at the end</span>
+    </label>
+    ${state.ladderBestAvg ? `<p style="margin-top:14px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream-dim);">Your best average so far: ${state.ladderBestAvg.toFixed(2)}</p>` : ''}
+    <button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="startTheLadder(${includeBull})">Begin</button>
+  </div>`;
+}
+function ladderBoardSVG(){
+  return renderDartboardSVG(null, null, null, null);
+}
+function renderTheLadderActive(){
+  const t = state.theLadder;
+  if(!t) return renderTheLadderSetup();
+  if(t.phase==='summary') return renderTheLadderSummary();
+  if(t.phase==='warmup'){
+    const label = t.warmupStage==='20' ? 'the 20' : 'the bull';
+    return `<div class="topbar"><div class="iconbtn" onclick="exitTheLadder()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Warm-Up</h1><div style="width:38px;"></div></div>
+    <div class="content precision-max-board">
+      <div class="board-area" style="flex:1;">${ladderBoardSVG()}
+        <div class="precision-corner-left">Aim for ${label} — any part counts</div>
+        <div class="precision-corner-right">Dart ${t.warmupThrown+1} of ${LADDER_WARMUP_DARTS}</div>
+      </div>
+    </div>`;
+  }
+  // Live feedback deliberately shown here, unlike Pro Routine/Throw
+  // Analyzer — this routine was specifically built around wanting a
+  // running number to play against as you go, not a no-feedback block.
+  const target = t.sequence[t.idx];
+  const targetLabel = target==='B' ? 'the Bull' : target;
+  const currentAvg = t.totalDarts>0 ? (t.totalPoints/t.totalDarts) : 0;
+  const best = state.ladderBestAvg;
+  const avgColor = best ? (currentAvg>=best ? 'var(--green)' : 'var(--cream-dim)') : 'var(--cream)';
+  return `<div class="topbar"><div class="iconbtn" onclick="exitTheLadder()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">The Ladder</h1><div style="width:38px;"></div></div>
+  <div class="content precision-max-board">
+    <div class="ladder-stat-row">
+      <div class="ladder-stat"><div class="ladder-stat-lab">Best</div><div class="ladder-stat-val">${best?best.toFixed(2):'—'}</div></div>
+      <div class="ladder-stat"><div class="ladder-stat-lab">Average</div><div class="ladder-stat-val" style="color:${avgColor};">${currentAvg.toFixed(2)}</div></div>
+    </div>
+    <div class="board-area" style="flex:1;">${ladderBoardSVG()}
+      <div class="precision-corner-left">Target: ${targetLabel} &middot; any part counts</div>
+      <div class="precision-corner-right">Number ${t.idx+1} of ${t.sequence.length}</div>
+    </div>
+  </div>`;
+}
+function renderTheLadderSummary(){
+  const t = state.theLadder;
+  const finalAvg = t.totalPoints/t.totalDarts;
+  const isNewBest = state.ladderBestAvg && Math.abs(finalAvg-state.ladderBestAvg)<0.001;
+  const worst = Object.entries(t.perNumberResults).sort((a,b)=>b[1].darts-a[1].darts).slice(0,3);
+  return `<div class="topbar"><div class="iconbtn" onclick="exitTheLadder()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${isNewBest?'New Best!':'Lap Complete'}</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <div class="ladder-stat-row" style="margin-bottom:14px;">
+      <div class="ladder-stat"><div class="ladder-stat-lab">Best</div><div class="ladder-stat-val">${state.ladderBestAvg?state.ladderBestAvg.toFixed(2):'—'}</div></div>
+      <div class="ladder-stat"><div class="ladder-stat-lab">This Lap</div><div class="ladder-stat-val" style="color:${isNewBest?'var(--green)':'var(--cream)'};">${finalAvg.toFixed(2)}</div></div>
+    </div>
+    <div class="rule-block"><h4>Toughest Numbers</h4><p>${worst.map(([n,r])=>`${n==='B'?'Bull':n}: ${r.darts} dart${r.darts===1?'':'s'}`).join('<br>')}</p></div>
+    <div class="rule-block"><h4>Total</h4><p>${t.totalDarts} darts &middot; ${t.totalPoints} points across ${t.sequence.length} numbers</p></div>
+    <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="startTheLadder(${t.sequence.includes('B')})">Go Again</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exitTheLadder()">Done</button>
   </div>`;
 }
 
