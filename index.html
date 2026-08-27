@@ -644,6 +644,12 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .ladder-stat{ flex:1; background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; text-align:center; }
 .ladder-stat-lab{ font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:0.05em; }
 .ladder-stat-val{ font-family:'Oswald',sans-serif; font-size:24px; color:var(--cream); margin-top:2px; }
+.ladder-scorecard{ display:flex; flex-direction:column; gap:2px; }
+.ladder-row{ display:flex; align-items:center; gap:6px; padding:2px 4px; border-radius:5px; }
+.ladder-row.current{ background:rgba(204,154,61,0.12); }
+.ladder-row-label{ width:24px; flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); text-align:right; }
+.ladder-row-cells{ display:flex; gap:3px; }
+.ladder-cell{ width:22px; height:22px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; color:var(--ink); flex-shrink:0; }
 .board-wrap{display:inline-block; position:relative; line-height:0; transform:scale(var(--dartboard-scale, 1)); transform-origin:center center;}
 .board-miss-btn{
   position:absolute; top:2px; left:20px; z-index:5;
@@ -827,7 +833,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 6:50 AM';
+const BUILD_STAMP = '8/16/2026, 7:30 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -979,6 +985,10 @@ let state = {
   boardHealthExpanded: false,
   theLadder: null,
   ladderBestAvg: null,
+  ladderSetupSeg: 'any',
+  ladderSetupOrder: 'sequential',
+  ladderSetupRounds: 3,
+  ladderSetupBull: false,
 };
 
 let uid = 1;
@@ -5517,7 +5527,7 @@ function renderPracticeTab(){
   <div class="content content-grid">
     <div class="card" style="border:1px solid var(--brass);">
       <div class="card-row"><h3>The Ladder</h3><span class="badge live">New</span></div>
-      <p class="desc">Warm up at the 20 and bull, then work around the board 1 through 20 — any part of the number clears it, no double or triple required. A live average (scored like a real darts average) shows right on screen as you play, racing your own best-ever lap.</p>
+      <p class="desc">Warm up at the 20 and bull, then work around the board — three darts at each number, up to five rounds, your choice of order and difficulty. A live scorecard tracks every round's result right on screen.</p>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="state.screen='theLadderSetup'; render();">Start</button>
       </div>
@@ -8035,34 +8045,49 @@ function renderThrowAnalyzerTestResult(){
 }
 /* ========================= CLOSEOUT TRAINER ========================= */
 // Goes around the board in the same numeric order Around the Clock uses,
-// but each number requires three hits of one specific segment type
-// (single, triple, or double — chosen once for the whole session) before
 /* ========================= THE LADDER ========================= */
-// A beginner-appropriate accuracy routine, sourced from a real under-40-
-// average practice routine: warm up at the 20 and bull, then go around
-// the board 1-20 (+bull optional) — any part of the number clears it and
-// advances, no ring requirement to make progress at all. The average
-// naturally rewards better rings without ever demanding them: single=1,
-// double=2, triple=3 point per hit, so aim improving toward doubles and
-// triples raises the number on its own.
+// Rebuilt around real feedback that's actually legible during play: a
+// fixed 3 darts per number every round (no more indefinite "must hit to
+// advance," which never felt fun), a proper scorecard down the side
+// showing every round's hit count per number, and the ring requirement
+// (any part / doubles / triples) as a configurable difficulty option
+// instead of a fixed rule — so this can grow with actual skill over time.
 const LADDER_WARMUP_DARTS = 9; // at the 20, then again at the bull — 18 total
-function startTheLadder(includeBull){
-  const sequence = Array.from({length:20},(_,i)=>i+1);
+function shuffleArray(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+function startTheLadder(segType, order, totalRounds, includeBull){
+  let sequence = Array.from({length:20},(_,i)=>i+1);
   if(includeBull) sequence.push('B');
+  if(order==='random') sequence = shuffleArray(sequence);
   state.theLadder = {
+    segType, order, totalRounds, sequence,
     phase:'warmup', warmupStage:'20', warmupThrown:0,
-    sequence, idx:0, dartsThisNumber:0, pointsThisNumber:0,
-    totalDarts:0, totalPoints:0, perNumberResults:{},
+    numIdx:0, roundIdx:0, dartsThisRound:0, hitsThisRound:0,
+    results:{}, // number -> [hits round 1, hits round 2, ...]
   };
   state.screen = 'theLadderActive';
   render();
 }
 function exitTheLadder(){ state.theLadder=null; state.screen='practice'; render(); }
-function ladderDartPoints(mult, isBullTarget){
-  if(mult==='triple') return 3;
-  if(mult==='double') return 2;
-  if(isBullTarget && mult==='bull') return 2; // inner bull treated like a double-tier hit
-  return 1; // any other hit on the correct number — single, or outer bull
+function ladderIsHit(target, num, mult, segType){
+  const isBullTarget = target==='B';
+  if(isBullTarget){
+    if(num!=='B') return false;
+    if(segType==='any') return true; // inner or outer both count
+    if(segType==='double') return mult==='bull'; // inner bull is the "double"-tier bull hit
+    return true; // no real "triple bull" — either ring counts rather than making this number impossible
+  }
+  if(num==='B' || String(parseInt(num,10))!==String(target)) return false;
+  if(segType==='any') return true;
+  return mult===segType;
+}
+function ladderTargetHighlight(t){
+  const target = t.sequence[t.numIdx];
+  if(target==='B') return {num:'B', seg: t.segType==='any' ? 'any' : t.segType==='double' ? 'bull' : 'any'};
+  return {num:target, seg:t.segType};
 }
 function ladderRecordDart(num, mult, point){
   const t = state.theLadder;
@@ -8077,29 +8102,24 @@ function ladderRecordDart(num, mult, point){
     return;
   }
   if(t.phase!=='active') return;
-  const target = t.sequence[t.idx];
-  const isHit = target==='B' ? (num==='B') : (num!=='B' && String(parseInt(num,10))===String(target));
-  if(!isHit){
-    t.dartsThisNumber++;
-    t.totalDarts++;
-    render();
+  const target = t.sequence[t.numIdx];
+  if(ladderIsHit(target, num, mult, t.segType)) t.hitsThisRound++;
+  t.dartsThisRound++;
+  if(t.dartsThisRound>=3){
+    deferPracticeAdvance(()=>{
+      if(!t.results[target]) t.results[target] = [];
+      t.results[target].push(t.hitsThisRound);
+      t.dartsThisRound=0; t.hitsThisRound=0;
+      t.roundIdx++;
+      if(t.roundIdx>=t.totalRounds){
+        t.roundIdx=0;
+        t.numIdx++;
+        if(t.numIdx>=t.sequence.length) t.phase='summary';
+      }
+    });
     return;
   }
-  const pts = ladderDartPoints(mult, target==='B');
-  t.dartsThisNumber++;
-  t.pointsThisNumber += pts;
-  t.totalDarts++;
-  t.totalPoints += pts;
-  deferPracticeAdvance(()=>{
-    t.perNumberResults[target] = { darts:t.dartsThisNumber, points:t.pointsThisNumber };
-    t.idx++;
-    t.dartsThisNumber=0; t.pointsThisNumber=0;
-    if(t.idx>=t.sequence.length){
-      const finalAvg = t.totalPoints/t.totalDarts;
-      if(!state.ladderBestAvg || finalAvg>state.ladderBestAvg) state.ladderBestAvg = finalAvg;
-      t.phase='summary';
-    }
-  });
+  render();
 }
 
 function startCloseoutTrainer(segType, includeBull){
@@ -8191,20 +8211,58 @@ function renderCloseoutTrainerSummary(){
 }
 
 function renderTheLadderSetup(){
+  const segType = state.ladderSetupSeg || 'any';
+  const order = state.ladderSetupOrder || 'sequential';
+  const rounds = state.ladderSetupRounds || 3;
   const includeBull = !!state.ladderSetupBull;
   return `<div class="topbar"><div class="iconbtn" onclick="state.screen='practice'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">The Ladder</h1><div style="width:38px;"></div></div>
   <div class="content">
-    <div class="rule-block"><h4>How It Works</h4><p>Warm up at the 20, then the bull. Then go around the board, 1 through 20 — any part of the number clears it, no double or triple required. Your average is scored like a real darts average (single = 1, double = 2, triple = 3), so it naturally climbs as your aim improves, without ever demanding it just to make progress.</p></div>
+    <div class="rule-block"><h4>How It Works</h4><p>Warm up at the 20, then the bull. Then work around the board — three darts at each number, however many rounds you choose. A scorecard tracks every round's result down the side as you go.</p></div>
+    <div>
+      <span class="field-label">What Counts as a Hit</span>
+      <div class="chip-wrap">
+        <span class="chip ${segType==='any'?'selected':''}" onclick="state.ladderSetupSeg='any'; render();">Whole Segment</span>
+        <span class="chip ${segType==='double'?'selected':''}" onclick="state.ladderSetupSeg='double'; render();">Doubles Only</span>
+        <span class="chip ${segType==='triple'?'selected':''}" onclick="state.ladderSetupSeg='triple'; render();">Triples Only</span>
+      </div>
+    </div>
+    <div style="margin-top:14px;">
+      <span class="field-label">Order</span>
+      <div class="chip-wrap">
+        <span class="chip ${order==='sequential'?'selected':''}" onclick="state.ladderSetupOrder='sequential'; render();">1 Through Bull</span>
+        <span class="chip ${order==='random'?'selected':''}" onclick="state.ladderSetupOrder='random'; render();">Random Order</span>
+      </div>
+    </div>
+    <div style="margin-top:14px;">
+      <span class="field-label">Rounds Per Number</span>
+      <div class="chip-wrap">
+        ${[1,2,3,4,5].map(n=>`<span class="chip ${rounds===n?'selected':''}" onclick="state.ladderSetupRounds=${n}; render();">${n}</span>`).join('')}
+      </div>
+    </div>
     <label style="display:flex; align-items:center; gap:8px; margin-top:14px; cursor:pointer;">
       <input type="checkbox" ${includeBull?'checked':''} onchange="state.ladderSetupBull=this.checked; render();"/>
-      <span>Include the bull at the end</span>
+      <span>Include the bull</span>
     </label>
-    ${state.ladderBestAvg ? `<p style="margin-top:14px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream-dim);">Your best average so far: ${state.ladderBestAvg.toFixed(2)}</p>` : ''}
-    <button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="startTheLadder(${includeBull})">Begin</button>
+    <button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="startTheLadder('${segType}','${order}',${rounds},${includeBull})">Begin</button>
   </div>`;
 }
-function ladderBoardSVG(){
-  return renderDartboardSVG(null, null, null, null);
+function ladderCellColor(hits){
+  if(hits===undefined || hits===null) return 'transparent';
+  return hits===0 ? 'var(--red)' : hits===1 ? '#c98a3a' : hits===2 ? '#d4c23a' : 'var(--green)';
+}
+function ladderScorecard(t){
+  const rows = t.sequence.map((n,i)=>{
+    const label = n==='B' ? 'Bull' : n;
+    const isCurrent = i===t.numIdx && t.phase==='active';
+    const cells = Array.from({length:t.totalRounds},(_,r)=>{
+      const done = t.results[n] && t.results[n][r]!==undefined;
+      const isLiveCell = isCurrent && r===t.roundIdx;
+      const color = done ? ladderCellColor(t.results[n][r]) : 'var(--felt-lighter)';
+      return `<div class="ladder-cell" style="background:${color}; ${isLiveCell?'box-shadow:0 0 0 2px var(--brass);':''}">${done?t.results[n][r]:''}</div>`;
+    }).join('');
+    return `<div class="ladder-row${isCurrent?' current':''}"><div class="ladder-row-label">${label}</div><div class="ladder-row-cells">${cells}</div></div>`;
+  }).join('');
+  return `<div class="ladder-scorecard">${rows}</div>`;
 }
 function renderTheLadderActive(){
   const t = state.theLadder;
@@ -8212,48 +8270,46 @@ function renderTheLadderActive(){
   if(t.phase==='summary') return renderTheLadderSummary();
   if(t.phase==='warmup'){
     const label = t.warmupStage==='20' ? 'the 20' : 'the bull';
-    return `<div class="topbar"><div class="iconbtn" onclick="exitTheLadder()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Warm-Up</h1><div style="width:38px;"></div></div>
-    <div class="content precision-max-board">
-      <div class="board-area" style="flex:1;">${ladderBoardSVG()}
-        <div class="precision-corner-left">Aim for ${label} — any part counts</div>
-        <div class="precision-corner-right">Dart ${t.warmupThrown+1} of ${LADDER_WARMUP_DARTS}</div>
-      </div>
-    </div>`;
+    const hl = t.warmupStage==='20' ? {num:20, seg:'any'} : {num:'B', seg:'any'};
+    return `<div class="game-header-row">
+      <div><div class="round-label">WARM-UP</div><div class="round-value" style="font-size:22px;">${t.warmupThrown+1} / ${LADDER_WARMUP_DARTS}</div></div>
+      <div class="game-title-center">The Ladder</div>
+      <div></div>
+    </div>
+    <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(null, hl, null, null)}</div></div>
+    ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
+    <div class="content" style="text-align:center; padding-top:20px;"><p style="color:var(--cream-dim);">Aim for ${label} — any part counts, just loosening up.</p></div>`;
   }
-  // Live feedback deliberately shown here, unlike Pro Routine/Throw
-  // Analyzer — this routine was specifically built around wanting a
-  // running number to play against as you go, not a no-feedback block.
-  const target = t.sequence[t.idx];
+  const target = t.sequence[t.numIdx];
   const targetLabel = target==='B' ? 'the Bull' : target;
-  const currentAvg = t.totalDarts>0 ? (t.totalPoints/t.totalDarts) : 0;
-  const best = state.ladderBestAvg;
-  const avgColor = best ? (currentAvg>=best ? 'var(--green)' : 'var(--cream-dim)') : 'var(--cream)';
-  return `<div class="topbar"><div class="iconbtn" onclick="exitTheLadder()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">The Ladder</h1><div style="width:38px;"></div></div>
-  <div class="content precision-max-board">
-    <div class="ladder-stat-row">
-      <div class="ladder-stat"><div class="ladder-stat-lab">Best</div><div class="ladder-stat-val">${best?best.toFixed(2):'—'}</div></div>
-      <div class="ladder-stat"><div class="ladder-stat-lab">Average</div><div class="ladder-stat-val" style="color:${avgColor};">${currentAvg.toFixed(2)}</div></div>
-    </div>
-    <div class="board-area" style="flex:1;">${ladderBoardSVG()}
-      <div class="precision-corner-left">Target: ${targetLabel} &middot; any part counts</div>
-      <div class="precision-corner-right">Number ${t.idx+1} of ${t.sequence.length}</div>
-    </div>
+  const ringLabel = t.segType==='any' ? '' : t.segType==='double' ? ' (double)' : ' (triple)';
+  return `<div class="game-header-row">
+    <div><div class="round-label">ROUND</div><div class="round-value">${t.roundIdx+1} of ${t.totalRounds}</div></div>
+    <div class="game-title-center">The Ladder</div>
+    <div></div>
+  </div>
+  <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(null, ladderTargetHighlight(t), null, null)}</div></div>
+  ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
+  <div class="content" style="padding-top:10px;">
+    <p style="text-align:center; color:var(--brass); font-family:'Oswald',sans-serif; font-size:16px; margin-bottom:10px;">Target: ${targetLabel}${ringLabel} &middot; ${t.dartsThisRound+1} of 3 darts</p>
+    ${ladderScorecard(t)}
   </div>`;
 }
 function renderTheLadderSummary(){
   const t = state.theLadder;
-  const finalAvg = t.totalPoints/t.totalDarts;
-  const isNewBest = state.ladderBestAvg && Math.abs(finalAvg-state.ladderBestAvg)<0.001;
-  const worst = Object.entries(t.perNumberResults).sort((a,b)=>b[1].darts-a[1].darts).slice(0,3);
-  return `<div class="topbar"><div class="iconbtn" onclick="exitTheLadder()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${isNewBest?'New Best!':'Lap Complete'}</h1><div style="width:38px;"></div></div>
+  let totalHits=0, totalDarts=0;
+  Object.values(t.results).forEach(rounds=>rounds.forEach(h=>{ totalHits+=h; totalDarts+=3; }));
+  const rates = t.sequence.map(n=>{
+    const rounds = t.results[n]||[];
+    const hits = rounds.reduce((a,b)=>a+b,0);
+    return {n, hits, of: rounds.length*3};
+  });
+  const worst = rates.slice().sort((a,b)=>(a.hits/a.of)-(b.hits/b.of)).slice(0,3);
+  return `<div class="topbar"><div class="iconbtn" onclick="exitTheLadder()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Ladder Complete</h1><div style="width:38px;"></div></div>
   <div class="content">
-    <div class="ladder-stat-row" style="margin-bottom:14px;">
-      <div class="ladder-stat"><div class="ladder-stat-lab">Best</div><div class="ladder-stat-val">${state.ladderBestAvg?state.ladderBestAvg.toFixed(2):'—'}</div></div>
-      <div class="ladder-stat"><div class="ladder-stat-lab">This Lap</div><div class="ladder-stat-val" style="color:${isNewBest?'var(--green)':'var(--cream)'};">${finalAvg.toFixed(2)}</div></div>
-    </div>
-    <div class="rule-block"><h4>Toughest Numbers</h4><p>${worst.map(([n,r])=>`${n==='B'?'Bull':n}: ${r.darts} dart${r.darts===1?'':'s'}`).join('<br>')}</p></div>
-    <div class="rule-block"><h4>Total</h4><p>${t.totalDarts} darts &middot; ${t.totalPoints} points across ${t.sequence.length} numbers</p></div>
-    <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="startTheLadder(${t.sequence.includes('B')})">Go Again</button>
+    <div class="rule-block"><h4>Overall</h4><p>${totalHits} of ${totalDarts} darts hit &middot; ${Math.round(100*totalHits/totalDarts)}% hit rate</p></div>
+    <div class="rule-block"><h4>Toughest Numbers</h4><p>${worst.map(r=>`${r.n==='B'?'Bull':r.n}: ${r.hits} of ${r.of}`).join('<br>')}</p></div>
+    <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="startTheLadder('${t.segType}','${t.order}',${t.totalRounds},${t.sequence.includes('B')})">Go Again</button>
     <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exitTheLadder()">Done</button>
   </div>`;
 }
