@@ -834,7 +834,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 8:20 AM';
+const BUILD_STAMP = '8/16/2026, 9:15 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -992,6 +992,14 @@ let state = {
   ladderSetupBull: false,
   ladderSetupProgression: 'byNumber',
   ladderHistory: {any:{}, double:{}, triple:{}},
+  ladderPro: null,
+  ladderProHistory: {},
+  ladderProSetupSeg: 'any',
+  ladderProSetupOrder: 'sequential',
+  ladderProSetupPreset: 'all',
+  ladderProCustomNums: [],
+  ladderProHistoryMetric: 'allTime',
+  ladderProHistorySeg: 'any',
 };
 
 let uid = 1;
@@ -1014,7 +1022,7 @@ const PERSISTENT_STATE_KEYS = [
   'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance', 'playerAttributePerformance', 'playerAccuracy',
   'savedGames', 'customPractices', 'customGames', 'history',
   'sectionSessions', 'precisionSessions', 'settings', 'playerSettings',
-  'dartFieldOptions', 'rememberedGameOptions', 'ladderBestAvg', 'ladderHistory',
+  'dartFieldOptions', 'rememberedGameOptions', 'ladderBestAvg', 'ladderHistory', 'ladderProHistory',
 ];
 function persistState(){
   try{
@@ -3018,6 +3026,10 @@ function commitBoardThrow(c){
     ladderRecordDart(num, mult, c.point);
     return;
   }
+  if(state.screen==='ladderProActive'){
+    ladderProRecordDart(num, mult, c.point);
+    return;
+  }
   if(state.screen==='practiceActive'){
     const ps = state.practiceSession;
     const aimedAt = practiceCurrentTarget(ps);
@@ -3144,6 +3156,7 @@ function recordMiss(){
   if(state.screen==='proRoutine'){ proRoutineRecordDart(0,'miss',null); return; }
   if(state.screen==='closeoutTrainerActive'){ closeoutTrainerRecordDart(0,'miss'); return; }
   if(state.screen==='theLadderActive'){ ladderRecordDart(0,'miss',null); return; }
+  if(state.screen==='ladderProActive'){ ladderProRecordDart(0,'miss',null); return; }
   const s = state.session;
   if(!s) return;
   const pid = currentSessionPlayerId(s);
@@ -5362,6 +5375,10 @@ function render(){
     case 'closeoutTrainerSummary': html = renderCloseoutTrainerSummary(); break;
     case 'theLadderSetup': html = renderTheLadderSetup(); break;
     case 'theLadderActive': html = renderTheLadderActive(); break;
+    case 'ladderProPlayerPicker': html = renderLadderProPlayerPicker(); break;
+    case 'ladderProSetup': html = renderLadderProSetup(); break;
+    case 'ladderProActive': html = renderLadderProActive(); break;
+    case 'ladderProHistoryView': html = renderLadderProHistoryView(); break;
     case 'sectionActive': html = renderSectionActive(); break;
     case 'sectionResults': html = renderSectionResults(); break;
     case 'sectionProgress': html = renderSectionProgress(); break;
@@ -5538,6 +5555,13 @@ function renderPlayTab(){
 function renderPracticeTab(){
   return `<div class="content" style="padding-bottom:0;">${sectionHeader('Featured')}</div>
   <div class="content content-grid">
+    <div class="card" style="border:1px solid var(--brass);">
+      <div class="card-row"><h3>Ladder Pro</h3><span class="badge live">New</span></div>
+      <p class="desc">Long-term progress tracking, tied to a specific player. Practice any subset of the board — Cricket numbers, a quadrant, your weakest 5 — and every completed lap adds a new permanent column to your history.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="state.screen='ladderProPlayerPicker'; render();">Start</button>
+      </div>
+    </div>
     <div class="card" style="border:1px solid var(--brass);">
       <div class="card-row"><h3>The Ladder</h3><span class="badge live">New</span></div>
       <p class="desc">Warm up at the 20 and bull, then work around the board — three darts at each number, up to five rounds, your choice of order and difficulty. A live scorecard tracks every round's result right on screen.</p>
@@ -8101,6 +8125,282 @@ function ladderTargetHighlight(t){
   const target = t.sequence[t.numIdx];
   if(target==='B') return {num:'B', seg: t.segType==='any' ? 'any' : t.segType==='double' ? 'bull' : 'any'};
   return {num:target, seg:t.segType};
+}
+/* ========================= LADDER PRO ========================= */
+// A completely separate mode from The Ladder, built for genuine long-term
+// tracking rather than a quick casual session: open-ended (play as many
+// laps as you want, each one auto-saves as a new permanent column), tied
+// to a specific player so histories never mix between people, and able to
+// practice any subset of the board rather than always the full 21.
+function ladderProPosition(num){
+  if(num==='B') return null;
+  const [x,y] = polar(BOARD_CX, BOARD_CY, 150, angleForBoardNumber(num));
+  return { top: parseFloat(y) < BOARD_CY, left: parseFloat(x) < BOARD_CX };
+}
+const LADDER_PRO_ALL_NUMBERS = [...Array.from({length:20},(_,i)=>i+1), 'B'];
+function ladderProNumbersForPreset(preset, segType, playerId){
+  if(preset==='all') return LADDER_PRO_ALL_NUMBERS.slice();
+  if(preset==='cricket') return [20,19,18,17,16,15,'B'];
+  if(preset==='custom') return (state.ladderProCustomNums||[]).slice();
+  if(preset==='weak5'){
+    const hist = ladderProHistoryFor(playerId, segType);
+    const withAvg = LADDER_PRO_ALL_NUMBERS.map(n=>({n, avg: ladderProAllTimeAvg(hist, n)}))
+      .filter(r=>r.avg!==null);
+    withAvg.sort((a,b)=>a.avg-b.avg);
+    return withAvg.slice(0,5).map(r=>r.n);
+  }
+  // positional presets
+  return LADDER_PRO_ALL_NUMBERS.filter(n=>{
+    const pos = ladderProPosition(n);
+    if(!pos) return preset==='center'; // bull only matches an explicit "center" pick, never a side/half
+    if(preset==='topHalf') return pos.top;
+    if(preset==='bottomHalf') return !pos.top;
+    if(preset==='leftSide') return pos.left;
+    if(preset==='rightSide') return !pos.left;
+    if(preset==='topLeft') return pos.top && pos.left;
+    if(preset==='topRight') return pos.top && !pos.left;
+    if(preset==='bottomLeft') return !pos.top && pos.left;
+    if(preset==='bottomRight') return !pos.top && !pos.left;
+    return true;
+  });
+}
+function ladderProHistoryFor(playerId, segType){
+  if(!state.ladderProHistory) state.ladderProHistory = {};
+  if(!state.ladderProHistory[playerId]) state.ladderProHistory[playerId] = {any:{sessionCount:0, byNumber:{}}, double:{sessionCount:0, byNumber:{}}, triple:{sessionCount:0, byNumber:{}}};
+  return state.ladderProHistory[playerId][segType];
+}
+function ladderProAllTimeAvg(hist, num){
+  const entries = hist.byNumber[num];
+  if(!entries) return null;
+  const vals = Object.values(entries);
+  if(!vals.length) return null;
+  return vals.reduce((a,b)=>a+b,0)/vals.length;
+}
+function ladderProMetricValue(hist, num, metric){
+  const entries = hist.byNumber[num];
+  if(!entries) return null;
+  const sessionIdxs = Object.keys(entries).map(Number).sort((a,b)=>a-b);
+  const vals = sessionIdxs.map(i=>entries[i]);
+  if(!vals.length) return null;
+  if(metric==='allTime') return vals.reduce((a,b)=>a+b,0)/vals.length;
+  if(metric==='best') return Math.max(...vals);
+  if(metric==='last5') { const last5 = vals.slice(-5); return last5.reduce((a,b)=>a+b,0)/last5.length; }
+  if(metric==='trend'){
+    if(vals.length<2) return null;
+    const mid = Math.ceil(vals.length/2);
+    const firstHalf = vals.slice(0,mid), secondHalf = vals.slice(mid);
+    const avg = arr=>arr.reduce((a,b)=>a+b,0)/arr.length;
+    return avg(secondHalf) - avg(firstHalf);
+  }
+  return null;
+}
+function startLadderPro(playerId, segType, order, preset){
+  let numbers = ladderProNumbersForPreset(preset, segType, playerId);
+  if(order==='random') numbers = shuffleArray(numbers);
+  state.ladderPro = {
+    playerId, segType, order, preset, numbers,
+    numIdx:0, dartsThisNumber:0, hitsThisNumber:0,
+    sessionResults:{}, // number -> hits this lap (0-3)
+    phase:'active',
+  };
+  state.screen = 'ladderProActive';
+  render();
+}
+function ladderProRecordDart(num, mult, point){
+  const t = state.ladderPro;
+  if(!t) return;
+  if(practiceModePendingAdvance) return;
+  if(t.phase!=='active') return;
+  const target = t.numbers[t.numIdx];
+  if(ladderIsHit(target, num, mult, t.segType)) t.hitsThisNumber++;
+  t.dartsThisNumber++;
+  if(t.dartsThisNumber>=3){
+    deferPracticeAdvance(()=>{
+      t.sessionResults[target] = t.hitsThisNumber;
+      t.dartsThisNumber=0; t.hitsThisNumber=0;
+      t.numIdx++;
+      if(t.numIdx>=t.numbers.length){
+        ladderProSaveSession(t);
+        t.phase='lapComplete';
+      }
+    });
+    return;
+  }
+  render();
+}
+function ladderProSaveSession(t){
+  const hist = ladderProHistoryFor(t.playerId, t.segType);
+  const sessionIdx = hist.sessionCount;
+  Object.keys(t.sessionResults).forEach(num=>{
+    if(!hist.byNumber[num]) hist.byNumber[num] = {};
+    hist.byNumber[num][sessionIdx] = t.sessionResults[num];
+  });
+  hist.sessionCount++;
+}
+function ladderProPlayAnother(){
+  const t = state.ladderPro;
+  let numbers = ladderProNumbersForPreset(t.preset, t.segType, t.playerId);
+  if(t.order==='random') numbers = shuffleArray(numbers);
+  t.numbers = numbers;
+  t.numIdx = 0; t.dartsThisNumber=0; t.hitsThisNumber=0;
+  t.sessionResults = {};
+  t.phase = 'active';
+  render();
+}
+function exitLadderPro(){ state.ladderPro=null; state.screen='practice'; render(); }
+const LADDER_PRO_PRESETS = [
+  {val:'all', label:'Whole Board', desc:'All 20 numbers, plus the bull.'},
+  {val:'cricket', label:'Cricket Numbers', desc:'15 through 20, plus the bull.'},
+  {val:'weak5', label:'Weak Spots', desc:'Your worst 5 numbers right now, computed live from your own history.'},
+  {val:'topHalf', label:'Top Half', desc:'The upper half of the board.'},
+  {val:'bottomHalf', label:'Bottom Half', desc:'The lower half of the board.'},
+  {val:'leftSide', label:'Left Side', desc:'The left half of the board.'},
+  {val:'rightSide', label:'Right Side', desc:'The right half of the board.'},
+  {val:'topLeft', label:'Top-Left Quadrant', desc:'The upper-left quarter of the board.'},
+  {val:'topRight', label:'Top-Right Quadrant', desc:'The upper-right quarter of the board.'},
+  {val:'bottomLeft', label:'Bottom-Left Quadrant', desc:'The lower-left quarter of the board.'},
+  {val:'bottomRight', label:'Bottom-Right Quadrant', desc:'The lower-right quarter of the board.'},
+  {val:'custom', label:'Custom Selection', desc:'Pick your own exact numbers.'},
+];
+function renderLadderProPlayerPicker(){
+  const players = state.players.filter(p=>!p.isBot && !p.isGuest);
+  return `<div class="topbar"><div class="iconbtn" onclick="state.screen='practice'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Ladder Pro</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <div class="rule-block"><h4>Whose History Is This?</h4><p>Ladder Pro tracks long-term progress per player — pick who's practicing so this session's results go into the right history.</p></div>
+    <div class="player-list" style="max-width:none;">
+      ${players.map(p=>`<div class="player-row-unified" style="cursor:pointer;" onclick="state.ladderProPlayerId='${p.id}'; state.screen='ladderProSetup'; render();">
+        <div class="ps-avatar">${p.emoji||initials(p.name)}</div>
+        <div class="ps-name">${p.name}</div>
+      </div>`).join('')}
+    </div>
+    ${!players.length ? '<p style="color:var(--cream-dim); margin-top:10px;">Add a permanent player first, under Players.</p>' : ''}
+  </div>`;
+}
+function renderLadderProSetup(){
+  const segType = state.ladderProSetupSeg || 'any';
+  const order = state.ladderProSetupOrder || 'sequential';
+  const preset = state.ladderProSetupPreset || 'all';
+  const presetInfo = LADDER_PRO_PRESETS.find(p=>p.val===preset);
+  const player = state.players.find(p=>p.id===state.ladderProPlayerId);
+  return `<div class="topbar"><div class="iconbtn" onclick="state.screen='ladderProPlayerPicker'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Ladder Pro</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <p style="color:var(--cream-dim); font-size:12px;">Practicing as ${player?player.name:'—'}</p>
+    <div>
+      <span class="field-label">What Counts as a Hit</span>
+      <div class="chip-wrap">
+        <span class="chip ${segType==='any'?'selected':''}" onclick="state.ladderProSetupSeg='any'; render();">Whole Segment</span>
+        <span class="chip ${segType==='double'?'selected':''}" onclick="state.ladderProSetupSeg='double'; render();">Doubles Only</span>
+        <span class="chip ${segType==='triple'?'selected':''}" onclick="state.ladderProSetupSeg='triple'; render();">Triples Only</span>
+      </div>
+    </div>
+    <div style="margin-top:14px;">
+      <span class="field-label">Order</span>
+      <div class="chip-wrap">
+        <span class="chip ${order==='sequential'?'selected':''}" onclick="state.ladderProSetupOrder='sequential'; render();">1 Through Bull</span>
+        <span class="chip ${order==='random'?'selected':''}" onclick="state.ladderProSetupOrder='random'; render();">Random Order</span>
+      </div>
+    </div>
+    <div class="expandable-opt-row" style="margin-top:14px;">
+      <div class="eor-header" onclick="state.ladderProPresetOpen=!state.ladderProPresetOpen; render();">
+        <span class="eor-label">Numbers to Practice</span>
+        <span class="eor-val">${presetInfo.label} <span class="eor-chev">${state.ladderProPresetOpen?'&#9652;':'&#9662;'}</span></span>
+      </div>
+      ${state.ladderProPresetOpen ? `<div class="eor-choices">${LADDER_PRO_PRESETS.map(p=>`
+        <div class="eor-choice ${p.val===preset?'selected':''}" onclick="state.ladderProSetupPreset='${p.val}'; state.ladderProPresetOpen=false; render();">
+          <div class="eor-choice-label">${p.label}</div>
+          <div class="eor-choice-desc">${p.desc}</div>
+        </div>`).join('')}</div>` : ''}
+    </div>
+    ${preset==='custom' ? `<div style="margin-top:10px;">
+      <div class="chip-wrap">${LADDER_PRO_ALL_NUMBERS.map(n=>`<span class="chip ${(state.ladderProCustomNums||[]).includes(n)?'selected':''}" onclick="ladderProToggleCustomNum('${n}')">${n==='B'?'Bull':n}</span>`).join('')}</div>
+    </div>` : ''}
+    <button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="startLadderPro('${state.ladderProPlayerId}','${segType}','${order}','${preset}')" ${preset==='custom' && !(state.ladderProCustomNums||[]).length ? 'disabled' : ''}>Begin</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="state.ladderProHistorySeg=segType; state.screen='ladderProHistoryView'; render();">View History Instead</button>
+  </div>`;
+}
+function ladderProToggleCustomNum(num){
+  const n = num==='B' ? 'B' : parseInt(num,10);
+  if(!state.ladderProCustomNums) state.ladderProCustomNums = [];
+  const idx = state.ladderProCustomNums.indexOf(n);
+  if(idx>=0) state.ladderProCustomNums.splice(idx,1);
+  else state.ladderProCustomNums.push(n);
+  render();
+}
+function renderLadderProActive(){
+  const t = state.ladderPro;
+  if(!t) return renderLadderProPlayerPicker();
+  if(t.phase==='lapComplete') return renderLadderProLapComplete();
+  const target = t.numbers[t.numIdx];
+  const targetLabel = target==='B' ? 'the Bull' : target;
+  const ringLabel = t.segType==='any' ? '' : t.segType==='double' ? ' (double)' : ' (triple)';
+  return `<div class="game-header-row">
+    <div><div class="round-label">NUMBER</div><div class="round-value">${t.numIdx+1} of ${t.numbers.length}</div></div>
+    <div class="game-title-center">Ladder Pro</div>
+    <div></div>
+  </div>
+  <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(null, ladderTargetHighlight({sequence:t.numbers, numIdx:t.numIdx, segType:t.segType}), null, null)}</div></div>
+  ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
+  <div class="content" style="text-align:center; padding-top:20px;">
+    <p style="color:var(--brass); font-family:'Oswald',sans-serif; font-size:16px;">Target: ${targetLabel}${ringLabel}</p>
+    <p style="color:var(--cream-dim); font-size:12px;">${t.dartsThisNumber+1} of 3 darts</p>
+    <button class="btn btn-secondary btn-full" style="margin-top:20px;" onclick="exitLadderPro()">Leave</button>
+  </div>`;
+}
+function renderLadderProLapComplete(){
+  const t = state.ladderPro;
+  const results = Object.entries(t.sessionResults);
+  const avg = results.length ? results.reduce((s,[,h])=>s+h,0)/results.length : 0;
+  return `<div class="topbar"><h1 style="color:var(--brass); font-size:19px; text-align:center; width:100%;">Lap Saved</h1></div>
+  <div class="content">
+    <div class="rule-block"><h4>This Lap</h4><p>${results.length} numbers &middot; average ${avg.toFixed(2)} hits per number</p></div>
+    <p style="text-align:center; margin-top:10px; color:var(--cream-dim);">Play another round?</p>
+    <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="ladderProPlayAnother()">Yes — Go Again</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="state.ladderProHistorySeg=state.ladderPro.segType; state.ladderPro=null; state.screen='ladderProHistoryView'; render();">No — View History</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exitLadderPro()">No — Done</button>
+  </div>`;
+}
+const LADDER_PRO_METRICS = [
+  {val:'allTime', label:'All-Time Average'},
+  {val:'best', label:'Personal Best'},
+  {val:'last5', label:'Last 5 Sessions'},
+  {val:'trend', label:'Overall Trend'},
+];
+function renderLadderProHistoryView(){
+  const playerId = state.ladderProPlayerId;
+  const player = state.players.find(p=>p.id===playerId);
+  const segType = state.ladderProHistorySeg || 'any';
+  const metric = state.ladderProHistoryMetric || 'allTime';
+  const hist = ladderProHistoryFor(playerId, segType);
+  const sessionCount = hist.sessionCount;
+  const rows = LADDER_PRO_ALL_NUMBERS.map(n=>{
+    const label = n==='B' ? 'Bull' : n;
+    const cells = Array.from({length:sessionCount},(_,i)=>{
+      const val = hist.byNumber[n] ? hist.byNumber[n][i] : undefined;
+      const color = val!==undefined ? ladderCellColor(Math.round(val)) : 'transparent';
+      const border = val===undefined ? 'border:1px dashed var(--felt-lighter);' : '';
+      return `<div class="ladder-cell" style="background:${color}; ${border}">${val!==undefined?val:''}</div>`;
+    }).join('');
+    const metricVal = ladderProMetricValue(hist, n, metric);
+    let metricDisplay = '—';
+    if(metricVal!==null){
+      if(metric==='trend') metricDisplay = `<span style="color:${metricVal>0.05?'var(--green)':metricVal<-0.05?'var(--red)':'var(--cream-dim)'};">${metricVal>0?'+':''}${metricVal.toFixed(1)}</span>`;
+      else metricDisplay = metricVal.toFixed(1);
+    }
+    return `<div class="ladder-row"><div class="ladder-row-label">${label}</div><div class="ladder-row-cells" style="overflow-x:auto; max-width:100%;">${cells}</div><div class="ladder-alltime" style="font-size:11px; width:40px; text-align:right; flex-shrink:0;">${metricDisplay}</div></div>`;
+  }).join('');
+  return `<div class="topbar"><div class="iconbtn" onclick="state.screen='practice'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Ladder Pro History</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <p style="color:var(--cream-dim); font-size:12px;">${player?player.name:'—'} &middot; ${sessionCount} session${sessionCount===1?'':'s'} tracked</p>
+    <div class="chip-wrap" style="margin-top:8px;">
+      <span class="chip ${segType==='any'?'selected':''}" onclick="state.ladderProHistorySeg='any'; render();">Whole Segment</span>
+      <span class="chip ${segType==='double'?'selected':''}" onclick="state.ladderProHistorySeg='double'; render();">Doubles</span>
+      <span class="chip ${segType==='triple'?'selected':''}" onclick="state.ladderProHistorySeg='triple'; render();">Triples</span>
+    </div>
+    <div class="chip-wrap" style="margin-top:8px;">
+      ${LADDER_PRO_METRICS.map(m=>`<span class="chip ${metric===m.val?'selected':''}" onclick="state.ladderProHistoryMetric='${m.val}'; render();">${m.label}</span>`).join('')}
+    </div>
+    <div class="ladder-scorecard" style="margin-top:14px; overflow-x:auto;">${rows || '<p style="color:var(--cream-dim);">No sessions yet.</p>'}</div>
+  </div>`;
 }
 function ladderFinishSession(t){
   // Practice-to-practice tracking, kept separate per difficulty mode since
