@@ -841,7 +841,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/27/2026, 3:15 PM';
+const BUILD_STAMP = '8/27/2026, 4:05 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1028,7 +1028,7 @@ const STORAGE_KEY = 'oche-darts-data-v1';
 // the class that actually makes that layout work was previously hardcoded
 // to only the main gameplay screen, which is exactly why The Ladder's
 // board disappeared: its screen name just wasn't on the list.
-const GAME_LAYOUT_SCREENS = new Set(['active','practiceActive','checkoutPracticeActive','theLadderActive']);
+const GAME_LAYOUT_SCREENS = new Set(['active','practiceActive','checkoutPracticeActive','theLadderActive','ladderProActive']);
 const PERSISTENT_STATE_KEYS = [
   'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance', 'playerAttributePerformance', 'playerAccuracy',
   'savedGames', 'customPractices', 'customGames', 'history',
@@ -7848,7 +7848,10 @@ function renderPracticeActive(){
   const totalTargets = ps.randomMode ? [...new Set(ps.def.targets)].length : ps.sequence.length;
   const doneCount = ps.randomMode ? Object.keys(ps.dartsPerTarget).length : ps.idx;
   return `<div class="active-top">
-    <div class="game-title">${ps.def.name || 'Practice'} &middot; Target ${doneCount+1} of ${totalTargets}</div>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+      <div class="game-title">${ps.def.name || 'Practice'} &middot; Target ${doneCount+1} of ${totalTargets}</div>
+      ${renderCameraHelpTrigger()}
+    </div>
     <h2>Hit ${target}</h2>
     <div class="objective-banner"><div class="big">${ps.perTarget[target]||0} of ${ps.requiredHits}</div><div class="small">${ps.totalDarts} darts thrown so far</div></div>
     ${renderPracticeHeatmap(ps, true)}
@@ -7941,7 +7944,10 @@ function renderCheckoutPracticeActive(){
   const dartsLeft = 3 - cp.dartsThisAttempt.length;
   const route = findCheckout(cp.currentScore, dartsLeft, 'double');
   return `<div class="active-top">
-    <div class="game-title">Checkout Practice &middot; Attempt ${cp.attemptsCompleted+1} of ${cp.attemptsTotal}</div>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+      <div class="game-title">Checkout Practice &middot; Attempt ${cp.attemptsCompleted+1} of ${cp.attemptsTotal}</div>
+      ${renderCameraHelpTrigger()}
+    </div>
     <h2>Finish ${cp.currentScore}</h2>
     <div class="objective-banner"><div class="big">${cp.currentScore} remaining</div><div class="small">${route ? 'Try: '+route.join('  &middot;  ') : 'Reduce it — no exact finish from here yet.'}</div></div>
   </div>
@@ -8426,7 +8432,7 @@ function renderLadderProActive(){
   return `<div class="game-header-row">
     <div><div class="round-label">NUMBER</div><div class="round-value">${t.numIdx+1} of ${t.numbers.length}</div></div>
     <div class="game-title-center">Ladder Pro</div>
-    <div></div>
+    <div style="text-align:right;">${renderCameraHelpTrigger()}</div>
   </div>
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(null, ladderTargetHighlight({sequence:t.numbers, numIdx:t.numIdx, segType:t.segType}), null, null)}</div></div>
   ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
@@ -8733,7 +8739,7 @@ function renderTheLadderActive(){
     return `<div class="game-header-row">
       <div><div class="round-label">WARM-UP</div><div class="round-value" style="font-size:22px;">${t.warmupThrown+1} / ${LADDER_WARMUP_DARTS}</div></div>
       <div class="game-title-center">The Ladder</div>
-      <div></div>
+      <div style="text-align:right;">${renderCameraHelpTrigger()}</div>
     </div>
     <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(null, hl, null, null)}</div></div>
     ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
@@ -8745,7 +8751,7 @@ function renderTheLadderActive(){
   return `<div class="game-header-row">
     <div><div class="round-label">ROUND</div><div class="round-value">${t.roundIdx+1} of ${t.totalRounds}</div></div>
     <div class="game-title-center">The Ladder</div>
-    <div></div>
+    <div style="text-align:right;">${renderCameraHelpTrigger()}</div>
   </div>
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(null, ladderTargetHighlight(t), null, null)}</div></div>
   ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
