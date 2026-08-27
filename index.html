@@ -646,9 +646,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .ladder-stat-val{ font-family:'Oswald',sans-serif; font-size:24px; color:var(--cream); margin-top:2px; }
 .ladder-scorecard{ display:flex; flex-direction:column; gap:2px; }
 .ladder-row{ display:flex; align-items:center; gap:6px; padding:2px 4px; border-radius:5px; }
+.ladder-alltime{ font-size:14px; margin-left:8px; }
 .ladder-row.current{ background:rgba(204,154,61,0.12); }
 .ladder-row-label{ width:24px; flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); text-align:right; }
-.ladder-row-cells{ display:flex; gap:3px; }
+.ladder-row-cells{ display:flex; gap:3px; margin-right:auto; }
 .ladder-cell{ width:22px; height:22px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; color:var(--ink); flex-shrink:0; }
 .board-wrap{display:inline-block; position:relative; line-height:0; transform:scale(var(--dartboard-scale, 1)); transform-origin:center center;}
 .board-miss-btn{
@@ -833,7 +834,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 7:45 AM';
+const BUILD_STAMP = '8/16/2026, 8:20 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -989,6 +990,8 @@ let state = {
   ladderSetupOrder: 'sequential',
   ladderSetupRounds: 3,
   ladderSetupBull: false,
+  ladderSetupProgression: 'byNumber',
+  ladderHistory: {any:{}, double:{}, triple:{}},
 };
 
 let uid = 1;
@@ -1011,7 +1014,7 @@ const PERSISTENT_STATE_KEYS = [
   'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance', 'playerAttributePerformance', 'playerAccuracy',
   'savedGames', 'customPractices', 'customGames', 'history',
   'sectionSessions', 'precisionSessions', 'settings', 'playerSettings',
-  'dartFieldOptions', 'rememberedGameOptions', 'ladderBestAvg',
+  'dartFieldOptions', 'rememberedGameOptions', 'ladderBestAvg', 'ladderHistory',
 ];
 function persistState(){
   try{
@@ -5381,6 +5384,10 @@ function render(){
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
   autoFitScreens();
+  if(state.screen==='theLadderActive'){
+    const cur = appFooter ? appFooter.querySelector('.ladder-row.current') : null;
+    if(cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
+  }
 }
 
 /* ========================= AUTO-FIT (no-scroll pass) =========================
@@ -8064,12 +8071,12 @@ function shuffleArray(arr){
   for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
   return a;
 }
-function startTheLadder(segType, order, totalRounds, includeBull){
+function startTheLadder(segType, order, progression, totalRounds, includeBull){
   let sequence = Array.from({length:20},(_,i)=>i+1);
   if(includeBull) sequence.push('B');
   if(order==='random') sequence = shuffleArray(sequence);
   state.theLadder = {
-    segType, order, totalRounds, sequence,
+    segType, order, progression, totalRounds, sequence,
     phase:'warmup', warmupStage:'20', warmupThrown:0,
     numIdx:0, roundIdx:0, dartsThisRound:0, hitsThisRound:0,
     results:{}, // number -> [hits round 1, hits round 2, ...]
@@ -8094,6 +8101,25 @@ function ladderTargetHighlight(t){
   const target = t.sequence[t.numIdx];
   if(target==='B') return {num:'B', seg: t.segType==='any' ? 'any' : t.segType==='double' ? 'bull' : 'any'};
   return {num:target, seg:t.segType};
+}
+function ladderFinishSession(t){
+  // Practice-to-practice tracking, kept separate per difficulty mode since
+  // a doubles-only history means something different from a whole-segment
+  // one. Only updated once, here at session end — a "practice" is a
+  // completed session, and this avoids the mess of partially-updating a
+  // number that's only had some of its rounds so far in "by round" mode.
+  if(!state.ladderHistory) state.ladderHistory = {any:{}, double:{}, triple:{}};
+  const hist = state.ladderHistory[t.segType];
+  Object.keys(t.results).forEach(num=>{
+    const rounds = t.results[num];
+    if(!rounds.length) return;
+    const sessionAvg = rounds.reduce((a,b)=>a+b,0)/rounds.length;
+    if(!hist[num]) hist[num] = {totalHits:0, totalRounds:0, lastSessionAvg:null};
+    hist[num].totalHits += rounds.reduce((a,b)=>a+b,0);
+    hist[num].totalRounds += rounds.length;
+    hist[num].lastSessionAvg = sessionAvg;
+  });
+  t.phase='summary';
 }
 function ladderRecordDart(num, mult, point){
   const t = state.theLadder;
@@ -8120,11 +8146,22 @@ function ladderRecordDart(num, mult, point){
       if(!t.results[target]) t.results[target] = [];
       t.results[target].push(t.hitsThisRound);
       t.dartsThisRound=0; t.hitsThisRound=0;
-      t.roundIdx++;
-      if(t.roundIdx>=t.totalRounds){
-        t.roundIdx=0;
+      if(t.progression==='byRound'){
+        // finish this same round for every number before starting the next round
         t.numIdx++;
-        if(t.numIdx>=t.sequence.length) t.phase='summary';
+        if(t.numIdx>=t.sequence.length){
+          t.numIdx=0;
+          t.roundIdx++;
+          if(t.roundIdx>=t.totalRounds) ladderFinishSession(t);
+        }
+      } else {
+        // finish every round for this number before moving to the next
+        t.roundIdx++;
+        if(t.roundIdx>=t.totalRounds){
+          t.roundIdx=0;
+          t.numIdx++;
+          if(t.numIdx>=t.sequence.length) ladderFinishSession(t);
+        }
       }
     });
     return;
@@ -8223,6 +8260,7 @@ function renderCloseoutTrainerSummary(){
 function renderTheLadderSetup(){
   const segType = state.ladderSetupSeg || 'any';
   const order = state.ladderSetupOrder || 'sequential';
+  const progression = state.ladderSetupProgression || 'byNumber';
   const rounds = state.ladderSetupRounds || 3;
   const includeBull = !!state.ladderSetupBull;
   return `<div class="topbar"><div class="iconbtn" onclick="state.screen='practice'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">The Ladder</h1><div style="width:38px;"></div></div>
@@ -8244,6 +8282,13 @@ function renderTheLadderSetup(){
       </div>
     </div>
     <div style="margin-top:14px;">
+      <span class="field-label">Progression</span>
+      <div class="chip-wrap">
+        <span class="chip ${progression==='byNumber'?'selected':''}" onclick="state.ladderSetupProgression='byNumber'; render();">Finish Each Number First</span>
+        <span class="chip ${progression==='byRound'?'selected':''}" onclick="state.ladderSetupProgression='byRound'; render();">Full Board Each Round</span>
+      </div>
+    </div>
+    <div style="margin-top:14px;">
       <span class="field-label">Rounds Per Number</span>
       <div class="chip-wrap">
         ${[1,2,3,4,5].map(n=>`<span class="chip ${rounds===n?'selected':''}" onclick="state.ladderSetupRounds=${n}; render();">${n}</span>`).join('')}
@@ -8253,12 +8298,26 @@ function renderTheLadderSetup(){
       <input type="checkbox" ${includeBull?'checked':''} onchange="state.ladderSetupBull=this.checked; render();"/>
       <span>Include the bull</span>
     </label>
-    <button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="startTheLadder('${segType}','${order}',${rounds},${includeBull})">Begin</button>
+    <button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="startTheLadder('${segType}','${order}','${progression}',${rounds},${includeBull})">Begin</button>
   </div>`;
 }
 function ladderCellColor(hits){
   if(hits===undefined || hits===null) return 'transparent';
   return hits===0 ? 'var(--red)' : hits===1 ? '#c98a3a' : hits===2 ? '#d4c23a' : 'var(--green)';
+}
+function ladderAllTimeCell(t, num){
+  const hist = state.ladderHistory && state.ladderHistory[t.segType] && state.ladderHistory[t.segType][num];
+  if(!hist || !hist.totalRounds) return `<div class="ladder-cell ladder-alltime" style="background:transparent; border:1px dashed var(--felt-lighter);"></div>`;
+  const allTimeAvg = hist.totalHits/hist.totalRounds;
+  const color = ladderCellColor(Math.round(allTimeAvg));
+  const thisSessionRounds = t.results[num] || [];
+  let arrow = '&#8212;'; // em dash, no clear trend yet
+  if(thisSessionRounds.length>0 && hist.lastSessionAvg!=null){
+    const thisAvg = thisSessionRounds.reduce((a,b)=>a+b,0)/thisSessionRounds.length;
+    if(thisAvg > hist.lastSessionAvg+0.15) arrow = '&#9650;'; // ▲
+    else if(thisAvg < hist.lastSessionAvg-0.15) arrow = '&#9660;'; // ▼
+  }
+  return `<div class="ladder-cell ladder-alltime" style="background:${color};" title="All-time average: ${allTimeAvg.toFixed(1)}">${arrow}</div>`;
 }
 function ladderScorecard(t){
   const rows = t.sequence.map((n,i)=>{
@@ -8270,7 +8329,7 @@ function ladderScorecard(t){
       const color = done ? ladderCellColor(t.results[n][r]) : 'var(--felt-lighter)';
       return `<div class="ladder-cell" style="background:${color}; ${isLiveCell?'box-shadow:0 0 0 2px var(--brass);':''}">${done?t.results[n][r]:''}</div>`;
     }).join('');
-    return `<div class="ladder-row${isCurrent?' current':''}"><div class="ladder-row-label">${label}</div><div class="ladder-row-cells">${cells}</div></div>`;
+    return `<div class="ladder-row${isCurrent?' current':''}"><div class="ladder-row-label">${label}</div><div class="ladder-row-cells">${cells}</div>${ladderAllTimeCell(t,n)}</div>`;
   }).join('');
   return `<div class="ladder-scorecard">${rows}</div>`;
 }
@@ -8319,7 +8378,7 @@ function renderTheLadderSummary(){
   <div class="content">
     <div class="rule-block"><h4>Overall</h4><p>${totalHits} of ${totalDarts} darts hit &middot; ${Math.round(100*totalHits/totalDarts)}% hit rate</p></div>
     <div class="rule-block"><h4>Toughest Numbers</h4><p>${worst.map(r=>`${r.n==='B'?'Bull':r.n}: ${r.hits} of ${r.of}`).join('<br>')}</p></div>
-    <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="startTheLadder('${t.segType}','${t.order}',${t.totalRounds},${t.sequence.includes('B')})">Go Again</button>
+    <button class="btn btn-primary btn-full" style="margin-top:10px;" onclick="startTheLadder('${t.segType}','${t.order}','${t.progression}',${t.totalRounds},${t.sequence.includes('B')})">Go Again</button>
     <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exitTheLadder()">Done</button>
   </div>`;
 }
