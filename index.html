@@ -817,7 +817,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 5:05 AM';
+const BUILD_STAMP = '8/16/2026, 5:40 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -965,6 +965,8 @@ let state = {
   closeoutTrainerSetupSeg: 'single',
   closeoutTrainerSetupBull: false,
   proRoutineShowHints: true,
+  boardManagerHealth: null,
+  boardHealthExpanded: false,
 };
 
 let uid = 1;
@@ -6152,6 +6154,12 @@ function hardRestartBoardManager(){
 }
 
 function handleBoardManagerState(data){
+  // Persisted so any screen can show a live readout of exactly what Board
+  // Manager is reporting, without needing to separately open its own web
+  // UI — this is genuinely everything its API exposes (confirmed directly
+  // against a real curl of /api/state), no richer diagnostic fields exist
+  // to surface beyond these.
+  state.boardManagerHealth = { connected: data.connected, running: data.running, status: data.status, event: data.event, numThrows: data.numThrows, updatedAt: Date.now() };
   const throws = Array.isArray(data.throws) ? data.throws : [];
   const eventText = data.event || null;
   if(throws.length !== boardManagerLastThrowCount){
@@ -6474,16 +6482,37 @@ function renderActivePlayerSection(s,p,i){
 // clearly labeled sub-sections (Cameras / This Turn) rather than one flat
 // row, so it's obvious which category a given button belongs to before
 // tapping it. Only shows the Cameras group when Camera Mode is actually on.
-function renderEditTurnRow(s){
-  const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
-  const cameraGroup = state.settings.dartsCallerCameraMode ? `<div class="controls-subgroup">
-    <div class="subgroup-label">Cameras</div>
+// The "pulldown" health readout — everything Board Manager's API actually
+// exposes (confirmed directly against a real curl of /api/state; there's
+// no richer FPS/per-camera data available to show beyond this). Shared
+// across every game's Cameras group rather than duplicated per shell.
+function renderBoardHealthDropdown(){
+  const h = state.boardManagerHealth;
+  const isStale = h && (Date.now() - h.updatedAt > 5000);
+  const hasWarning = h && (h.status==='Error' || (h.event && h.event.toLowerCase().includes('failed')) || h.running===false || h.connected===false);
+  const dotColor = !h ? 'var(--cream-dim)' : hasWarning ? 'var(--red)' : isStale ? 'var(--brass)' : 'var(--green)';
+  const summaryText = !h ? 'No data yet' : (h.status || '—');
+  return `<div class="controls-subgroup">
+    <div class="subgroup-label" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;" onclick="state.boardHealthExpanded=!state.boardHealthExpanded; render();">
+      <span>Cameras <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${dotColor}; margin:0 4px;"></span>${summaryText}</span>
+      <span>${state.boardHealthExpanded?'&#9652;':'&#9662;'}</span>
+    </div>
+    ${state.boardHealthExpanded ? `<div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); padding:2px 2px 6px 2px; line-height:1.6;">
+      Connected: ${h?(h.connected?'Yes':'No'):'—'}<br>
+      Running: ${h?(h.running?'Yes':'No'):'—'}<br>
+      Last Event: ${h?h.event:'—'}<br>
+      Darts This Turn: ${h?h.numThrows:'—'}
+    </div>` : ''}
     <div class="subgroup-row">
       <div class="tiny-edit-btn" onclick="startBoardManagerDetection()">&#9654; Start</div>
       <div class="tiny-edit-btn" onclick="resetBoardManagerNow()">&#8635; Soft Reset</div>
       <div class="tiny-edit-btn" onclick="hardRestartBoardManager()">&#9850; Hard Reset</div>
     </div>
-  </div>` : '';
+  </div>`;
+}
+function renderEditTurnRow(s){
+  const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
+  const cameraGroup = state.settings.dartsCallerCameraMode ? renderBoardHealthDropdown() : '';
   return `<div class="home-base">
     ${cameraGroup}
     <div class="controls-subgroup">
@@ -6756,14 +6785,7 @@ function renderCallShotActiveShell(s){
       i===s.currentIdx ? renderCallShotActiveSection(s,p,i) : renderCallShotCollapsedSection(s,p)
     ).join('')}</div>
   </div>`;
-  const cameraGroup = state.settings.dartsCallerCameraMode ? `<div class="controls-subgroup">
-    <div class="subgroup-label">Cameras</div>
-    <div class="subgroup-row">
-      <div class="tiny-edit-btn" onclick="startBoardManagerDetection()">&#9654; Start</div>
-      <div class="tiny-edit-btn" onclick="resetBoardManagerNow()">&#8635; Soft Reset</div>
-      <div class="tiny-edit-btn" onclick="hardRestartBoardManager()">&#9850; Hard Reset</div>
-    </div>
-  </div>` : '';
+  const cameraGroup = state.settings.dartsCallerCameraMode ? renderBoardHealthDropdown() : '';
   return `<div class="game-header-row">
     <div><div class="round-label">ROUND</div><div class="round-value">${s.round}</div></div>
     <div class="game-title-center">Call Your Shot</div>
