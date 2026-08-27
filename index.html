@@ -205,9 +205,16 @@ body{
 .controls-subgroup{ display:flex; flex-direction:column; gap:3px; }
 .subgroup-label{ font-family:'JetBrains Mono',monospace; font-size:8px; color:var(--cream-dim); opacity:0.5; text-transform:uppercase; letter-spacing:0.05em; }
 .subgroup-row{ display:flex; gap:5px; }
-.tiny-edit-btn{ flex:1; min-width:0; text-align:center; padding:5px 4px; border-radius:6px; font-family:'Inter',sans-serif; font-weight:500; font-size:10px; border:1px solid var(--felt-lighter); color:var(--cream-dim); cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tiny-edit-btn{ flex:1; min-width:0; text-align:center; padding:5px 4px; border-radius:6px; font-family:'Inter',sans-serif; font-weight:500; font-size:10px; border:1px solid var(--felt-lighter); color:var(--cream-dim); cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:transform 0.08s ease, background 0.08s ease; }
+.tiny-edit-btn:active{ transform:scale(0.94); background:var(--felt-lighter); }
 .tiny-edit-btn.danger{ border-color:var(--red); color:#e08a7d; }
 .tiny-edit-btn.disabled{ opacity:0.35; cursor:default; }
+.tiny-edit-btn.disabled:active{ transform:none; background:none; }
+.tiny-edit-btn.primary{ border-color:var(--brass); color:var(--brass); font-weight:600; }
+.fix-board-status{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--cream-dim); line-height:1.5; margin-top:8px; padding-top:8px; border-top:1px solid var(--felt-lighter); min-height:14px; }
+.fix-board-status.working{ color:var(--brass); }
+.fix-board-status.ok{ color:var(--green); }
+.fix-board-status.stuck{ color:#e08a7d; }
 .tiny-edit-btn.danger{ border-color:var(--red); color:#e08a7d; }
 .tiny-edit-btn.disabled{ opacity:0.35; cursor:default; }
 @media (min-width:900px){
@@ -834,7 +841,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 9:15 AM';
+const BUILD_STAMP = '8/27/2026, 3:15 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -984,6 +991,10 @@ let state = {
   proRoutineShowHints: true,
   boardManagerHealth: null,
   boardHealthExpanded: false,
+  // Tracks the live progress of the "Fix Board" escalating recovery sequence
+  // so the panel can show real, honest status instead of a silent button
+  // press. phase: null | 'soft' | 'waiting-soft' | 'hard' | 'waiting-hard' | 'ok' | 'stuck'
+  boardFixInProgress: null,
   theLadder: null,
   ladderBestAvg: null,
   ladderSetupSeg: 'any',
@@ -6232,6 +6243,78 @@ function hardRestartBoardManager(){
     .catch(err => console.warn('Oche: Board Manager hard restart failed', err && err.message));
 }
 
+// True once Board Manager's most recent poll looks genuinely healthy —
+// connected, running, not sitting on an error/failed status, and the data
+// itself is fresh (not a stale reading from before a restart). Used by
+// fixBoardNow() below to actually confirm recovery instead of just hoping
+// a fixed delay was long enough.
+function boardManagerLooksHealthy(){
+  const h = state.boardManagerHealth;
+  if(!h) return false;
+  const fresh = (Date.now() - h.updatedAt) < 2000;
+  const statusText = (h.status || '').toLowerCase();
+  const eventText = (h.event || '').toLowerCase();
+  const hasError = statusText.includes('error') || eventText.includes('failed') || eventText.includes('error');
+  return fresh && h.connected && h.running && !hasError;
+}
+function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
+// Polls boardManagerLooksHealthy() repeatedly for up to maxWaitMs, rather
+// than trusting one fixed delay — a restart's cameras can take anywhere
+// from a couple seconds to closer to 20s to reopen and calibrate.
+async function waitForBoardManagerHealthy(maxWaitMs, checkEveryMs){
+  const start = Date.now();
+  while(Date.now() - start < maxWaitMs){
+    if(boardManagerLooksHealthy()) return true;
+    await sleep(checkEveryMs);
+  }
+  return boardManagerLooksHealthy();
+}
+// The real "Fix Board" action: tries the gentle option first, actually
+// checks whether it worked (rather than assuming), and only escalates to a
+// full service restart if the gentle option didn't clear it. Every stage
+// updates state.boardFixInProgress so the panel shows honest, live status
+// instead of a silent fire-and-forget click.
+let boardFixRunning = false;
+async function fixBoardNow(){
+  if(boardFixRunning) return; // guard against double-tapping mid-sequence
+  const host = state.settings.boardManagerHost;
+  if(!host) return;
+  boardFixRunning = true;
+  try{
+    state.boardFixInProgress = { phase:'soft', message:'Resetting…' };
+    render();
+    resetBoardManagerNow();
+    state.boardFixInProgress = { phase:'waiting-soft', message:'Checking if that cleared it…' };
+    render();
+    const softWorked = await waitForBoardManagerHealthy(4000, 500);
+    if(softWorked){
+      state.boardFixInProgress = { phase:'ok', message:'Back online, ready to play.' };
+      render();
+      await sleep(3000);
+      state.boardFixInProgress = null;
+      render();
+      return;
+    }
+    state.boardFixInProgress = { phase:'hard', message:"Soft reset didn't clear it — restarting the service…" };
+    render();
+    hardRestartBoardManager();
+    state.boardFixInProgress = { phase:'waiting-hard', message:'Waiting for cameras to come back online…' };
+    render();
+    const hardWorked = await waitForBoardManagerHealthy(20000, 1000);
+    if(hardWorked){
+      state.boardFixInProgress = { phase:'ok', message:'Back online, ready to play.' };
+      render();
+      await sleep(3000);
+      state.boardFixInProgress = null;
+      render();
+    } else {
+      state.boardFixInProgress = { phase:'stuck', message:'Still stuck — may need a manual reboot.' };
+      render();
+    }
+  } finally {
+    boardFixRunning = false;
+  }
+}
 function handleBoardManagerState(data){
   // Persisted so any screen can show a live readout of exactly what Board
   // Manager is reporting, without needing to separately open its own web
@@ -6583,6 +6666,9 @@ function renderCameraHelpTrigger(){
 }
 function renderCameraHelpPanel(){
   const h = state.boardManagerHealth;
+  const fix = state.boardFixInProgress;
+  const busy = !!fix && fix.phase!=='ok' && fix.phase!=='stuck';
+  const statusClass = !fix ? '' : (fix.phase==='ok' ? 'ok' : fix.phase==='stuck' ? 'stuck' : 'working');
   return `<div class="camera-help-panel">
     <div class="camera-help-stats">
       Connected: ${h?(h.connected?'Yes':'No'):'—'}<br>
@@ -6592,10 +6678,14 @@ function renderCameraHelpPanel(){
       Darts This Turn: ${h?h.numThrows:'—'}
     </div>
     <div class="subgroup-row">
-      <div class="tiny-edit-btn" onclick="startBoardManagerDetection()">&#9654; Start</div>
-      <div class="tiny-edit-btn" onclick="resetBoardManagerNow()">&#8635; Soft Reset</div>
-      <div class="tiny-edit-btn" onclick="hardRestartBoardManager()">&#9850; Hard Reset</div>
+      <div class="tiny-edit-btn primary${busy?' disabled':''}" ${busy?'':'onclick="fixBoardNow()"'}>&#128295; Fix Board</div>
     </div>
+    <div class="subgroup-row" style="margin-top:6px;">
+      <div class="tiny-edit-btn${busy?' disabled':''}" ${busy?'':'onclick="startBoardManagerDetection()"'}>&#9654; Start</div>
+      <div class="tiny-edit-btn${busy?' disabled':''}" ${busy?'':'onclick="resetBoardManagerNow()"'}>&#8635; Soft Reset</div>
+      <div class="tiny-edit-btn${busy?' disabled':''}" ${busy?'':'onclick="hardRestartBoardManager()"'}>&#9850; Hard Reset</div>
+    </div>
+    ${fix ? `<div class="fix-board-status ${statusClass}">${busy?'&#9203; ':fix.phase==='ok'?'&#9989; ':'&#9888; '}${fix.message}</div>` : ''}
   </div>`;
 }
 function renderEditTurnRow(s){
