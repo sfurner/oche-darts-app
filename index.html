@@ -833,7 +833,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 7:30 AM';
+const BUILD_STAMP = '8/16/2026, 7:45 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1001,6 +1001,12 @@ function nextId(){ return 'id' + (uid++); }
    of persistState()/hydrateState() need to change to call a real backend
    (e.g. Supabase) — nothing else in the app touches storage directly. */
 const STORAGE_KEY = 'oche-darts-data-v1';
+// Every screen that uses the split board+sidebar layout (real games, plus
+// any practice mode built the same way) needs this listed explicitly —
+// the class that actually makes that layout work was previously hardcoded
+// to only the main gameplay screen, which is exactly why The Ladder's
+// board disappeared: its screen name just wasn't on the list.
+const GAME_LAYOUT_SCREENS = new Set(['active','practiceActive','checkoutPracticeActive','theLadderActive']);
 const PERSISTENT_STATE_KEYS = [
   'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance', 'playerAttributePerformance', 'playerAccuracy',
   'savedGames', 'customPractices', 'customGames', 'history',
@@ -5319,7 +5325,7 @@ function render(){
   const sn = document.getElementById('sidenav');
   if(sn){ sn.innerHTML = renderSidenav(); sn.classList.toggle('collapsed', !!state.settings.sidenavCollapsed); }
   const deviceEl = document.querySelector('.device');
-  if(deviceEl) deviceEl.classList.toggle('game-layout', state.screen==='active');
+  if(deviceEl) deviceEl.classList.toggle('game-layout', GAME_LAYOUT_SCREENS.has(state.screen));
   let html = '';
   switch(state.screen){
     case 'home': html = renderHomeShell(); break;
@@ -8092,11 +8098,15 @@ function ladderTargetHighlight(t){
 function ladderRecordDart(num, mult, point){
   const t = state.theLadder;
   if(!t) return;
+  if(practiceModePendingAdvance) return; // same reasoning as every other practice mode tonight — a previous round's completion is still waiting on takeout, don't let new darts run the counter past 3
   if(t.phase==='warmup'){
     t.warmupThrown++;
     if(t.warmupThrown>=LADDER_WARMUP_DARTS){
-      if(t.warmupStage==='20'){ t.warmupStage='bull'; t.warmupThrown=0; }
-      else { t.phase='active'; }
+      deferPracticeAdvance(()=>{
+        if(t.warmupStage==='20'){ t.warmupStage='bull'; t.warmupThrown=0; }
+        else { t.phase='active'; }
+      });
+      return;
     }
     render();
     return;
