@@ -823,7 +823,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/16/2026, 5:55 AM';
+const BUILD_STAMP = '8/16/2026, 6:10 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -2738,7 +2738,13 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   }).join('');
   const needsWideMargin = ownerLabels && ownerLabels.length;
   const missOuterEdge = rBezel + 22;
-  const cropMargin = needsWideMargin ? -95 : (canvas - missOuterEdge*2)/2 - 10;
+  // The old fixed -95 margin left far more empty space than the labels
+  // actually need (their text anchor sits at rBezel+50, plus maybe 45-55px
+  // of text width for a longer name) — that's real, but nowhere near what
+  // -95 was reserving, which is exactly why the whole board rendered
+  // noticeably smaller than every other game's. Tightened to match what
+  // the labels actually reach, not an arbitrary flat number.
+  const cropMargin = needsWideMargin ? (canvas/2 - (rBezel+50+55)) : (canvas - missOuterEdge*2)/2 - 10;
   const viewSize = canvas - cropMargin*2;
   const missLabelPos = polar(cx, cy, missOuterEdge-8, 180);
   const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
@@ -6738,7 +6744,6 @@ function renderActiveShell(){
     <div class="game-title-center">${gname}</div>
     <div style="text-align:right;">
       ${renderCameraHelpTrigger()}
-      ${s.kind==='killer' ? '<div><div class="round-label" style="color:var(--brass);">ORDER MATTERS</div><div style="font-size:12px; color:var(--cream-dim); max-width:140px; margin-left:auto;">Enter darts in the order you threw them</div></div>' : ''}
     </div>
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
