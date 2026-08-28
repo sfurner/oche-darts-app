@@ -842,7 +842,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/28/2026, 12:15 AM';
+const BUILD_STAMP = '8/28/2026, 12:35 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -8833,8 +8833,8 @@ function renderTheLadderSetup(){
 // lets the row spell out "DOUBLE"/"TRIPLE"/"INNER BULL"/"OUTER BULL" in full
 // without eating into the horizontal space the session-history cells need.
 function ladderProTargetLabelParts(id){
-  if(id==='IB') return {top:'&#9679;', bottom:'INNER BULL'};
-  if(id==='OB') return {top:'&#9679;', bottom:'OUTER BULL'};
+  if(id==='IB') return {top:'&#9679;', bottom:'IN BULL'};
+  if(id==='OB') return {top:'&#9679;', bottom:'OUT BULL'};
   if(id[0]==='D') return {top:id.slice(1), bottom:'DOUBLE'};
   if(id[0]==='T') return {top:id.slice(1), bottom:'TRIPLE'};
   return {top:id, bottom:''};
@@ -8855,7 +8855,7 @@ function ladderProCellColor(hits){
 function ladderProAllTimeText(t, targetId){
   const hist = ladderProHistoryFor(t.playerId);
   const avg = ladderProAllTimeAvg(hist, targetId);
-  const style = 'min-width:30px; text-align:right; flex-shrink:0; margin-left:10px; font-family:\'JetBrains Mono\',monospace; font-size:14px; font-weight:600;';
+  const style = 'width:24px; flex-shrink:0; text-align:right; margin-left:6px; font-family:\'JetBrains Mono\',monospace; font-size:12px; font-weight:600;';
   if(avg===null || avg===undefined) return `<div style="${style} color:var(--cream-dim);">–</div>`;
   const color = ladderProCellColor(Math.round(avg));
   return `<div style="${style} color:${color};" title="All-time average: ${avg.toFixed(1)}">${avg.toFixed(1)}</div>`;
@@ -8864,10 +8864,13 @@ function ladderProAllTimeText(t, targetId){
 // a real result (matching how the board itself prints numbers on its own
 // colored wedges), a muted flat fill for an empty placeholder slot, or a
 // filled brass pill with a small dark dot for the current lap's
-// not-yet-thrown target.
+// not-yet-thrown target. Sized to actually fit the real ~206px usable
+// sidebar width (230px panel minus its 24px padding) — 28px pills measured
+// fine against mockup previews but overflowed/clipped in the real narrower
+// panel, so these are deliberately smaller.
 function ladderProPillCell(val, isPendingCurrent){
-  const base = 'width:28px; height:26px; border-radius:13px; flex-shrink:0; font-family:\'JetBrains Mono\',monospace; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;';
-  if(isPendingCurrent) return `<div style="${base} background:var(--brass);"><div style="width:6px; height:6px; border-radius:50%; background:#1c1410;"></div></div>`;
+  const base = 'width:18px; height:18px; border-radius:9px; flex-shrink:0; font-family:\'JetBrains Mono\',monospace; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center;';
+  if(isPendingCurrent) return `<div style="${base} background:var(--brass);"><div style="width:5px; height:5px; border-radius:50%; background:#1c1410;"></div></div>`;
   if(val===undefined || val===null) return `<div style="${base} background:#2a3554; color:#5a6485;">–</div>`;
   const color = ladderProCellColor(val);
   return `<div style="${base} background:${color}; color:#1c1410;">${val}</div>`;
@@ -8875,16 +8878,17 @@ function ladderProPillCell(val, isPendingCurrent){
 // Live scorecard: shows the last 10 completed sessions for each target as a
 // scrollable strip, with the current in-progress lap always appended as the
 // rightmost cell — as more sessions accumulate, older ones scroll off to the
-// left rather than the row growing indefinitely. Padded with dashed
-// placeholder slots up to a minimum of 4 history cells so a fresh target
-// still shows a full 5-column rhythm (4 history + the live cell) rather than
-// a cramped single cell, matching every other row once real data fills in.
+// left rather than the row growing indefinitely. Padded to a minimum of 2
+// history slots so a fresh target still shows a small consistent rhythm
+// rather than a single lonely cell. Column count is intentionally modest
+// (2-3 visible by default) because the real sidebar is only ~206px usable —
+// wider than that and it scrolls to reveal more, up to the last 10.
 function ladderProScorecard(t){
   const hist = ladderProHistoryFor(t.playerId);
-  const header = `<div style="display:flex; align-items:center; padding:6px 6px 8px;">
-    <div style="width:56px; flex-shrink:0; color:var(--cream-dim); font-size:10px; letter-spacing:0.08em; text-align:center;">TARGET</div>
-    <div style="flex:1; color:var(--cream-dim); font-size:10px; letter-spacing:0.08em; margin-left:10px;">SESSIONS</div>
-    <div style="color:var(--cream-dim); font-size:10px; letter-spacing:0.08em;">AVG</div>
+  const header = `<div style="display:flex; align-items:center; padding:4px 3px 6px;">
+    <div style="width:30px; flex-shrink:0; color:var(--cream-dim); font-size:8px; letter-spacing:0.04em; text-align:center;">TGT</div>
+    <div style="flex:1; color:var(--cream-dim); font-size:8px; letter-spacing:0.04em; margin-left:6px;">SESSIONS</div>
+    <div style="width:24px; flex-shrink:0; color:var(--cream-dim); font-size:8px; letter-spacing:0.04em; text-align:right;">AVG</div>
   </div>`;
   const rows = t.numbers.map((n,i)=>{
     const targetId = ladderProTargetId(n, t.segType);
@@ -8893,16 +8897,16 @@ function ladderProScorecard(t){
     const entries = hist.byTarget[targetId] || {};
     const sessionIdxs = Object.keys(entries).map(Number).sort((a,b)=>a-b).slice(-10);
     const realVals = sessionIdxs.map(idx=>entries[idx]);
-    const padCount = Math.max(0, 4-realVals.length);
+    const padCount = Math.max(0, 2-realVals.length);
     const historyCells = Array(padCount).fill(undefined).concat(realVals).map(v=>ladderProPillCell(v, false)).join('');
     const done = t.sessionResults[n]!==undefined;
     const liveCell = done ? ladderProPillCell(t.sessionResults[n], false) : ladderProPillCell(undefined, isCurrent);
-    return `<div class="ladder-row${isCurrent?' current':''}" style="gap:0; padding:8px 6px; ${isCurrent?'border:1.5px solid var(--brass); border-radius:10px;':''}">
-      <div style="width:56px; flex-shrink:0; text-align:center;">
-        <div style="color:var(--cream); font-size:15px; line-height:1.15;">${top}</div>
-        ${bottom?`<div style="color:var(--cream-dim); font-size:9px; letter-spacing:0.05em;">${bottom}</div>`:''}
+    return `<div class="ladder-row${isCurrent?' current':''}" style="gap:0; padding:5px 3px; ${isCurrent?'border:1.5px solid var(--brass); border-radius:8px;':''}">
+      <div style="width:30px; flex-shrink:0; text-align:center;">
+        <div style="color:var(--cream); font-size:12px; line-height:1.1;">${top}</div>
+        ${bottom?`<div style="color:var(--cream-dim); font-size:6.5px; letter-spacing:0.02em;">${bottom}</div>`:''}
       </div>
-      <div class="ladder-row-cells" style="flex:0 1 auto; max-width:160px; min-width:0; overflow-x:auto; margin-right:0; margin-left:10px; gap:7px;">${historyCells}${liveCell}</div>
+      <div class="ladder-row-cells" style="flex:0 1 auto; max-width:84px; min-width:0; overflow-x:auto; margin-right:0; margin-left:6px; gap:3px;">${historyCells}${liveCell}</div>
       ${ladderProAllTimeText(t,targetId)}
     </div>`;
   }).join('');
