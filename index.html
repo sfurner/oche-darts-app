@@ -841,7 +841,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/27/2026, 9:55 PM';
+const BUILD_STAMP = '8/27/2026, 11:05 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -3070,6 +3070,10 @@ function commitBoardThrow(c){
     // Route through the exact same state machine manual board taps use —
     // confirmed the bug: camera throws were reaching commitBoardThrow but
     // falling through every branch here with no callshot case at all.
+    // Same takeout-pending guard dispatchThrowCore uses for every other
+    // game — Call Your Shot bypasses that function entirely, so it needs
+    // its own copy of the same protection.
+    if(cameraPendingTurnEnd) return;
     const zoneId = callShotZoneIdFromNumSeg(c.num, c.seg);
     callShotRegisterDart(zoneId);
   } else if(state.session){
@@ -4610,9 +4614,11 @@ function callShotRegisterDart(hitZoneId){
         return;
       }
       callShotResolveAttempt(s, true);
-    } else {
-      callShotResolveAttempt(s, false);
     }
+    // Missing the board entirely while just trying to set the target isn't a
+    // real attempt — no target was ever established, so there's nothing to
+    // fail. Discard the dart and let them throw again; no letter, no penalty.
+    render();
     return;
   }
   const canonicalHit = callShotCanonicalZone(hitZoneId);
@@ -4649,34 +4655,41 @@ function callShotAttemptThrow(hit){
     callShotRegisterDart(null);
   }
 }
+// Like deferPracticeAdvance, but for Call Your Shot's own turn-switching
+// logic. Call Your Shot never went through the standard wrapEndTurnForCamera
+// system other games use (it has no single, uniform "EndTurn" shape — three
+// different switch scenarios: caller→first follower, follower→next follower,
+// end-of-round→next caller), so it gets its own deferral wrapper that reuses
+// the same shared cameraPendingTurnEnd hook forceEndCurrentTurnFromTakeout()
+// already resolves on a real takeout.
+function callShotDeferAdvance(advanceFn){
+  if(state.settings.dartsCallerCameraMode && cameraThrowInProgress){
+    cameraPendingTurnEnd = advanceFn;
+    return;
+  }
+  advanceFn();
+  render();
+}
 function callShotResolveAttempt(s, success){
   // Captured before any state resets below, since s.calledTargets/targetIndex
   // describe the attempt that's *just finishing* right now.
   const targetIdForSummary = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
   const targetLabelForSummary = targetIdForSummary ? sectionZoneLabel(targetIdForSummary) : 'the target';
-  s.currentTurnDarts = [];
-  s.turnHitPoints = [];
+  // Immediate feedback — letters, elimination, and the result text all show
+  // right away, same as every other game shows a dart's score the instant
+  // it's thrown. Only *whose turn it is next* waits for takeout, below.
   if(s.stage==='callattempt'){
     const callerName = playerName(s.participants[s.callerIdx].playerId);
     if(success){
       s.lastTurnSummary = s.leaderMustProve
         ? `<b>${callerName} proved it: ${targetLabelForSummary}!</b>`
         : `<b>${callerName} set the target: ${targetLabelForSummary}.</b>`;
-      s.attemptOrder = s.participants.map((p,i)=>i).filter(i=>i!==s.callerIdx && !s.participants[i].eliminated);
-      s.attemptPos = 0;
-      s.dartsUsedThisAttempt = 0;
-      s.targetIndex = 0;
-      s.hitTargets = [];
-      if(s.attemptOrder.length===0){ callShotNextRound(s); render(); return; }
-      s.stage = 'follow';
-      s.currentIdx = s.attemptOrder[0];
     } else {
       const caller = s.participants[s.callerIdx];
       caller.letters++;
       const newLetter = s.word[caller.letters-1] || '';
       s.lastTurnSummary = `<b>${callerName} missed ${targetLabelForSummary}${newLetter?` and receives ${newLetter}`:''}.</b>`;
       if(caller.letters >= s.word.length){ caller.eliminated = true; }
-      callShotNextRound(s);
     }
   } else if(s.stage==='follow'){
     const followerName = playerName(s.participants[s.currentIdx].playerId);
@@ -4689,19 +4702,41 @@ function callShotResolveAttempt(s, success){
     } else {
       s.lastTurnSummary = `<b>${followerName} matched ${targetLabelForSummary}!</b>`;
     }
-    s.attemptPos++;
-    s.dartsUsedThisAttempt = 0;
-    s.targetIndex = 0;
-    s.hitTargets = [];
-    if(s.attemptPos >= s.attemptOrder.length){
-      callShotNextRound(s);
-    } else {
-      s.currentIdx = s.attemptOrder[s.attemptPos];
-    }
   }
-  callShotCheckWin(s);
-  if(s.complete) finishCallShotGame(s);
   render();
+  // Deferred — the actual "whose turn now" switch, and clearing the just-
+  // thrown darts off screen, wait for a real physical takeout in Camera
+  // Mode, exactly like X01/Cricket/etc. already do via wrapEndTurnForCamera.
+  const stageAtResolve = s.stage;
+  callShotDeferAdvance(()=>{
+    s.currentTurnDarts = [];
+    s.turnHitPoints = [];
+    if(stageAtResolve==='callattempt'){
+      if(success){
+        s.attemptOrder = s.participants.map((p,i)=>i).filter(i=>i!==s.callerIdx && !s.participants[i].eliminated);
+        s.attemptPos = 0;
+        s.dartsUsedThisAttempt = 0;
+        s.targetIndex = 0;
+        s.hitTargets = [];
+        if(s.attemptOrder.length===0){ callShotNextRound(s); }
+        else { s.stage = 'follow'; s.currentIdx = s.attemptOrder[0]; }
+      } else {
+        callShotNextRound(s);
+      }
+    } else if(stageAtResolve==='follow'){
+      s.attemptPos++;
+      s.dartsUsedThisAttempt = 0;
+      s.targetIndex = 0;
+      s.hitTargets = [];
+      if(s.attemptPos >= s.attemptOrder.length){
+        callShotNextRound(s);
+      } else {
+        s.currentIdx = s.attemptOrder[s.attemptPos];
+      }
+    }
+    callShotCheckWin(s);
+    if(s.complete) finishCallShotGame(s);
+  });
 }
 function callShotNextRound(s){
   const alive = s.participants.filter(p=>!p.eliminated);
@@ -8502,7 +8537,7 @@ function renderLadderProActive(){
   ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   <div class="content" style="padding-top:10px;">
     <p style="text-align:center; color:var(--brass); font-family:'Oswald',sans-serif; font-size:16px;">Target: ${targetLabel}${ringLabel}</p>
-    <p style="text-align:center; color:var(--cream-dim); font-size:12px;">${t.dartsThisNumber+1} of 3 darts</p>
+    <p style="text-align:center; color:var(--cream-dim); font-size:12px;">Throwing ${t.dartsThisNumber+1} of 3 darts</p>
     ${ladderProScorecard(t)}
     <button class="btn btn-secondary btn-full" style="margin-top:14px;" onclick="exitLadderPro()">Leave</button>
   </div>`;
@@ -8792,19 +8827,21 @@ function renderTheLadderSetup(){
 // Unlike The Ladder, which only shows its scorecard after warmup, this is
 // meant to be visible from the very first target — there's no warmup phase
 // to gate behind.
-function ladderProAllTimeCell(t, targetId){
+function ladderProAllTimeText(t, targetId){
   const hist = ladderProHistoryFor(t.playerId);
   const avg = ladderProAllTimeAvg(hist, targetId);
-  if(avg===null || avg===undefined) return `<div class="ladder-cell ladder-alltime" style="background:transparent; border:1px dashed var(--felt-lighter);"></div>`;
+  const style = 'min-width:26px; text-align:right; flex-shrink:0; margin-left:4px; font-family:\'JetBrains Mono\',monospace; font-size:13px; font-weight:700;';
+  if(avg===null || avg===undefined) return `<div style="${style} color:var(--cream-dim);">–</div>`;
   const color = ladderCellColor(Math.round(avg));
-  return `<div class="ladder-cell ladder-alltime" style="background:${color};" title="All-time average: ${avg.toFixed(1)}">${avg.toFixed(1)}</div>`;
+  return `<div style="${style} color:${color};" title="All-time average: ${avg.toFixed(1)}">${avg.toFixed(1)}</div>`;
 }
 // Live scorecard: shows the last 10 completed sessions for each target as a
 // scrollable strip, with the current in-progress lap always appended as the
 // rightmost (highlighted) cell — as more sessions accumulate, older ones
 // scroll off to the left rather than the row growing indefinitely. The
-// target label sits between the scrollable history and the fixed all-time
-// average, so it stays visible no matter how far the history is scrolled.
+// target label is pinned on the left (always visible), and the all-time
+// average sits close against the live cell on the right as plain colored
+// text rather than a filled box.
 function ladderProScorecard(t){
   const hist = ladderProHistoryFor(t.playerId);
   const rows = t.numbers.map((n,i)=>{
@@ -8820,10 +8857,10 @@ function ladderProScorecard(t){
     const done = t.sessionResults[n]!==undefined;
     const liveColor = done ? ladderCellColor(t.sessionResults[n]) : 'var(--felt-lighter)';
     const liveCell = `<div class="ladder-cell" style="background:${liveColor}; ${isCurrent?'box-shadow:0 0 0 2px var(--brass);':''}">${done?t.sessionResults[n]:''}</div>`;
-    return `<div class="ladder-row${isCurrent?' current':''}">
+    return `<div class="ladder-row${isCurrent?' current':''}" style="gap:0;">
+      <div style="width:26px; flex-shrink:0; text-align:left; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:12px; margin-right:8px;">${label}</div>
       <div class="ladder-row-cells" style="flex:1; min-width:0; overflow-x:auto; margin-right:0;">${historyCells}${liveCell}</div>
-      <div class="ladder-row-label" style="width:auto; flex-shrink:0; text-align:center; background:var(--felt-lighter); border-radius:4px; padding:2px 7px; font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12px;">${label}</div>
-      ${ladderProAllTimeCell(t,targetId)}
+      ${ladderProAllTimeText(t,targetId)}
     </div>`;
   }).join('');
   return `<div class="ladder-scorecard" id="ladderProLiveScorecard">${rows}</div>`;
@@ -8887,7 +8924,7 @@ function renderTheLadderActive(){
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(null, ladderTargetHighlight(t), null, null)}</div></div>
   ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   <div class="content" style="padding-top:10px;">
-    <p style="text-align:center; color:var(--brass); font-family:'Oswald',sans-serif; font-size:16px; margin-bottom:10px;">Target: ${targetLabel}${ringLabel} &middot; ${t.dartsThisRound+1} of 3 darts</p>
+    <p style="text-align:center; color:var(--brass); font-family:'Oswald',sans-serif; font-size:16px; margin-bottom:10px;">Target: ${targetLabel}${ringLabel} &middot; Throwing ${t.dartsThisRound+1} of 3 darts</p>
     ${ladderScorecard(t)}
   </div>`;
 }
@@ -9049,7 +9086,7 @@ function renderSectionActive(){
     <h2>Aim for: ${targetLabel}</h2>
     <div class="objective-banner">
       <div class="big">Avg: ${avg}</div>
-      <div class="small">${ps.dartsThisTurn.length} of 3 darts this turn${lastThrow?(' — last: '+sectionZoneLabel(lastThrow.zoneId)+' ('+lastThrow.score+' pts)'):''}</div>
+      <div class="small">Throwing ${ps.dartsThisTurn.length} of 3 darts this turn${lastThrow?(' — last: '+sectionZoneLabel(lastThrow.zoneId)+' ('+lastThrow.score+' pts)'):''}</div>
     </div>
   </div>
   <div class="board-area">${renderSectionBoardSVG(ps.currentTarget, undefined, undefined, "sectionSelectZone('totalmiss')")}</div>
