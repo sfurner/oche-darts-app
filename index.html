@@ -841,7 +841,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/27/2026, 5:30 PM';
+const BUILD_STAMP = '8/27/2026, 6:10 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1008,6 +1008,7 @@ let state = {
   ladderProSetupSeg: 'any',
   ladderProSetupOrder: 'sequential',
   ladderProSetupPreset: 'all',
+  ladderProSetupIncludeBull: true,
   ladderProCustomNums: [],
   ladderProHistoryMetric: 'allTime',
   ladderProHistorySeg: 'any',
@@ -5413,7 +5414,7 @@ function render(){
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
   autoFitScreens();
-  if(state.screen==='theLadderActive'){
+  if(state.screen==='theLadderActive' || state.screen==='ladderProActive'){
     const cur = appFooter ? appFooter.querySelector('.ladder-row.current') : null;
     if(cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
   }
@@ -8207,32 +8208,27 @@ function startTheLadder(segType, order, progression, totalRounds, includeBull){
 }
 function exitTheLadder(){ state.theLadder=null; state.screen='practice'; render(); }
 function ladderIsHit(target, num, mult, segType){
+  // Ladder Pro's dedicated bull sub-targets — always strict, regardless of
+  // whatever hit-type mode the rest of the lap is using.
+  if(target==='IB') return num==='B' && mult==='bull';
+  if(target==='OB') return num==='B' && mult==='single';
   const isBullTarget = target==='B';
   if(isBullTarget){
     if(num!=='B') return false;
     if(segType==='any') return true; // inner or outer both count
     if(segType==='double') return mult==='bull'; // inner bull is the "double"-tier bull hit
-    if(segType==='innerBull') return mult==='bull'; // strict: only the inner ring counts, outer is a miss
-    if(segType==='outerBull') return mult==='single'; // strict: only the outer ring counts, inner is a miss
     return true; // no real "triple bull" — either ring counts rather than making this number impossible
   }
   if(num==='B' || String(parseInt(num,10))!==String(target)) return false;
-  // Inner/Outer Bull Only only mean something for the Bull itself — aimed at
-  // a regular number, there's no inner/outer ring to isolate, so these two
-  // fall back to whole-segment behavior (any ring on the number counts)
-  // rather than making every number unhittable in these modes.
-  if(segType==='any' || segType==='innerBull' || segType==='outerBull') return true;
+  if(segType==='any') return true;
   return mult===segType;
 }
 function ladderTargetHighlight(t){
   const target = t.sequence[t.numIdx];
-  if(target==='B'){
-    if(t.segType==='innerBull') return {num:'B', seg:'bull'};
-    if(t.segType==='outerBull') return {num:'B', seg:'single'};
-    return {num:'B', seg: t.segType==='any' ? 'any' : t.segType==='double' ? 'bull' : 'any'};
-  }
-  const numSeg = (t.segType==='innerBull' || t.segType==='outerBull') ? 'any' : t.segType;
-  return {num:target, seg:numSeg};
+  if(target==='IB') return {num:'B', seg:'bull'};
+  if(target==='OB') return {num:'B', seg:'single'};
+  if(target==='B') return {num:'B', seg: t.segType==='any' ? 'any' : t.segType==='double' ? 'bull' : 'any'};
+  return {num:target, seg:t.segType};
 }
 /* ========================= LADDER PRO ========================= */
 // A completely separate mode from The Ladder, built for genuine long-term
@@ -8245,7 +8241,6 @@ function ladderProPosition(num){
   const [x,y] = polar(BOARD_CX, BOARD_CY, 150, angleForBoardNumber(num));
   return { top: parseFloat(y) < BOARD_CY, left: parseFloat(x) < BOARD_CX };
 }
-const LADDER_PRO_ALL_NUMBERS = [...Array.from({length:20},(_,i)=>i+1), 'B'];
 // The full, fixed row order for the unified History screen: every number's
 // three exact targets in sequence (plain/Double/Triple), then the two bull
 // targets at the end — 1,D1,T1,2,D2,T2,...,20,D20,T20,IB,OB. Always shown in
@@ -8258,56 +8253,58 @@ const LADDER_PRO_ALL_TARGETS = (()=>{
   return arr;
 })();
 function ladderProTargetLabel(id){
-  if(id==='IB') return 'Inner Bull';
-  if(id==='OB') return 'Outer Bull';
+  if(id==='IB') return 'I-Bull';
+  if(id==='OB') return 'O-Bull';
   if(id[0]==='D') return 'D'+id.slice(1);
   if(id[0]==='T') return 'T'+id.slice(1);
   return id;
 }
-// Maps (number-or-'B', hit-type setting) to the exact target row a completed
-// number should be filed under. Whole Segment always collapses to the plain
-// number/Bull row regardless of which ring was hit — Doubles/Triples Only
-// each get their own row per number. Inner/Outer Bull Only are meaningful
-// only for the Bull itself; aimed at a regular number, there's no inner/outer
-// concept, so they fall back to the plain whole-segment row for that number.
+// Maps (number-or-bull-subtarget, hit-type setting) to the exact target row
+// a completed number should be filed under. Whole Segment collapses to the
+// plain number row regardless of which ring was hit; Doubles/Triples Only
+// each get their own row per number. Bull's two rings (IB/OB) are always
+// tracked as their own separate targets, independent of hit-type entirely —
+// they're appended to the practiced list directly, not routed through here
+// via segType, but the fallback below keeps this safe either way.
 function ladderProTargetId(num, segType){
-  if(num==='B'){
-    if(segType==='innerBull') return 'IB';
-    if(segType==='outerBull') return 'OB';
-    return 'IB'; // any/double/triple aimed at Bull — existing scoring already
-                 // resolves these to an inner-ring-equivalent or either-ring
-                 // hit; filed under Inner Bull rather than inventing a third
-                 // plain "Bull" row alongside the two dedicated ones.
-  }
+  if(num==='IB' || num==='OB') return num;
+  if(num==='B') return 'IB'; // defensive fallback; Ladder Pro no longer produces plain 'B' targets
   if(segType==='double') return 'D'+num;
   if(segType==='triple') return 'T'+num;
   return String(num);
 }
-function ladderProNumbersForPreset(preset, segType, playerId){
-  if(preset==='all') return LADDER_PRO_ALL_NUMBERS.slice();
-  if(preset==='cricket') return [20,19,18,17,16,15,'B'];
-  if(preset==='custom') return (state.ladderProCustomNums||[]).slice();
-  if(preset==='weak5'){
+// Numbered targets only (1-20) — Bull is handled entirely separately via the
+// "Include Bull" toggle, always split into its own two strict sub-targets
+// (I-Bull/O-Bull) rather than being part of any preset's number list.
+const LADDER_PRO_ALL_NUMBERS = Array.from({length:20},(_,i)=>i+1);
+function ladderProNumbersForPreset(preset, segType, playerId, includeBull){
+  let base;
+  if(preset==='all') base = LADDER_PRO_ALL_NUMBERS.slice();
+  else if(preset==='cricket') base = [20,19,18,17,16,15];
+  else if(preset==='custom') base = (state.ladderProCustomNums||[]).slice();
+  else if(preset==='weak5'){
     const hist = ladderProHistoryFor(playerId);
     const withAvg = LADDER_PRO_ALL_NUMBERS.map(n=>({n, avg: ladderProAllTimeAvg(hist, ladderProTargetId(n, segType))}))
       .filter(r=>r.avg!==null);
     withAvg.sort((a,b)=>a.avg-b.avg);
-    return withAvg.slice(0,5).map(r=>r.n);
+    base = withAvg.slice(0,5).map(r=>r.n);
+  } else {
+    // positional presets
+    base = LADDER_PRO_ALL_NUMBERS.filter(n=>{
+      const pos = ladderProPosition(n);
+      if(preset==='topHalf') return pos.top;
+      if(preset==='bottomHalf') return !pos.top;
+      if(preset==='leftSide') return pos.left;
+      if(preset==='rightSide') return !pos.left;
+      if(preset==='topLeft') return pos.top && pos.left;
+      if(preset==='topRight') return pos.top && !pos.left;
+      if(preset==='bottomLeft') return !pos.top && pos.left;
+      if(preset==='bottomRight') return !pos.top && !pos.left;
+      return true;
+    });
   }
-  // positional presets
-  return LADDER_PRO_ALL_NUMBERS.filter(n=>{
-    const pos = ladderProPosition(n);
-    if(!pos) return preset==='center'; // bull only matches an explicit "center" pick, never a side/half
-    if(preset==='topHalf') return pos.top;
-    if(preset==='bottomHalf') return !pos.top;
-    if(preset==='leftSide') return pos.left;
-    if(preset==='rightSide') return !pos.left;
-    if(preset==='topLeft') return pos.top && pos.left;
-    if(preset==='topRight') return pos.top && !pos.left;
-    if(preset==='bottomLeft') return !pos.top && pos.left;
-    if(preset==='bottomRight') return !pos.top && !pos.left;
-    return true;
-  });
+  if(includeBull) base = [...base, 'IB', 'OB'];
+  return base;
 }
 // One flat history per player now, not one per hit-type — every mode shares
 // a single running session count so laps of different hit-types land in
@@ -8342,11 +8339,11 @@ function ladderProMetricValue(hist, targetId, metric){
   }
   return null;
 }
-function startLadderPro(playerId, segType, order, preset){
-  let numbers = ladderProNumbersForPreset(preset, segType, playerId);
+function startLadderPro(playerId, segType, order, preset, includeBull){
+  let numbers = ladderProNumbersForPreset(preset, segType, playerId, includeBull);
   if(order==='random') numbers = shuffleArray(numbers);
   state.ladderPro = {
-    playerId, segType, order, preset, numbers,
+    playerId, segType, order, preset, includeBull, numbers,
     numIdx:0, dartsThisNumber:0, hitsThisNumber:0,
     sessionResults:{}, // number -> hits this lap (0-3)
     phase:'active',
@@ -8380,7 +8377,7 @@ function ladderProSaveSession(t){
   const hist = ladderProHistoryFor(t.playerId);
   const sessionIdx = hist.sessionCount;
   Object.keys(t.sessionResults).forEach(numKey=>{
-    const num = numKey==='B' ? 'B' : parseInt(numKey,10);
+    const num = (numKey==='IB' || numKey==='OB') ? numKey : parseInt(numKey,10);
     const targetId = ladderProTargetId(num, t.segType);
     if(!hist.byTarget[targetId]) hist.byTarget[targetId] = {};
     hist.byTarget[targetId][sessionIdx] = t.sessionResults[numKey];
@@ -8389,7 +8386,7 @@ function ladderProSaveSession(t){
 }
 function ladderProPlayAnother(){
   const t = state.ladderPro;
-  let numbers = ladderProNumbersForPreset(t.preset, t.segType, t.playerId);
+  let numbers = ladderProNumbersForPreset(t.preset, t.segType, t.playerId, t.includeBull);
   if(t.order==='random') numbers = shuffleArray(numbers);
   t.numbers = numbers;
   t.numIdx = 0; t.dartsThisNumber=0; t.hitsThisNumber=0;
@@ -8399,8 +8396,8 @@ function ladderProPlayAnother(){
 }
 function exitLadderPro(){ state.ladderPro=null; state.screen='practice'; render(); }
 const LADDER_PRO_PRESETS = [
-  {val:'all', label:'Whole Board', desc:'All 20 numbers, plus the bull.'},
-  {val:'cricket', label:'Cricket Numbers', desc:'15 through 20, plus the bull.'},
+  {val:'all', label:'Whole Board', desc:'All 20 numbers (see Bull toggle above for the bull).'},
+  {val:'cricket', label:'Cricket Numbers', desc:'15 through 20 (see Bull toggle above for the bull).'},
   {val:'weak5', label:'Weak Spots', desc:'Your worst 5 numbers right now, computed live from your own history.'},
   {val:'topHalf', label:'Top Half', desc:'The upper half of the board.'},
   {val:'bottomHalf', label:'Bottom Half', desc:'The lower half of the board.'},
@@ -8430,6 +8427,7 @@ function renderLadderProSetup(){
   const segType = state.ladderProSetupSeg || 'any';
   const order = state.ladderProSetupOrder || 'sequential';
   const preset = state.ladderProSetupPreset || 'all';
+  const includeBull = state.ladderProSetupIncludeBull!==false;
   const presetInfo = LADDER_PRO_PRESETS.find(p=>p.val===preset);
   const player = state.players.find(p=>p.id===state.ladderProPlayerId);
   return `<div class="topbar"><div class="iconbtn" onclick="state.screen='ladderProPlayerPicker'; render();">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Progress Tracker Pro</h1><div style="width:38px;"></div></div>
@@ -8441,15 +8439,19 @@ function renderLadderProSetup(){
         <span class="chip ${segType==='any'?'selected':''}" onclick="state.ladderProSetupSeg='any'; render();">Whole Segment</span>
         <span class="chip ${segType==='double'?'selected':''}" onclick="state.ladderProSetupSeg='double'; render();">Doubles Only</span>
         <span class="chip ${segType==='triple'?'selected':''}" onclick="state.ladderProSetupSeg='triple'; render();">Triples Only</span>
-        <span class="chip ${segType==='innerBull'?'selected':''}" onclick="state.ladderProSetupSeg='innerBull'; render();">Inner Bull Only</span>
-        <span class="chip ${segType==='outerBull'?'selected':''}" onclick="state.ladderProSetupSeg='outerBull'; render();">Outer Bull Only</span>
       </div>
     </div>
     <div style="margin-top:14px;">
       <span class="field-label">Order</span>
       <div class="chip-wrap">
-        <span class="chip ${order==='sequential'?'selected':''}" onclick="state.ladderProSetupOrder='sequential'; render();">1 Through Bull</span>
+        <span class="chip ${order==='sequential'?'selected':''}" onclick="state.ladderProSetupOrder='sequential'; render();">Sequential</span>
         <span class="chip ${order==='random'?'selected':''}" onclick="state.ladderProSetupOrder='random'; render();">Random Order</span>
+      </div>
+    </div>
+    <div style="margin-top:14px;">
+      <span class="field-label">Bull</span>
+      <div class="chip-wrap">
+        <span class="chip ${includeBull?'selected':''}" onclick="state.ladderProSetupIncludeBull=!(state.ladderProSetupIncludeBull!==false); render();">Include Bull (I-Bull + O-Bull, always separate)</span>
       </div>
     </div>
     <div class="expandable-opt-row" style="margin-top:14px;">
@@ -8464,9 +8466,9 @@ function renderLadderProSetup(){
         </div>`).join('')}</div>` : ''}
     </div>
     ${preset==='custom' ? `<div style="margin-top:10px;">
-      <div class="chip-wrap">${LADDER_PRO_ALL_NUMBERS.map(n=>`<span class="chip ${(state.ladderProCustomNums||[]).includes(n)?'selected':''}" onclick="ladderProToggleCustomNum('${n}')">${n==='B'?'Bull':n}</span>`).join('')}</div>
+      <div class="chip-wrap">${LADDER_PRO_ALL_NUMBERS.map(n=>`<span class="chip ${(state.ladderProCustomNums||[]).includes(n)?'selected':''}" onclick="ladderProToggleCustomNum('${n}')">${n}</span>`).join('')}</div>
     </div>` : ''}
-    <button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="startLadderPro('${state.ladderProPlayerId}','${segType}','${order}','${preset}')" ${preset==='custom' && !(state.ladderProCustomNums||[]).length ? 'disabled' : ''}>Begin</button>
+    <button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="startLadderPro('${state.ladderProPlayerId}','${segType}','${order}','${preset}',${includeBull})" ${preset==='custom' && !(state.ladderProCustomNums||[]).length && !includeBull ? 'disabled' : ''}>Begin</button>
     <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="state.screen='ladderProHistoryView'; render();">View History Instead</button>
   </div>`;
 }
@@ -8483,8 +8485,8 @@ function renderLadderProActive(){
   if(!t) return renderLadderProPlayerPicker();
   if(t.phase==='lapComplete') return renderLadderProLapComplete();
   const target = t.numbers[t.numIdx];
-  const targetLabel = target==='B' ? 'the Bull' : target;
-  const ringLabel = t.segType==='any' ? '' : t.segType==='double' ? ' (double)' : ' (triple)';
+  const targetLabel = target==='IB' ? 'I-Bull' : target==='OB' ? 'O-Bull' : target==='B' ? 'the Bull' : target;
+  const ringLabel = (target==='IB' || target==='OB') ? '' : t.segType==='any' ? '' : t.segType==='double' ? ' (double)' : ' (triple)';
   return `<div class="game-header-row">
     <div><div class="round-label">NUMBER</div><div class="round-value">${t.numIdx+1} of ${t.numbers.length}</div></div>
     <div class="game-title-center">Progress Tracker Pro</div>
