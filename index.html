@@ -841,7 +841,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/27/2026, 6:10 PM';
+const BUILD_STAMP = '8/27/2026, 9:55 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5418,6 +5418,12 @@ function render(){
     const cur = appFooter ? appFooter.querySelector('.ladder-row.current') : null;
     if(cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
   }
+  if(state.screen==='ladderProHistoryView'){
+    wireLadderProScrollSync('ladderProHistoryScorecard', false);
+  }
+  if(state.screen==='ladderProActive'){
+    wireLadderProScrollSync('ladderProLiveScorecard', true);
+  }
 }
 
 /* ========================= AUTO-FIT (no-scroll pass) =========================
@@ -8520,6 +8526,28 @@ const LADDER_PRO_METRICS = [
   {val:'last5', label:'Last 5 Sessions'},
   {val:'trend', label:'Overall Trend'},
 ];
+// Each row's session-columns strip scrolls independently by default, which
+// makes it easy to lose which column (session) you're even looking at once
+// you scroll one row but not the others. This keeps every row's horizontal
+// scroll position locked together, so a given column always lines up across
+// every target as you scroll through months of history. Used for both the
+// History screen (all sessions) and the live gameplay screen (last 10 +
+// the current lap).
+function wireLadderProScrollSync(containerId, scrollToEnd){
+  const strips = document.querySelectorAll('#'+containerId+' .ladder-row-cells');
+  if(!strips.length) return;
+  let syncing = false;
+  strips.forEach(el=>{
+    if(scrollToEnd) el.scrollLeft = el.scrollWidth;
+    el.addEventListener('scroll', ()=>{
+      if(syncing) return;
+      syncing = true;
+      const left = el.scrollLeft;
+      strips.forEach(other=>{ if(other!==el) other.scrollLeft = left; });
+      syncing = false;
+    });
+  });
+}
 function renderLadderProHistoryView(){
   const playerId = state.ladderProPlayerId;
   const player = state.players.find(p=>p.id===playerId);
@@ -8555,7 +8583,7 @@ function renderLadderProHistoryView(){
     <div class="chip-wrap" style="margin-top:8px;">
       ${LADDER_PRO_METRICS.map(m=>`<span class="chip ${metric===m.val?'selected':''}" onclick="state.ladderProHistoryMetric='${m.val}'; render();">${m.label}</span>`).join('')}
     </div>
-    <div class="ladder-scorecard" style="margin-top:14px; overflow-x:auto;">${rows}</div>
+    <div class="ladder-scorecard" id="ladderProHistoryScorecard" style="margin-top:14px; overflow-x:auto;">${rows}</div>
   </div>`;
 }
 function ladderFinishSession(t){
@@ -8771,17 +8799,34 @@ function ladderProAllTimeCell(t, targetId){
   const color = ladderCellColor(Math.round(avg));
   return `<div class="ladder-cell ladder-alltime" style="background:${color};" title="All-time average: ${avg.toFixed(1)}">${avg.toFixed(1)}</div>`;
 }
+// Live scorecard: shows the last 10 completed sessions for each target as a
+// scrollable strip, with the current in-progress lap always appended as the
+// rightmost (highlighted) cell — as more sessions accumulate, older ones
+// scroll off to the left rather than the row growing indefinitely. The
+// target label sits between the scrollable history and the fixed all-time
+// average, so it stays visible no matter how far the history is scrolled.
 function ladderProScorecard(t){
+  const hist = ladderProHistoryFor(t.playerId);
   const rows = t.numbers.map((n,i)=>{
     const targetId = ladderProTargetId(n, t.segType);
     const label = ladderProTargetLabel(targetId);
     const isCurrent = i===t.numIdx;
+    const entries = hist.byTarget[targetId] || {};
+    const sessionIdxs = Object.keys(entries).map(Number).sort((a,b)=>a-b).slice(-10);
+    const historyCells = sessionIdxs.map(idx=>{
+      const val = entries[idx];
+      return `<div class="ladder-cell" style="background:${ladderCellColor(val)};">${val}</div>`;
+    }).join('');
     const done = t.sessionResults[n]!==undefined;
-    const color = done ? ladderCellColor(t.sessionResults[n]) : 'var(--felt-lighter)';
-    const cell = `<div class="ladder-cell" style="background:${color}; ${isCurrent?'box-shadow:0 0 0 2px var(--brass);':''}">${done?t.sessionResults[n]:''}</div>`;
-    return `<div class="ladder-row${isCurrent?' current':''}"><div class="ladder-row-label">${label}</div><div class="ladder-row-cells">${cell}</div>${ladderProAllTimeCell(t,targetId)}</div>`;
+    const liveColor = done ? ladderCellColor(t.sessionResults[n]) : 'var(--felt-lighter)';
+    const liveCell = `<div class="ladder-cell" style="background:${liveColor}; ${isCurrent?'box-shadow:0 0 0 2px var(--brass);':''}">${done?t.sessionResults[n]:''}</div>`;
+    return `<div class="ladder-row${isCurrent?' current':''}">
+      <div class="ladder-row-cells" style="flex:1; min-width:0; overflow-x:auto; margin-right:0;">${historyCells}${liveCell}</div>
+      <div class="ladder-row-label" style="width:auto; flex-shrink:0; text-align:center; background:var(--felt-lighter); border-radius:4px; padding:2px 7px; font-family:'JetBrains Mono',monospace; font-weight:600; font-size:12px;">${label}</div>
+      ${ladderProAllTimeCell(t,targetId)}
+    </div>`;
   }).join('');
-  return `<div class="ladder-scorecard">${rows}</div>`;
+  return `<div class="ladder-scorecard" id="ladderProLiveScorecard">${rows}</div>`;
 }
 function ladderCellColor(hits){
   if(hits===undefined || hits===null) return 'transparent';
