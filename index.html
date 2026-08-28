@@ -842,7 +842,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/27/2026, 11:35 PM';
+const BUILD_STAMP = '8/28/2026, 12:15 AM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -8828,43 +8828,85 @@ function renderTheLadderSetup(){
 // Unlike The Ladder, which only shows its scorecard after warmup, this is
 // meant to be visible from the very first target — there's no warmup phase
 // to gate behind.
+// Splits a target's label into the two lines the live scorecard shows: the
+// number (or a bull dot) on top, and the full ring-type word underneath —
+// lets the row spell out "DOUBLE"/"TRIPLE"/"INNER BULL"/"OUTER BULL" in full
+// without eating into the horizontal space the session-history cells need.
+function ladderProTargetLabelParts(id){
+  if(id==='IB') return {top:'&#9679;', bottom:'INNER BULL'};
+  if(id==='OB') return {top:'&#9679;', bottom:'OUTER BULL'};
+  if(id[0]==='D') return {top:id.slice(1), bottom:'DOUBLE'};
+  if(id[0]==='T') return {top:id.slice(1), bottom:'TRIPLE'};
+  return {top:id, bottom:''};
+}
+// Colors matched to the actual dartboard SVG's own double/triple ring fills
+// (#A84545 red, #4A8A66 green — pulled straight from renderDartboardSVG)
+// rather than the brighter, unrelated red/orange/yellow/green used
+// elsewhere. Orange and yellow are tuned to the same muted warmth/lightness
+// as those two board colors so the whole 0-3 scale reads as one family.
+// Scoped to Progress Tracker Pro's live scorecard only — the History screen
+// and The Ladder keep the original ladderCellColor scale for now.
+function ladderProCellColor(hits){
+  if(hits===0) return '#A84545';
+  if(hits===1) return '#B87A3D';
+  if(hits===2) return '#B8A23D';
+  return '#4A8A66';
+}
 function ladderProAllTimeText(t, targetId){
   const hist = ladderProHistoryFor(t.playerId);
   const avg = ladderProAllTimeAvg(hist, targetId);
-  const style = 'min-width:26px; text-align:right; flex-shrink:0; margin-left:4px; font-family:\'JetBrains Mono\',monospace; font-size:13px; font-weight:700;';
+  const style = 'min-width:30px; text-align:right; flex-shrink:0; margin-left:10px; font-family:\'JetBrains Mono\',monospace; font-size:14px; font-weight:600;';
   if(avg===null || avg===undefined) return `<div style="${style} color:var(--cream-dim);">–</div>`;
-  const color = ladderCellColor(Math.round(avg));
+  const color = ladderProCellColor(Math.round(avg));
   return `<div style="${style} color:${color};" title="All-time average: ${avg.toFixed(1)}">${avg.toFixed(1)}</div>`;
+}
+// A single filled pill: dartboard-palette background with dark ink text for
+// a real result (matching how the board itself prints numbers on its own
+// colored wedges), a muted flat fill for an empty placeholder slot, or a
+// filled brass pill with a small dark dot for the current lap's
+// not-yet-thrown target.
+function ladderProPillCell(val, isPendingCurrent){
+  const base = 'width:28px; height:26px; border-radius:13px; flex-shrink:0; font-family:\'JetBrains Mono\',monospace; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;';
+  if(isPendingCurrent) return `<div style="${base} background:var(--brass);"><div style="width:6px; height:6px; border-radius:50%; background:#1c1410;"></div></div>`;
+  if(val===undefined || val===null) return `<div style="${base} background:#2a3554; color:#5a6485;">–</div>`;
+  const color = ladderProCellColor(val);
+  return `<div style="${base} background:${color}; color:#1c1410;">${val}</div>`;
 }
 // Live scorecard: shows the last 10 completed sessions for each target as a
 // scrollable strip, with the current in-progress lap always appended as the
-// rightmost (highlighted) cell — as more sessions accumulate, older ones
-// scroll off to the left rather than the row growing indefinitely. The
-// target label is pinned on the left (always visible), and the all-time
-// average sits close against the live cell on the right as plain colored
-// text rather than a filled box.
+// rightmost cell — as more sessions accumulate, older ones scroll off to the
+// left rather than the row growing indefinitely. Padded with dashed
+// placeholder slots up to a minimum of 4 history cells so a fresh target
+// still shows a full 5-column rhythm (4 history + the live cell) rather than
+// a cramped single cell, matching every other row once real data fills in.
 function ladderProScorecard(t){
   const hist = ladderProHistoryFor(t.playerId);
+  const header = `<div style="display:flex; align-items:center; padding:6px 6px 8px;">
+    <div style="width:56px; flex-shrink:0; color:var(--cream-dim); font-size:10px; letter-spacing:0.08em; text-align:center;">TARGET</div>
+    <div style="flex:1; color:var(--cream-dim); font-size:10px; letter-spacing:0.08em; margin-left:10px;">SESSIONS</div>
+    <div style="color:var(--cream-dim); font-size:10px; letter-spacing:0.08em;">AVG</div>
+  </div>`;
   const rows = t.numbers.map((n,i)=>{
     const targetId = ladderProTargetId(n, t.segType);
-    const label = ladderProTargetLabel(targetId);
+    const {top, bottom} = ladderProTargetLabelParts(targetId);
     const isCurrent = i===t.numIdx;
     const entries = hist.byTarget[targetId] || {};
     const sessionIdxs = Object.keys(entries).map(Number).sort((a,b)=>a-b).slice(-10);
-    const historyCells = sessionIdxs.map(idx=>{
-      const val = entries[idx];
-      return `<div class="ladder-cell" style="background:${ladderCellColor(val)};">${val}</div>`;
-    }).join('');
+    const realVals = sessionIdxs.map(idx=>entries[idx]);
+    const padCount = Math.max(0, 4-realVals.length);
+    const historyCells = Array(padCount).fill(undefined).concat(realVals).map(v=>ladderProPillCell(v, false)).join('');
     const done = t.sessionResults[n]!==undefined;
-    const liveColor = done ? ladderCellColor(t.sessionResults[n]) : 'var(--felt-lighter)';
-    const liveCell = `<div class="ladder-cell" style="background:${liveColor}; ${isCurrent?'box-shadow:0 0 0 2px var(--brass);':''}">${done?t.sessionResults[n]:''}</div>`;
-    return `<div class="ladder-row${isCurrent?' current':''}" style="gap:0;">
-      <div style="width:42px; flex-shrink:0; text-align:left; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:12px; white-space:nowrap; margin-right:8px;">${label}</div>
-      <div class="ladder-row-cells" style="flex:0 1 auto; max-width:130px; min-width:0; overflow-x:auto; margin-right:0;">${historyCells}${liveCell}</div>
+    const liveCell = done ? ladderProPillCell(t.sessionResults[n], false) : ladderProPillCell(undefined, isCurrent);
+    return `<div class="ladder-row${isCurrent?' current':''}" style="gap:0; padding:8px 6px; ${isCurrent?'border:1.5px solid var(--brass); border-radius:10px;':''}">
+      <div style="width:56px; flex-shrink:0; text-align:center;">
+        <div style="color:var(--cream); font-size:15px; line-height:1.15;">${top}</div>
+        ${bottom?`<div style="color:var(--cream-dim); font-size:9px; letter-spacing:0.05em;">${bottom}</div>`:''}
+      </div>
+      <div class="ladder-row-cells" style="flex:0 1 auto; max-width:160px; min-width:0; overflow-x:auto; margin-right:0; margin-left:10px; gap:7px;">${historyCells}${liveCell}</div>
       ${ladderProAllTimeText(t,targetId)}
     </div>`;
   }).join('');
-  return `<div class="ladder-scorecard" id="ladderProLiveScorecard">${rows}</div>`;
+  return `<div class="ladder-scorecard" id="ladderProLiveScorecard">${header}${rows}</div>`;
 }
 function ladderCellColor(hits){
   if(hits===undefined || hits===null) return 'transparent';
