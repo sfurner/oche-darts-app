@@ -656,7 +656,8 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .ladder-alltime{ font-size:14px; margin-left:8px; }
 .ladder-row.current{ background:rgba(204,154,61,0.12); }
 .ladder-row-label{ width:24px; flex-shrink:0; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); text-align:right; }
-.ladder-row-cells{ display:flex; gap:3px; margin-right:auto; }
+.ladder-row-cells{ display:flex; gap:3px; margin-right:auto; scrollbar-width:none; }
+.ladder-row-cells::-webkit-scrollbar{ display:none; }
 .ladder-cell{ width:22px; height:22px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; color:var(--ink); flex-shrink:0; }
 .board-wrap{display:inline-block; position:relative; line-height:0; transform:scale(var(--dartboard-scale, 1)); transform-origin:center center;}
 .board-miss-btn{
@@ -841,7 +842,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/27/2026, 11:05 PM';
+const BUILD_STAMP = '8/27/2026, 11:35 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -8858,8 +8859,8 @@ function ladderProScorecard(t){
     const liveColor = done ? ladderCellColor(t.sessionResults[n]) : 'var(--felt-lighter)';
     const liveCell = `<div class="ladder-cell" style="background:${liveColor}; ${isCurrent?'box-shadow:0 0 0 2px var(--brass);':''}">${done?t.sessionResults[n]:''}</div>`;
     return `<div class="ladder-row${isCurrent?' current':''}" style="gap:0;">
-      <div style="width:26px; flex-shrink:0; text-align:left; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:12px; margin-right:8px;">${label}</div>
-      <div class="ladder-row-cells" style="flex:1; min-width:0; overflow-x:auto; margin-right:0;">${historyCells}${liveCell}</div>
+      <div style="width:42px; flex-shrink:0; text-align:left; color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:12px; white-space:nowrap; margin-right:8px;">${label}</div>
+      <div class="ladder-row-cells" style="flex:0 1 auto; max-width:130px; min-width:0; overflow-x:auto; margin-right:0;">${historyCells}${liveCell}</div>
       ${ladderProAllTimeText(t,targetId)}
     </div>`;
   }).join('');
