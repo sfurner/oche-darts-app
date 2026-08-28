@@ -842,7 +842,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/28/2026, 12:35 PM';
+const BUILD_STAMP = '8/28/2026, 1:20 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -985,6 +985,7 @@ let state = {
   rememberedGameOptions: {},
   expandedOptionRow: null,
   throwAnalyzer: null,
+  pinpoint: null,
   proRoutine: null,
   closeoutTrainer: null,
   closeoutTrainerSetupSeg: 'single',
@@ -2515,6 +2516,76 @@ function exitThrowAnalyzer(){
   render();
 }
 
+/* ========================= PINPOINT ========================= */
+// A deliberately bare-bones practice mode: pick one exact point anywhere on
+// the board (not tied to a number or ring), then throw at it for as long as
+// you want. Every dart becomes a colored dot on a live heat map — dead
+// center is green, and it shifts to red quickly the further off you land.
+// No scoring, no rounds, no dart limit, nothing saved between sessions —
+// purely a visual read on whether your misses cluster in a direction.
+function startPinpoint(){
+  state.pinpoint = { target: null, hits: [] };
+  state.screen = 'pinpointActive';
+  render();
+}
+function pinpointSetTarget(x, y){
+  const p = state.pinpoint;
+  if(!p) return;
+  p.target = {x, y};
+  p.hits = [];
+  render();
+}
+function pinpointRecordDart(point){
+  const p = state.pinpoint;
+  if(!p || !p.target || !point) return;
+  const distPx = Math.sqrt((point.x-p.target.x)**2 + (point.y-p.target.y)**2);
+  p.hits.push({x:point.x, y:point.y, distMM: pxToMm(distPx)});
+  // A very long session (hours, per the point of this mode) could in theory
+  // accumulate an enormous number of dots — trim quietly from the oldest
+  // end well before that becomes a real rendering cost.
+  if(p.hits.length > 2000) p.hits.shift();
+  render();
+}
+// One direct click handler for the whole board: the first tap (no target
+// yet) sets the target; every tap after that is treated as a dart, same as
+// a real camera throw would be.
+function pinpointBoardClicked(evt){
+  const p = state.pinpoint;
+  if(!p) return;
+  const pt = svgPointFromEvent(evt);
+  if(!pt) return;
+  if(!p.target) pinpointSetTarget(pt.x, pt.y);
+  else pinpointRecordDart(pt);
+}
+function pinpointChangeTarget(){
+  const p = state.pinpoint;
+  if(!p) return;
+  p.target = null;
+  p.hits = [];
+  render();
+}
+function pinpointClearHeatmap(){
+  const p = state.pinpoint;
+  if(!p) return;
+  p.hits = [];
+  render();
+}
+function exitPinpoint(){
+  state.pinpoint = null;
+  state.screen = 'practice';
+  render();
+}
+// Smooth green-to-red gradient by real-world distance (mm) from the target —
+// a non-linear falloff (dist^0.6) so the color shifts away from green
+// quickly on even a small miss, matching "dead on is best, then it drops
+// off fast" rather than a gentle linear fade.
+function pinpointColorForDistance(distMM){
+  const maxDist = 100;
+  const t = Math.min(1, distMM/maxDist);
+  const hue = 120 * (1 - Math.pow(t, 0.6));
+  return `hsl(${hue}, 75%, 50%)`;
+}
+
 /* ========================= SECTION TRAINER: ZONE MODEL ========================= */
 const SECTION_BAND_LABELS = {inner:'Inner Single', triple:'Triple', outer:'Outer Single', double:'Double', over:'Just Outside the Board', 'bull-outer':'Outer Bull', 'bull-inner':'Bull'};
 function buildSectionZones(){
@@ -3016,6 +3087,14 @@ function proRoutineRecordDart(num, mult, point){
 function commitBoardThrow(c){
   if(state.screen==='throwAnalyzer'){
     if(c.point) throwAnalyzerRecordDart(c.point);
+    return;
+  }
+  if(state.screen==='pinpointActive'){
+    // Manual target-setting/board clicks are handled directly by
+    // pinpointBoardClicked() on the SVG itself — this only handles real
+    // camera-thrown darts, and only once a target has actually been chosen
+    // (a camera dart can't be used to pick the target itself).
+    if(state.pinpoint && state.pinpoint.target && c.point) pinpointRecordDart(c.point);
     return;
   }
   state.pendingBoard = null;
@@ -5418,6 +5497,7 @@ function render(){
     case 'sectionSetup': html = renderSectionSetup(); break;
     case 'throwAnalyzerSetup': html = renderThrowAnalyzerSetup(); break;
     case 'throwAnalyzer': html = renderThrowAnalyzer(); break;
+    case 'pinpointActive': html = renderPinpointActive(); break;
     case 'proRoutine': html = renderProRoutine(); break;
     case 'closeoutTrainerSetup': html = renderCloseoutTrainerSetup(); break;
     case 'closeoutTrainerActive': html = renderCloseoutTrainerActive(); break;
@@ -5643,6 +5723,13 @@ function renderPracticeTab(){
       <p class="desc">A precise dot appears on the board. Throw a block of darts at it with no feedback shown, then get one honest, hedged suggestion based on exactly where your darts actually landed — never a diagnosis, since the camera can see the board but not your throw.</p>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="state.screen='throwAnalyzerSetup'; render();">Start</button>
+      </div>
+    </div>
+    <div class="card" style="border:1px solid var(--brass);">
+      <div class="card-row"><h3>Pinpoint</h3><span class="badge live">New</span></div>
+      <p class="desc">Pick one exact spot anywhere on the board — not a number, not a ring, just a point — and throw at it for as long as you want. Every dart becomes a colored dot on a live heat map, green dead-center fading fast to red the further off you land. No scoring, no rounds, nothing saved — just a visual read on which direction your misses tend to drift.</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="startPinpoint()">Start</button>
       </div>
     </div>
     <div class="card" style="border:1px solid var(--brass);">
@@ -8167,6 +8254,58 @@ function renderThrowAnalyzer(){
       <div class="precision-corner-left">${sub}</div>
       <div class="precision-corner-right">${progressText}</div>
     </div>
+  </div>`;
+}
+// A deliberately minimal ring-and-wedge-line outline — no wedge colors, no
+// photo-realistic board — with just enough reference geometry (rings +
+// spokes + number labels) to pick and describe an exact spot. Clickable
+// anywhere: the whole SVG routes through pinpointBoardClicked().
+function renderPinpointBoard(p){
+  const canvas = BOARD_CANVAS;
+  const cx = BOARD_CX, cy = BOARD_CY;
+  let rings = `<circle cx="${cx}" cy="${cy}" r="${R_BEZEL}" fill="#1c1c1c" stroke="#4a4a4a" stroke-width="1.5"/>
+    <circle cx="${cx}" cy="${cy}" r="${R_DOUBLE_OUT}" fill="none" stroke="#5a5a5a" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="${R_DOUBLE_IN}" fill="none" stroke="#4a4a4a" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="${R_TRIPLE_OUT}" fill="none" stroke="#5a5a5a" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="${R_TRIPLE_IN}" fill="none" stroke="#4a4a4a" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="none" stroke="#5a5a5a" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="none" stroke="#4a4a4a" stroke-width="1"/>`;
+  let labels = '';
+  for(let i=0;i<20;i++){
+    const aStart = -9 + i*18 + WEDGE_ROTATION;
+    const p1 = polar(cx,cy,R_BULL_OUTER,aStart), p2 = polar(cx,cy,R_BEZEL,aStart);
+    rings += `<line x1="${p1[0]}" y1="${p1[1]}" x2="${p2[0]}" y2="${p2[1]}" stroke="#4a4a4a" stroke-width="0.75"/>`;
+    const lp = polar(cx,cy,R_BEZEL-24,aStart+9);
+    labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream-dim)" font-family="Oswald,sans-serif" font-size="17" font-weight="600" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${BOARD_ORDER[i]}</text>`;
+  }
+  const target = p.target ? `<g style="pointer-events:none;">
+    <line x1="${p.target.x-14}" y1="${p.target.y}" x2="${p.target.x+14}" y2="${p.target.y}" stroke="#FF2EC4" stroke-width="2"/>
+    <line x1="${p.target.x}" y1="${p.target.y-14}" x2="${p.target.x}" y2="${p.target.y+14}" stroke="#FF2EC4" stroke-width="2"/>
+    <circle cx="${p.target.x}" cy="${p.target.y}" r="5" fill="none" stroke="#FF2EC4" stroke-width="2"/>
+  </g>` : '';
+  const dots = p.hits.map(h=>{
+    const color = pinpointColorForDistance(h.distMM);
+    return `<circle cx="${h.x}" cy="${h.y}" r="6" fill="${color}" fill-opacity="0.85" style="pointer-events:none; filter:drop-shadow(0 0 3px ${color});"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="pinpointBoardClicked(event)" style="cursor:crosshair;">
+    <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
+    ${rings}${labels}${dots}${target}
+  </svg>`;
+}
+function renderPinpointActive(){
+  const p = state.pinpoint;
+  if(!p) return renderPracticeTab();
+  const sub = p.target ? `${p.hits.length} dart${p.hits.length===1?'':'s'} thrown` : 'Tap anywhere on the board to set your target';
+  return `<div class="topbar"><div class="iconbtn" onclick="exitPinpoint()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Pinpoint</h1><div style="width:38px;"></div></div>
+  <div class="content precision-max-board">
+    <div class="board-area" style="flex:1;">${renderPinpointBoard(p)}
+      <div class="precision-corner-left">${sub}</div>
+      <div class="precision-corner-right">${renderCameraHelpTrigger()}</div>
+    </div>
+    ${p.target ? `<div style="display:flex; gap:8px; padding:0 4px;">
+      <button class="btn btn-secondary" style="flex:1;" onclick="pinpointClearHeatmap()">Clear Dots</button>
+      <button class="btn btn-secondary" style="flex:1;" onclick="pinpointChangeTarget()">Change Target</button>
+    </div>` : ''}
   </div>`;
 }
 function renderThrowAnalyzerResults(){
