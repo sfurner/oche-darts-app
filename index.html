@@ -842,7 +842,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/28/2026, 1:20 PM';
+const BUILD_STAMP = '8/28/2026, 6:18 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1031,7 +1031,7 @@ const STORAGE_KEY = 'oche-darts-data-v1';
 // the class that actually makes that layout work was previously hardcoded
 // to only the main gameplay screen, which is exactly why The Ladder's
 // board disappeared: its screen name just wasn't on the list.
-const GAME_LAYOUT_SCREENS = new Set(['active','practiceActive','checkoutPracticeActive','theLadderActive','ladderProActive']);
+const GAME_LAYOUT_SCREENS = new Set(['active','practiceActive','checkoutPracticeActive','theLadderActive','ladderProActive','pinpointActive']);
 const PERSISTENT_STATE_KEYS = [
   'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance', 'playerAttributePerformance', 'playerAccuracy',
   'savedGames', 'customPractices', 'customGames', 'history',
@@ -2524,7 +2524,7 @@ function exitThrowAnalyzer(){
 // No scoring, no rounds, no dart limit, nothing saved between sessions —
 // purely a visual read on whether your misses cluster in a direction.
 function startPinpoint(){
-  state.pinpoint = { target: null, hits: [] };
+  state.pinpoint = { target: null, hits: [], mode: 'full' };
   state.screen = 'pinpointActive';
   render();
 }
@@ -2584,6 +2584,18 @@ function pinpointColorForDistance(distMM){
   const t = Math.min(1, distMM/maxDist);
   const hue = 120 * (1 - Math.pow(t, 0.6));
   return `hsl(${hue}, 75%, 50%)`;
+}
+// Full mode colors by real 2D distance from the target, same as always.
+// Left-Right/Up-Down modes deliberately ignore the other axis entirely — a
+// dart that's way high or low but lands right on the vertical line still
+// reads as green in Left-Right mode, since the drill is isolating one axis,
+// not overall accuracy. Recomputed live from the raw x/y each hit already
+// stores, so switching modes recolors existing dots instead of needing a
+// fresh session.
+function pinpointDistanceForMode(hit, target, mode){
+  if(mode==='leftright') return pxToMm(Math.abs(hit.x-target.x));
+  if(mode==='updown') return pxToMm(Math.abs(hit.y-target.y));
+  return hit.distMM;
 }
 
 /* ========================= SECTION TRAINER: ZONE MODEL ========================= */
@@ -8278,33 +8290,45 @@ function renderPinpointBoard(p){
     const lp = polar(cx,cy,R_BEZEL-24,aStart+9);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream-dim)" font-family="Oswald,sans-serif" font-size="17" font-weight="600" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${BOARD_ORDER[i]}</text>`;
   }
+  const mode = p.mode || 'full';
+  const guideLine = (p.target && mode==='leftright')
+    ? `<line x1="${p.target.x}" y1="0" x2="${p.target.x}" y2="${canvas}" stroke="#FF2EC4" stroke-width="1.5" stroke-dasharray="7,5" opacity="0.55" style="pointer-events:none;"/>`
+    : (p.target && mode==='updown')
+    ? `<line x1="0" y1="${p.target.y}" x2="${canvas}" y2="${p.target.y}" stroke="#FF2EC4" stroke-width="1.5" stroke-dasharray="7,5" opacity="0.55" style="pointer-events:none;"/>`
+    : '';
   const target = p.target ? `<g style="pointer-events:none;">
     <line x1="${p.target.x-14}" y1="${p.target.y}" x2="${p.target.x+14}" y2="${p.target.y}" stroke="#FF2EC4" stroke-width="2"/>
     <line x1="${p.target.x}" y1="${p.target.y-14}" x2="${p.target.x}" y2="${p.target.y+14}" stroke="#FF2EC4" stroke-width="2"/>
     <circle cx="${p.target.x}" cy="${p.target.y}" r="5" fill="none" stroke="#FF2EC4" stroke-width="2"/>
   </g>` : '';
   const dots = p.hits.map(h=>{
-    const color = pinpointColorForDistance(h.distMM);
+    const d = pinpointDistanceForMode(h, p.target, mode);
+    const color = pinpointColorForDistance(d);
     return `<circle cx="${h.x}" cy="${h.y}" r="6" fill="${color}" fill-opacity="0.85" style="pointer-events:none; filter:drop-shadow(0 0 3px ${color});"/>`;
   }).join('');
   return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="pinpointBoardClicked(event)" style="cursor:crosshair;">
     <rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>
-    ${rings}${labels}${dots}${target}
+    ${rings}${labels}${guideLine}${dots}${target}
   </svg>`;
 }
 function renderPinpointActive(){
   const p = state.pinpoint;
   if(!p) return renderPracticeTab();
+  const mode = p.mode || 'full';
   const sub = p.target ? `${p.hits.length} dart${p.hits.length===1?'':'s'} thrown` : 'Tap anywhere on the board to set your target';
-  return `<div class="topbar"><div class="iconbtn" onclick="exitPinpoint()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Pinpoint</h1><div style="width:38px;"></div></div>
+  return `<div class="topbar"><div class="iconbtn" onclick="exitPinpoint()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">Pinpoint</h1><div style="min-width:38px; text-align:right;">${renderCameraHelpTrigger()}</div></div>
   <div class="content precision-max-board">
     <div class="board-area" style="flex:1;">${renderPinpointBoard(p)}
       <div class="precision-corner-left">${sub}</div>
-      <div class="precision-corner-right">${renderCameraHelpTrigger()}</div>
     </div>
-    ${p.target ? `<div style="display:flex; gap:8px; padding:0 4px;">
-      <button class="btn btn-secondary" style="flex:1;" onclick="pinpointClearHeatmap()">Clear Dots</button>
-      <button class="btn btn-secondary" style="flex:1;" onclick="pinpointChangeTarget()">Change Target</button>
+    ${p.target ? `<div class="chip-wrap" style="justify-content:center; padding:0 4px;">
+      <span class="chip ${mode==='full'?'selected':''}" onclick="state.pinpoint.mode='full'; render();">Full</span>
+      <span class="chip ${mode==='leftright'?'selected':''}" onclick="state.pinpoint.mode='leftright'; render();">Left-Right</span>
+      <span class="chip ${mode==='updown'?'selected':''}" onclick="state.pinpoint.mode='updown'; render();">Up-Down</span>
+    </div>
+    <div style="display:flex; gap:8px; padding:6px 4px 0; justify-content:center;">
+      <div class="tiny-edit-btn" style="flex:0 1 140px;" onclick="pinpointClearHeatmap()">Clear Dots</div>
+      <div class="tiny-edit-btn" style="flex:0 1 140px;" onclick="pinpointChangeTarget()">Change Target</div>
     </div>` : ''}
   </div>`;
 }
