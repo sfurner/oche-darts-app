@@ -863,7 +863,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v3.3';
+const BUILD_STAMP = 'v3.4';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5702,7 +5702,7 @@ function render(){
    kiosk/fullscreen mode. */
 const AUTO_FIT_MIN_ZOOM = 0.62;
 function autoFitScreens(){
-  const skip = state.screen === 'active';
+  const skip = state.screen === 'active' || state.screen === 'playerSetup';
   const targets = [document.getElementById('app')];
   document.querySelectorAll('.screen').forEach(el=>{ if(el && !targets.includes(el)) targets.push(el); });
   targets.forEach(el=>{
