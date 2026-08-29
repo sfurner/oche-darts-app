@@ -420,6 +420,21 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .prow-dart{ display:flex; align-items:center; gap:5px; font-size:11px; color:var(--cream-dim); cursor:pointer; flex-shrink:0; max-width:130px; overflow:hidden; }
 .prow-dart span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .prow-checkbox{ width:20px; height:20px; flex-shrink:0; }
+.player-row-unified.selectable{ cursor:pointer; }
+.player-row-unified.selected{ background:var(--brass); border-color:var(--brass); }
+.player-row-unified.selected .prow-name{ color:#1c1410; }
+.player-row-unified.selected .prow-stat{ color:#4a3820; }
+.prow-botlvl{ font-size:9px; color:var(--cream-dim); margin-left:1px; }
+.player-row-unified.selected .prow-botlvl{ color:#4a3820; }
+.remembered-pill{ display:inline-flex; align-items:center; gap:6px; background:var(--felt-light); border-radius:6px; padding:4px 10px; margin-bottom:16px; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); }
+.remembered-pill .rp-icon{ color:var(--brass); }
+.gchip-wrap{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.gchip{ flex:1; min-width:70px; text-align:center; padding:10px 8px; border-radius:8px; border:1px solid var(--felt-lighter); color:var(--cream-dim); font-family:'Inter',sans-serif; font-size:13px; cursor:pointer; }
+.gchip.selected{ background:var(--brass); border-color:var(--brass); color:#1c1410; font-weight:700; }
+.gnumgrid{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.gnum-chip{ width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:1px solid var(--felt-lighter); color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:13px; cursor:pointer; flex-shrink:0; }
+.gnum-chip.selected{ background:var(--brass); border-color:var(--brass); color:#1c1410; font-weight:700; }
+.gnum-chip.wide{ width:auto; border-radius:18px; padding:0 16px; }
 .player-avatar{
   width:44px;height:44px;border-radius:50%; display:flex;align-items:center;justify-content:center;
   font-weight:700; font-size:20px; color:#1a1206; flex-shrink:0;
@@ -848,7 +863,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v2.5';
+const BUILD_STAMP = 'v3.0';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4596,18 +4611,19 @@ function beginPlayerRowDrag(evt, id, listGetter, listSetter){
 function renderUnifiedPlayerRow(p, opts){
   opts = opts || {};
   const idx = state.players.indexOf(p);
-  const tagClass = p.isBot ? 'bot' : p.isGuest ? 'guest' : 'perm';
-  const tagText = p.isBot ? `Bot &middot; ${p.botRating}/10` : p.isGuest ? 'Guest' : 'Permanent';
   const darts = totalDartsThrown(p.id);
-  const dartId = state.playerDartSelections[p.id];
-  const dart = dartId ? state.dartSetups.find(x=>x.id===dartId) : null;
-  return `<div class="player-row-unified" data-pid="${p.id}">
-    <span class="prow-drag" onpointerdown="${opts.dragListGetter?`beginPlayerRowDrag(event,'${p.id}',${opts.dragListGetter},${opts.dragListSetter})`:''}">&#10241;</span>
-    <div class="prow-avatar" style="background:${playerColor(p,idx)};" onclick="event.stopPropagation(); openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
-    <div class="prow-name" onclick="${opts.onNameClick||''}">${p.name}</div>
-    <span class="prow-tag ${tagClass}">${tagText}</span>
-    ${opts.showDartPicker && !p.isBot ? `<div class="prow-dart" onclick="openDartPicker('${p.id}','playerSetup')">${dart?dartAvatarHtml(dart,16):''}<span>${dart?dartSetupDisplayName(dart):'No Dart'}</span></div>` : `<div class="prow-stat">${darts?darts+' darts':'—'}</div>`}
-    ${opts.showCheckbox ? `<input type="checkbox" ${state.selectedPlayerIds.includes(p.id)?'checked':''} onchange="togglePlayerSelect('${p.id}')" class="prow-checkbox">` : ''}
+  const nameLabel = p.isBot ? `${p.name}<sup class="prow-botlvl">${p.botRating}</sup>` : p.name;
+  const selectable = !!opts.showCheckbox;
+  const selected = selectable && state.selectedPlayerIds.includes(p.id);
+  const pColor = playerColor(p,idx);
+  const avatarStyle = selected ? `background:#1c1410; color:${pColor};` : `background:${pColor};`;
+  const rowClass = `player-row-unified${selectable?' selectable':''}${selected?' selected':''}`;
+  const rowClick = selectable ? ` onclick="togglePlayerSelect('${p.id}')"` : '';
+  return `<div class="${rowClass}" data-pid="${p.id}"${rowClick}>
+    <span class="prow-drag" onpointerdown="${opts.dragListGetter?`event.stopPropagation(); beginPlayerRowDrag(event,'${p.id}',${opts.dragListGetter},${opts.dragListSetter})`:''}">&#10241;</span>
+    <div class="prow-avatar" style="${avatarStyle}" onclick="event.stopPropagation(); openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
+    <div class="prow-name" onclick="event.stopPropagation(); ${opts.onNameClick||''}">${nameLabel}</div>
+    <div class="prow-stat">${darts} darts</div>
   </div>`;
 }
 function playerStatsFor(id){
@@ -4648,14 +4664,9 @@ function randomizeOrder(){
   for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
   render();
 }
-function proceedToOptions(){
-  if(state.selectedPlayerIds.length===0) return;
-  if(state.pendingCustomGame){
-    launchCustomGame();
-    return;
-  }
-  state.screen='gameOptions';
-  state.expandedOptionRow = null;
+function ensureGameOptionsInitialized(){
+  if(state.pendingCustomGame) return;
+  if(state.gameOptions && state.gameOptions._forGameId===state.pendingGameId) return;
   const remembered = (state.rememberedGameOptions && state.rememberedGameOptions[state.pendingGameId]) || {};
   state.gameOptions = {
     startScore: state.pendingGameId==='301'?301:501, inRule:'straight', outRule:'double', guidance:'beginner', variant:'standard',
@@ -4664,8 +4675,8 @@ function proceedToOptions(){
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
     bullMode:'separate',
     ...remembered,
+    _forGameId: state.pendingGameId,
   };
-  render();
 }
 function launchCustomGame(){
   state.session = startCustomGameSession(state.selectedPlayerIds, state.pendingCustomGame);
@@ -5008,12 +5019,10 @@ const GAME_LAUNCHERS = {
 };
 function launchGame(){
   const id = state.pendingGameId;
-  // Remembering choices, scoped to 301/501 as a first test before rolling
-  // this out to every game's options screen.
-  if(id==='301' || id==='501'){
-    if(!state.rememberedGameOptions) state.rememberedGameOptions = {};
-    state.rememberedGameOptions[id] = { inRule: state.gameOptions.inRule, outRule: state.gameOptions.outRule, guidance: state.gameOptions.guidance };
-  }
+  if(!state.rememberedGameOptions) state.rememberedGameOptions = {};
+  const toRemember = {...state.gameOptions};
+  delete toRemember._forGameId;
+  state.rememberedGameOptions[id] = toRemember;
   if(GAME_LAUNCHERS[id]){
     state.session = GAME_LAUNCHERS[id](state.selectedPlayerIds, state.gameOptions);
   } else {
@@ -5599,7 +5608,6 @@ function render(){
     case 'home': html = renderHomeShell(); break;
     case 'rules': html = renderRulesScreen(); break;
     case 'playerSetup': html = renderPlayerSetup(); break;
-    case 'gameOptions': html = renderGameOptions(); break;
     case 'active': html = renderActiveShell(); break;
     case 'win': html = renderWin(); break;
     case 'practicePlayerNeeded': html = renderPracticeNeedsPlayer(); break;
@@ -6043,14 +6051,16 @@ function renderRulesScreen(){
 
 /* ========================= RENDER: PLAYER SETUP ========================= */
 function renderPlayerSetup(){
-  const g = state.pendingCustomGame ? null : GAMES.find(x=>x.id===state.pendingGameId);
-  const titleName = state.pendingCustomGame ? state.pendingCustomGame.name : g.name;
+  const isCustom = !!state.pendingCustomGame;
+  const g = isCustom ? null : GAMES.find(x=>x.id===state.pendingGameId);
+  const titleName = isCustom ? state.pendingCustomGame.name : g.name;
+  ensureGameOptionsInitialized();
   return `<div class="topbar">
     <div class="iconbtn" onclick="state.screen='home'; render();">&#8592;</div>
-    <h1 style="color:var(--brass); font-size:19px;">Who's Playing?</h1>
+    <h1 style="color:var(--brass); font-size:19px;">${titleName}</h1>
     <div style="width:38px;"></div>
   </div>
-  <div class="subtitle">${titleName} &middot; select players or add a guest</div>
+  <div class="subtitle">Select players, then set up the game</div>
   <div class="content" style="padding-bottom:0;">
     <div class="unified-list-header">
       <h1 class="ulh-title">Players</h1>
@@ -6065,7 +6075,6 @@ function renderPlayerSetup(){
         const selected = state.selectedPlayerIds.includes(p.id);
         return renderUnifiedPlayerRow(p, {
           showCheckbox: true,
-          showDartPicker: true,
           dragListGetter: selected ? 'getSetupPlayerOrder' : '',
           dragListSetter: selected ? 'setSetupPlayerOrder' : '',
           onNameClick: p.isGuest ? `togglePlayerPermanence('${p.id}')` : '',
@@ -6074,8 +6083,9 @@ function renderPlayerSetup(){
     </div>
     <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first. Drag the handle to set turn order for selected players.</p>
   </div>
+  ${isCustom ? '' : `<div class="content" style="padding-top:var(--sp-section-gap);">${renderGameOptionsBody()}</div>`}
   <div class="content" style="padding-top:var(--sp-section-gap);">
-    <button class="btn btn-primary btn-full btn-lg" ${state.selectedPlayerIds.length===0?'disabled':''} onclick="proceedToOptions()">Continue</button>
+    <button class="btn btn-primary btn-full btn-lg" ${state.selectedPlayerIds.length===0?'disabled':''} onclick="${isCustom?'launchCustomGame()':'launchGame()'}">Start Game</button>
   </div>`;
 }
 function renderEmojiPickerModal(playerId){
@@ -6097,49 +6107,58 @@ function renderEmojiPickerModal(playerId){
 }
 
 /* ========================= RENDER: GAME OPTIONS ========================= */
-function renderGameOptions(){
+function renderGameOptionsBody(){
   const g = GAMES.find(x=>x.id===state.pendingGameId);
   const id = g.id;
   const isX01 = (id==='301'||id==='501');
   const o = state.gameOptions;
   function chip(label, key, val){
-    return `<span class="chip ${o[key]===val?'selected':''}" onclick="setOption('${key}','${val}')">${label}</span>`;
+    return `<span class="gchip ${o[key]===val?'selected':''}" onclick="setOption('${key}','${val}')">${label}</span>`;
   }
   function numChip(label, key, val){
-    return `<span class="chip ${o[key]===val?'selected':''}" onclick="setOption('${key}',${val})">${label}</span>`;
+    return `<span class="gchip ${o[key]===val?'selected':''}" onclick="setOption('${key}',${val})">${label}</span>`;
   }
   function boolChip(label, key, val){
-    return `<span class="chip ${o[key]===val?'selected':''}" onclick="setOption('${key}',${val})">${label}</span>`;
+    return `<span class="gchip ${o[key]===val?'selected':''}" onclick="setOption('${key}',${val})">${label}</span>`;
   }
-  const title = isX01 ? o.startScore+' Options' : g.name+' Options';
-  const rememberedForThisGame = isX01 && state.rememberedGameOptions && state.rememberedGameOptions[id];
-  let body = '';
+  const rememberedForThisGame = state.rememberedGameOptions && state.rememberedGameOptions[id];
+  const rememberedLabel = isX01 ? `${o.startScore}` : g.name;
+  let body = rememberedForThisGame ? `<div class="remembered-pill"><span class="rp-icon">&#8635;</span>Remembered from last time you played ${rememberedLabel}</div>` : '';
   if(isX01){
-    const rows = [
-      { key:'inRule', label:'Entering In', choices:[
-        {val:'straight', label:'Straight In', desc:'Every dart counts from your very first throw.'},
-        {val:'double', label:'Double In', desc:"Nothing scores until you hit a double. Once you do, every dart after that counts normally."},
-      ]},
-      { key:'outRule', label:'Finishing Out', choices:[
-        {val:'straight', label:'Straight Out', desc:"Hit exactly zero with any dart and you're done."},
-        {val:'double', label:'Double Out', desc:'The traditional way to finish. Your last dart must land in a double (or the bull, which counts as one). Reaching zero any other way is a bust.'},
-        {val:'master', label:'Master Out', desc:'A middle ground. Your last dart must land in a double or a triple.'},
-      ]},
-      { key:'guidance', label: o.startScore+' Guidance', choices:[
-        {val:'none', label:'None', desc:'Just the remaining score, no suggestions.'},
-        {val:'basic', label:'Basic', desc:'Remaining score plus a simple "aim here" target.'},
-        {val:'beginner', label:'Beginner', desc:'Favors easy routes and common doubles (40, 32, 24, 16, 8) instead of assuming you\'ll hit hard triples.'},
-        {val:'standard', label:'Standard Checkout', desc:'The conventional finishing route, looked up live from a full checkout table as your score changes.'},
-      ]},
-    ];
-    body = (rememberedForThisGame ? `<div class="remembered-note">&#8634; Remembered from last time you played ${o.startScore}</div>` : '') +
-      rows.map(r=>renderExpandableOptionRow(r)).join('') +
-      `<p style="margin-top:4px;"><a class="linklike" onclick="openCheckoutTable('gameOptions', state.gameOptions.outRule)">Preview the checkout table &#9656;</a></p>`;
+    body += `
+    <div>
+      <span class="field-label">Entering In</span>
+      <div class="gchip-wrap">${chip('Straight In','inRule','straight')}${chip('Double In','inRule','double')}</div>
+      <div class="option-legend">
+        <div class="leg-item ${o.inRule==='straight'?'active-leg':''}"><b>Straight In</b> — every dart counts from your very first throw.</div>
+        <div class="leg-item ${o.inRule==='double'?'active-leg':''}"><b>Double In</b> — nothing scores until you hit a double. Once you do, every dart after that counts normally.</div>
+      </div>
+    </div>
+    <div>
+      <span class="field-label">Finishing Out</span>
+      <div class="gchip-wrap">${chip('Straight Out','outRule','straight')}${chip('Double Out','outRule','double')}${chip('Master Out','outRule','master')}</div>
+      <div class="option-legend">
+        <div class="leg-item ${o.outRule==='straight'?'active-leg':''}"><b>Straight Out</b> — hit exactly zero with any dart and you're done.</div>
+        <div class="leg-item ${o.outRule==='double'?'active-leg':''}"><b>Double Out</b> — the traditional way to finish. Your last dart must land in a double (or the bull). Reaching zero any other way is a bust.</div>
+        <div class="leg-item ${o.outRule==='master'?'active-leg':''}"><b>Master Out</b> — a middle ground. Your last dart must land in a double or a triple.</div>
+      </div>
+    </div>
+    <div>
+      <span class="field-label">${o.startScore} Guidance</span>
+      <div class="gchip-wrap">${chip('None','guidance','none')}${chip('Basic','guidance','basic')}${chip('Beginner','guidance','beginner')}${chip('Standard Checkout','guidance','standard')}</div>
+      <div class="option-legend">
+        <div class="leg-item ${o.guidance==='none'?'active-leg':''}"><b>None</b> — just the remaining score, no suggestions.</div>
+        <div class="leg-item ${o.guidance==='basic'?'active-leg':''}"><b>Basic</b> — remaining score plus a simple "aim here" target.</div>
+        <div class="leg-item ${o.guidance==='beginner'?'active-leg':''}"><b>Beginner</b> — favors easy routes and common doubles (40, 32, 24, 16, 8) instead of assuming you'll hit hard triples.</div>
+        <div class="leg-item ${o.guidance==='standard'?'active-leg':''}"><b>Standard Checkout</b> — the conventional finishing route, looked up live from a full checkout table as your score changes.</div>
+      </div>
+    </div>
+    <p style="margin-top:4px;"><a class="linklike" onclick="openCheckoutTable('playerSetup', state.gameOptions.outRule)">Preview the checkout table &#9656;</a></p>`;
   } else if(id==='cricket'){
-    body = `
+    body += `
     <div>
       <span class="field-label">Cricket Variant</span>
-      <div class="chip-wrap">${chip('Standard','variant','standard')}${chip('No Score','variant','noscore')}${chip('Cut Throat','variant','cutthroat')}</div>
+      <div class="gchip-wrap">${chip('Standard','variant','standard')}${chip('No Score','variant','noscore')}${chip('Cut Throat','variant','cutthroat')}</div>
       <div class="option-legend">
         <div class="leg-item ${o.variant==='standard'?'active-leg':''}"><b>Standard</b> — once you've closed a number, extra hits on it score points, as long as at least one opponent still has it open.</div>
         <div class="leg-item ${o.variant==='noscore'?'active-leg':''}"><b>No Score</b> — points never come into it. Purely a race to close every number first.</div>
@@ -6147,10 +6166,10 @@ function renderGameOptions(){
       </div>
     </div>`;
   } else if(id==='war'){
-    body = `
+    body += `
     <div>
       <span class="field-label">Bull</span>
-      <div class="chip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
+      <div class="gchip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
       <div class="option-legend">
         <div class="leg-item ${o.bullMode==='none'?'active-leg':''}"><b>Not Required</b> — Bull isn't part of the board at all. Only the 20 numbered wedges count.</div>
         <div class="leg-item ${o.bullMode==='together'?'active-leg':''}"><b>Together</b> — Inner and Outer Bull are treated as one shared section. Hitting either claims it.</div>
@@ -6158,14 +6177,14 @@ function renderGameOptions(){
       </div>
     </div>`;
   } else if(id==='atc'){
-    body = `
+    body += `
     <div>
       <span class="field-label">Include Bull Finish</span>
-      <div class="chip-wrap">${boolChip('No — Stop at 20','includeBull',false)}${boolChip('Yes — Finish on Bull','includeBull',true)}</div>
+      <div class="gchip-wrap">${boolChip('No — Stop at 20','includeBull',false)}${boolChip('Yes — Finish on Bull','includeBull',true)}</div>
     </div>
     <div>
       <span class="field-label">Advance Rule</span>
-      <div class="chip-wrap">${chip('Standard','advanceMode','standard')}${chip('Doubles Only','advanceMode','doublesOnly')}${chip('Triples Only','advanceMode','triplesOnly')}</div>
+      <div class="gchip-wrap">${chip('Standard','advanceMode','standard')}${chip('Doubles Only','advanceMode','doublesOnly')}${chip('Triples Only','advanceMode','triplesOnly')}</div>
       <div class="option-legend">
         <div class="leg-item ${o.advanceMode==='standard'?'active-leg':''}"><b>Standard</b> — a single advances you one number, a double advances two, a triple advances three.</div>
         <div class="leg-item ${o.advanceMode==='doublesOnly'?'active-leg':''}"><b>Doubles Only</b> — you must hit the double of your current target to advance.</div>
@@ -6173,28 +6192,28 @@ function renderGameOptions(){
       </div>
     </div>`;
   } else if(id==='shanghai'){
-    body = `
+    body += `
     <div>
       <span class="field-label">Number of Rounds</span>
-      <div class="chip-wrap">${[5,10,15,20].map(v=>numChip(v,'rounds',v)).join('')}</div>
+      <div class="gchip-wrap">${[5,10,15,20].map(v=>numChip(v,'rounds',v)).join('')}</div>
       <p class="info-note">Each round targets the number matching the round (round 1 = number 1, and so on). Hit a single, double, and triple of that round's number in one turn for an instant Shanghai win.</p>
     </div>`;
   } else if(id==='baseball'){
-    body = `<p class="info-note">Nine innings, each tied to a number 1 through 9. Singles score 1 run, doubles 2, triples 3 — only on that inning's number. Most runs after nine innings wins.</p>`;
+    body += `<p class="info-note">Nine innings, each tied to a number 1 through 9. Singles score 1 run, doubles 2, triples 3 — only on that inning's number. Most runs after nine innings wins.</p>`;
   } else if(id==='highscore' || id==='countup'){
-    body = `
+    body += `
     <div>
       <span class="field-label">Number of Rounds</span>
-      <div class="chip-wrap">${[5,8,10,15].map(v=>numChip(v,'rounds',v)).join('')}</div>
+      <div class="gchip-wrap">${[5,8,10,15].map(v=>numChip(v,'rounds',v)).join('')}</div>
       <p class="info-note">${id==='highscore' ? 'Every dart scores normally. Highest total after the rounds wins.' : 'Track your scoring and three-dart average over a fixed number of turns.'}</p>
     </div>`;
   } else if(id==='halveit'){
     const nums20 = Array.from({length:20},(_,i)=>i+1);
     const selectedTargets = o.halveitTargets || [];
-    body = `
+    body += `
     <div>
       <span class="field-label">Sequence</span>
-      <div class="chip-wrap">
+      <div class="gchip-wrap">
         ${chip('Classic (20&ndash;15 + Bull)','halveitPreset','classic')}
         ${chip('Full Board (20&ndash;1 + Bull)','halveitPreset','full')}
         ${chip('Custom','halveitPreset','custom')}
@@ -6202,20 +6221,20 @@ function renderGameOptions(){
     </div>
     ${o.halveitPreset==='custom' ? `<div>
       <span class="field-label">Targets (tap to select)</span>
-      <div class="numgrid" style="grid-template-columns:repeat(5,1fr);">
-        ${nums20.map(n=>`<div class="num-btn ${selectedTargets.includes(n)?'recommended':''}" onclick="toggleHalveitTarget(${n})">${n}</div>`).join('')}
-        <div class="num-btn wide" style="grid-column:span 5; ${selectedTargets.includes('B')?'border-color:var(--brass); color:var(--brass);':''}" onclick="toggleHalveitTarget('B')">Bull</div>
+      <div class="gnumgrid">
+        ${nums20.map(n=>`<div class="gnum-chip ${selectedTargets.includes(n)?'selected':''}" onclick="toggleHalveitTarget(${n})">${n}</div>`).join('')}
+        <div class="gnum-chip wide ${selectedTargets.includes('B')?'selected':''}" onclick="toggleHalveitTarget('B')">Bull</div>
       </div>
       <p class="info-note">${selectedTargets.length} target${selectedTargets.length!==1?'s':''} selected. They'll be played from 20 down to 1, with Bull last, unless you turn on random order below.</p>
     </div>` : ''}
     <div>
       <span class="field-label">Order</span>
-      <div class="chip-wrap">${chip('In Order','halveitOrder','sequence')}${chip('Random Order','halveitOrder','random')}</div>
+      <div class="gchip-wrap">${chip('In Order','halveitOrder','sequence')}${chip('Random Order','halveitOrder','random')}</div>
       <p class="info-note">${o.halveitOrder==='random' ? 'The target order is shuffled once at the start of the game.' : 'Targets go from 20 down to 1, with Bull last.'}</p>
     </div>
     <div>
       <span class="field-label">Score Booster</span>
-      <div class="chip-wrap">${chip('Off','halveitBooster','off')}${chip('After Close','halveitBooster','sequential')}${chip('Any Order','halveitBooster','anyorder')}</div>
+      <div class="gchip-wrap">${chip('Off','halveitBooster','off')}${chip('After Close','halveitBooster','sequential')}${chip('Any Order','halveitBooster','anyorder')}</div>
       <div class="option-legend">
         <div class="leg-item ${(!o.halveitBooster||o.halveitBooster==='off')?'active-leg':''}"><b>Off</b> — only darts that hit the round's exact target score. Everything else is a dead throw, even if it lands somewhere else on the board.</div>
         <div class="leg-item ${o.halveitBooster==='sequential'?'active-leg':''}"><b>After Close</b> — once you hit the target, any darts you throw <i>after</i> that also score at face value. Example: target is 18, you throw 20, 18, 4 in that order — the 20 came before you closed it and doesn't count, so you'd score 18+4 = 22.</div>
@@ -6225,17 +6244,17 @@ function renderGameOptions(){
     </div>
     <p class="info-note">Hit the round's target at least once to keep your points — miss it entirely across all 3 darts and your running score is cut in half.</p>`;
   } else if(id==='killer'){
-    body = `
+    body += `
     <div>
       <span class="field-label">Starting Lives</span>
-      <div class="chip-wrap">${[3,5,6].map(v=>numChip(v,'startingLives',v)).join('')}</div>
+      <div class="gchip-wrap">${[3,5,6].map(v=>numChip(v,'startingLives',v)).join('')}</div>
       <p class="info-note">Each player is randomly assigned a number. Hit your own double to become a killer, then hit opponents' numbers to remove their lives. Hitting your own number after becoming a killer costs you a life. Last player standing wins.</p>
     </div>`;
   } else if(id==='callshot'){
-    body = `
+    body += `
     <div>
       <span class="field-label">Challenge Style</span>
-      <div class="chip-wrap">${boolChip('Lead & Lock','callShotLeaderMustProve',false)}${boolChip('Prove It','callShotLeaderMustProve',true)}</div>
+      <div class="gchip-wrap">${boolChip('Lead & Lock','callShotLeaderMustProve',false)}${boolChip('Prove It','callShotLeaderMustProve',true)}</div>
       <div class="option-legend">
         <div class="leg-item ${!o.callShotLeaderMustProve?'active-leg':''}"><b>Lead & Lock</b> — the leader just throws, no calling ahead of time. Wherever it lands is what everyone else has to match — and that single throw is the leader's whole round, no extra risk for them.</div>
         <div class="leg-item ${o.callShotLeaderMustProve?'active-leg':''}"><b>Prove It</b> — same idea, but the leader has to back it up: after their throw sets the target, they've got to hit it themselves too, or they take a letter just like everyone else.</div>
@@ -6243,7 +6262,7 @@ function renderGameOptions(){
     </div>
     <div>
       <span class="field-label">Tries to Match</span>
-      <div class="chip-wrap">${[1,2,3].map(v=>numChip(v+' dart'+(v!==1?'s':''),'callShotMaxDarts',v)).join('')}</div>
+      <div class="gchip-wrap">${[1,2,3].map(v=>numChip(v+' dart'+(v!==1?'s':''),'callShotMaxDarts',v)).join('')}</div>
       <p class="info-note">Everyone else gets this many darts to match wherever the leader's dart landed.${o.callShotLeaderMustProve ? ' The leader gets the same number of tries to hit their own call.' : ''}</p>
     </div>
     <div>
@@ -6253,14 +6272,14 @@ function renderGameOptions(){
     </div>
     <p class="info-note">One player calls a target (or, in Follow the Leader, just throws) and gets their tries to hit it. Miss it completely, and the caller takes a letter, just like anyone else would. Hit it, and everyone else takes a turn trying to match it; anyone who fails picks up a letter. Then the call passes to the next player and it starts again — last one standing wins.</p>`;
   } else if(id==='personalbest'){
-    body = `
+    body += `
     <div>
       <span class="field-label">Number of Rounds</span>
-      <div class="chip-wrap">${[5,8,10,15].map(v=>numChip(v+' rounds','personalBestRounds',v)).join('')}</div>
+      <div class="gchip-wrap">${[5,8,10,15].map(v=>numChip(v+' rounds','personalBestRounds',v)).join('')}</div>
     </div>
     <div>
       <span class="field-label">Personal Best Type</span>
-      <div class="chip-wrap">${chip('High Score','personalBestMode','high')}${chip('Average','personalBestMode','average')}</div>
+      <div class="gchip-wrap">${chip('High Score','personalBestMode','high')}${chip('Average','personalBestMode','average')}</div>
       <div class="option-legend">
         <div class="leg-item ${(o.personalBestMode||'high')==='high'?'active-leg':''}"><b>High Score</b> — chase your single best three-dart round of the game.</div>
         <div class="leg-item ${o.personalBestMode==='average'?'active-leg':''}"><b>Average</b> — chase a higher overall three-dart average across every round.</div>
@@ -6268,7 +6287,7 @@ function renderGameOptions(){
     </div>
     <div>
       <span class="field-label">Competition Type</span>
-      <div class="chip-wrap">${chip('Personal Challenge','personalBestCompetition','challenge')}${chip('Best Score Wins','personalBestCompetition','bestscore')}${chip('Best Average Wins','personalBestCompetition','bestaverage')}</div>
+      <div class="gchip-wrap">${chip('Personal Challenge','personalBestCompetition','challenge')}${chip('Best Score Wins','personalBestCompetition','bestscore')}${chip('Best Average Wins','personalBestCompetition','bestaverage')}</div>
       <div class="option-legend">
         <div class="leg-item ${(o.personalBestCompetition||'challenge')==='challenge'?'active-leg':''}"><b>Personal Challenge</b> — no winner, everyone's just working on their own record.</div>
         <div class="leg-item ${o.personalBestCompetition==='bestscore'?'active-leg':''}"><b>Best Score Wins</b> — whoever ends the game with the highest single round wins.</div>
@@ -6277,15 +6296,7 @@ function renderGameOptions(){
     </div>
     <p class="info-note">Throw three darts, establish a score, then spend the rest of the game trying to beat yourself. Everyone's target is their own — no one else's score is ever the thing to beat.</p>`;
   }
-  return `<div class="topbar">
-    <div class="iconbtn" onclick="state.screen='playerSetup'; render();">&#8592;</div>
-    <h1 style="color:var(--brass); font-size:19px;">${title}</h1>
-    <div style="width:38px;"></div>
-  </div>
-  <div class="content">
-    ${body}
-    <button class="btn btn-primary btn-full btn-lg" onclick="launchGame()">Start Game</button>
-  </div>`;
+  return body;
 }
 
 /* ========================= RENDER: SETTINGS ========================= */
