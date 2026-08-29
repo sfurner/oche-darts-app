@@ -863,7 +863,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v3.4';
+const BUILD_STAMP = 'v3.5';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4635,7 +4635,7 @@ function renderUnifiedPlayerRow(p, opts){
   return `<div class="${rowClass}" data-pid="${p.id}"${rowClick}>
     ${dragHandle}
     <div class="prow-avatar" style="${avatarStyle}" onclick="event.stopPropagation(); openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
-    <div class="prow-name" onclick="event.stopPropagation(); ${opts.onNameClick||''}">${nameLabel}</div>
+    <div class="prow-name"${opts.onNameClick?` onclick="event.stopPropagation(); ${opts.onNameClick}"`:''}>${nameLabel}</div>
     <div class="prow-stat">${darts} darts</div>
   </div>`;
 }
