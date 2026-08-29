@@ -863,7 +863,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v3.2';
+const BUILD_STAMP = 'v3.3';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -910,7 +910,7 @@ let state = {
   navTab: 'play',
   players: [], // {id,name,color}
   selectedPlayerIds: [],
-  playerOrderManual: false,
+  playerOrderMode: 'inorder',
   rulesGameId: null,
   pendingGameId: null,
   gameOptions: null,
@@ -4582,8 +4582,6 @@ function setManagementPlayerOrder(newOrder){
   const byId = {}; state.players.forEach(p=>{ byId[p.id]=p; });
   state.players = newOrder.map(id=>byId[id]).filter(Boolean);
 }
-function getSetupPlayerOrder(){ return state.selectedPlayerIds; }
-function setSetupPlayerOrder(newOrder){ state.selectedPlayerIds = newOrder; state.playerOrderManual = true; }
 // Generic pointer-based drag-to-reorder, reused by both Player Management
 // (reorders your saved roster) and Who's Playing (reorders turn order).
 // listGetter/listSetter let each screen supply its own array without this
@@ -4633,8 +4631,9 @@ function renderUnifiedPlayerRow(p, opts){
   const avatarStyle = selected ? `background:#1c1410; color:${pColor};` : `background:${pColor};`;
   const rowClass = `player-row-unified${selectable?' selectable':''}${selected?' selected':''}`;
   const rowClick = selectable ? ` onclick="togglePlayerSelect('${p.id}')"` : '';
+  const dragHandle = opts.dragListGetter ? `<span class="prow-drag" onpointerdown="event.stopPropagation(); beginPlayerRowDrag(event,'${p.id}',${opts.dragListGetter},${opts.dragListSetter})">&#10241;</span>` : '';
   return `<div class="${rowClass}" data-pid="${p.id}"${rowClick}>
-    <span class="prow-drag" onpointerdown="${opts.dragListGetter?`event.stopPropagation(); beginPlayerRowDrag(event,'${p.id}',${opts.dragListGetter},${opts.dragListSetter})`:''}">&#10241;</span>
+    ${dragHandle}
     <div class="prow-avatar" style="${avatarStyle}" onclick="event.stopPropagation(); openEmojiPicker('${p.id}')" title="Tap to change avatar">${p.emoji||initials(p.name)}</div>
     <div class="prow-name" onclick="event.stopPropagation(); ${opts.onNameClick||''}">${nameLabel}</div>
     <div class="prow-stat">${darts} darts</div>
@@ -4671,7 +4670,6 @@ function togglePlayerSelect(id){
   const i = state.selectedPlayerIds.indexOf(id);
   if(i===-1) state.selectedPlayerIds.push(id);
   else state.selectedPlayerIds.splice(i,1);
-  state.playerOrderManual = false;
   render();
 }
 function randomizeOrder(){
@@ -4694,7 +4692,7 @@ function ensureGameOptionsInitialized(){
   };
 }
 function launchCustomGame(){
-  const playerIds = state.playerOrderManual ? state.selectedPlayerIds : shuffleArray(state.selectedPlayerIds);
+  const playerIds = state.playerOrderMode==='random' ? shuffleArray(state.selectedPlayerIds) : state.selectedPlayerIds;
   state.session = startCustomGameSession(playerIds, state.pendingCustomGame);
   state.showAllNumbers = false;
   state.pendingSelection = null;
@@ -5039,7 +5037,7 @@ function launchGame(){
   const toRemember = {...state.gameOptions};
   delete toRemember._forGameId;
   state.rememberedGameOptions[id] = toRemember;
-  const playerIds = state.playerOrderManual ? state.selectedPlayerIds : shuffleArray(state.selectedPlayerIds);
+  const playerIds = state.playerOrderMode==='random' ? shuffleArray(state.selectedPlayerIds) : state.selectedPlayerIds;
   if(GAME_LAUNCHERS[id]){
     state.session = GAME_LAUNCHERS[id](playerIds, state.gameOptions);
   } else {
@@ -6072,6 +6070,7 @@ function renderPlayerSetup(){
   const g = isCustom ? null : GAMES.find(x=>x.id===state.pendingGameId);
   const titleName = isCustom ? state.pendingCustomGame.name : g.name;
   ensureGameOptionsInitialized();
+  const orderMode = state.playerOrderMode || 'inorder';
   return `<div class="topbar">
     <div class="iconbtn" onclick="state.screen='home'; render();">&#8592;</div>
     <h1 style="color:var(--brass); font-size:19px;">${titleName}</h1>
@@ -6089,16 +6088,20 @@ function renderPlayerSetup(){
     </div>` : ''}
     <div class="player-list">
       ${state.players.map(p=>{
-        const selected = state.selectedPlayerIds.includes(p.id);
         return renderUnifiedPlayerRow(p, {
           showCheckbox: true,
-          dragListGetter: selected ? 'getSetupPlayerOrder' : '',
-          dragListSetter: selected ? 'setSetupPlayerOrder' : '',
           onNameClick: p.isGuest ? `togglePlayerPermanence('${p.id}')` : '',
         });
       }).join('')}
     </div>
-    <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first. Drag the handle to set turn order for selected players.</p>
+    <p class="info-note">Permanent players build up history forever. Guests keep their game history for 12 hours, then it's cleared — unless you switch them to permanent first.</p>
+    <div style="margin-top:14px;">
+      <span class="field-label">Turn Order</span>
+      <div class="gchip-wrap">
+        <span class="gchip ${orderMode==='inorder'?'selected':''}" onclick="state.playerOrderMode='inorder'; render();">In Order</span>
+        <span class="gchip ${orderMode==='random'?'selected':''}" onclick="state.playerOrderMode='random'; render();">Random</span>
+      </div>
+    </div>
   </div>
   ${isCustom ? '' : `<div class="content" style="padding-top:var(--sp-section-gap);">${renderGameOptionsBody()}</div>`}
   <div class="content" style="padding-top:var(--sp-section-gap);">
