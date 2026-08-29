@@ -815,6 +815,10 @@ const GAMES = [
     goal:'Throw three darts a round and try to beat your own best round from earlier in this game.',
     score:'Every dart\'s face value (doubled or tripled as usual) adds to your round total. Your first completed round sets your starting Personal Best — every round after that tries to beat it.',
     win:'Depends on the mode you pick: no winner at all (just chasing yourself), highest single round, or highest overall average.'},
+  {id:'war', name:'War', desc:'No targets, no assignments — claim territory wherever you land.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
+    goal:'Every wedge on the board (plus Inner and Outer Bull) starts unclaimed. Wherever your darts land, that section becomes yours — even if someone else already claimed it.',
+    score:'There\'s no score to track, just territory. Landing on any section, claimed or not, flips it to your color.',
+    win:'The instant every section on the board has been claimed by someone, the game ends immediately. Whoever holds the most sections wins — ties are possible.'},
 ];
 
 const PRACTICES = [
@@ -842,7 +846,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/28/2026, 6:18 PM';
+const BUILD_STAMP = '8/28/2026, 10:23 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1395,6 +1399,92 @@ function cricketUndo(s){
     s.currentIdx = last.participantIdx;
     s.complete=false; s.winnerId=null;
   }
+}
+
+/* ========================= WAR ========================= */
+// No targets, no assignments, no scoring — the whole board starts neutral.
+// Wherever a player's dart lands, that section (whole wedge, no ring
+// distinction — Bull splits into Inner/Outer as its own two) flips to their
+// color, stealing it from whoever held it. The instant all 22 sections have
+// been claimed by someone, the game ends immediately and whoever holds the
+// most wins (ties allowed).
+const WAR_PLAYER_COLORS = ['#4a7fd6','#b05fd0','#d68a4a','#4ad6a8','#d6524a','#a8d64a','#4ad6d0','#d64aa8'];
+function warColorFor(idx){ return (idx===null || idx===undefined) ? '#2a3554' : WAR_PLAYER_COLORS[idx % WAR_PLAYER_COLORS.length]; }
+function startWarSession(playerIds){
+  const sections = {};
+  for(let n=1;n<=20;n++) sections[String(n)] = null;
+  sections['IB'] = null; sections['OB'] = null;
+  return {
+    kind:'war',
+    participants: playerIds.map(pid=>({playerId:pid})),
+    sections, currentIdx:0, round:1,
+    currentTurnDarts:[], turnHistory:[],
+    complete:false, winnerId:null, tied:null, finalCounts:null,
+  };
+}
+function warSectionKey(num, segType){
+  if(num==='B') return segType==='bull' ? 'IB' : 'OB';
+  return String(num);
+}
+function warCheckWin(s){
+  if(!Object.values(s.sections).every(v=>v!==null)) return;
+  const counts = s.participants.map((p,i)=>Object.values(s.sections).filter(v=>v===i).length);
+  const max = Math.max(...counts);
+  const winners = s.participants.filter((p,i)=>counts[i]===max);
+  s.complete = true;
+  s.finalCounts = counts;
+  if(winners.length===1){ s.winnerId = winners[0].playerId; s.tied = null; }
+  else { s.winnerId = null; s.tied = winners.map(p=>p.playerId); }
+}
+function warApplyDart(s, num, segType){
+  const key = warSectionKey(num, segType);
+  const prevOwner = s.sections[key];
+  s.sections[key] = s.currentIdx;
+  const label = num==='B' ? (segType==='bull'?'Inner Bull':'Outer Bull') : fullDartLabel(num, segType);
+  s.currentTurnDarts.push({label, key, prevOwner});
+  warCheckWin(s);
+  return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
+}
+function warEndTurn(s){
+  s.participants[s.currentIdx].lastTurnDarts = s.currentTurnDarts.map(d=>d.label);
+  s.turnHistory.push({participantIdx:s.currentIdx, darts:s.currentTurnDarts});
+  s.currentTurnDarts = [];
+  if(!s.complete){
+    s.currentIdx = (s.currentIdx+1) % s.participants.length;
+    if(s.currentIdx===0) s.round++;
+  }
+}
+function warUndo(s){
+  if(s.currentTurnDarts.length>0){
+    const d = s.currentTurnDarts.pop();
+    if(d.key) s.sections[d.key] = d.prevOwner;
+    s.complete=false; s.winnerId=null; s.tied=null; s.finalCounts=null;
+    return;
+  }
+  if(s.turnHistory.length===0) return;
+  const lastTurn = s.turnHistory.pop();
+  s.currentIdx = lastTurn.participantIdx;
+  if(s.currentIdx===s.participants.length-1) s.round--;
+  s.currentTurnDarts = lastTurn.darts.slice(0,-1);
+  const undone = lastTurn.darts[lastTurn.darts.length-1];
+  if(undone.key) s.sections[undone.key] = undone.prevOwner;
+  s.complete=false; s.winnerId=null; s.tied=null; s.finalCounts=null;
+}
+function finishWarGame(s){
+  let winnerName;
+  if(s.tied){
+    const names = s.tied.map(id=>{ const p=state.players.find(pp=>pp.id===id); return p?p.name:'Unknown'; });
+    winnerName = 'Tie: '+names.join(' & ');
+  } else {
+    const w = state.players.find(p=>p.id===s.winnerId);
+    winnerName = w?w.name:'Unknown';
+  }
+  buildAndShowReview({
+    type:'War', gameType:'war', name:'War',
+    winnerId: s.winnerId, winnerName,
+    detail:'Claimed the most territory once every section was taken.',
+    participantIds: s.participants.map(p=>p.playerId), throwCounts: participantThrowCounts(s), session:s,
+  });
 }
 
 /* ========================= CUSTOM GAME ENGINE ========================= */
@@ -3253,6 +3343,9 @@ function dispatchThrowCore(num, segType){
   } else if(s.kind==='personalbest'){
     const res = personalBestApplyDart(s, num, segType);
     if(res.turnOver){ personalBestEndTurn(s); if(s.complete) finishPersonalBestGame(s); }
+  } else if(s.kind==='war'){
+    const res = warApplyDart(s, num, segType);
+    if(res.turnOver){ warEndTurn(s); if(s.complete) finishWarGame(s); }
   }
   if(s.currentTurnDarts.length>0){
     const last = s.currentTurnDarts[s.currentTurnDarts.length-1];
@@ -3315,6 +3408,9 @@ function recordMissCore(){
   } else if(s.kind==='personalbest'){
     const res = personalBestApplyDart(s, 0, 'miss');
     if(res.turnOver){ personalBestEndTurn(s); if(s.complete) finishPersonalBestGame(s); }
+  } else if(s.kind==='war'){
+    s.currentTurnDarts.push({label:'Miss', key:null, prevOwner:null});
+    if(s.currentTurnDarts.length>=3){ warEndTurn(s); if(s.complete) finishWarGame(s); }
   }
   if(s.currentTurnDarts.length>0){
     const last = s.currentTurnDarts[s.currentTurnDarts.length-1];
@@ -4204,6 +4300,7 @@ const ENGINE_HOOKS = {
   killer:{undo:killerUndo, endTurn:killerEndTurn, finish:finishKillerGame},
   custom:{undo:customUndo, endTurn:customEndTurn, finish:finishCustomGame},
   personalbest:{undo:personalBestUndo, endTurn:personalBestEndTurn, finish:finishPersonalBestGame},
+  war:{undo:warUndo, endTurn:warEndTurn, finish:finishWarGame},
 };
 function doUndo(){
   const s = state.session;
@@ -4893,6 +4990,7 @@ const GAME_LAUNCHERS = {
   killer: startKillerSession,
   callshot: startCallShotSession,
   personalbest: startPersonalBestSession,
+  war: startWarSession,
 };
 function launchGame(){
   const id = state.pendingGameId;
@@ -6595,6 +6693,7 @@ const ORIGINAL_END_TURN_FNS = {
   x01:x01EndTurn, cricket:cricketEndTurn, custom:customEndTurn,
   atc:atcEndTurn, shanghai:shanghaiEndTurn, baseball:baseballEndTurn,
   halveit:halveItEndTurn, killer:killerEndTurn, personalbest:personalBestEndTurn,
+  war:warEndTurn,
 };
 function wrapEndTurnForCamera(originalFn){
   return function(s){
@@ -6614,6 +6713,7 @@ baseballEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.baseball);
 halveItEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.halveit);
 killerEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.killer);
 personalBestEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.personalbest);
+warEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.war);
 
 function handleCameraThrow(throwEntry){
   if(!state.settings.dartsCallerCameraMode) return;
@@ -6648,6 +6748,7 @@ const DARTSCALLER_FINISH_GAME_FNS = {
   x01:finishX01Game, cricket:finishCricketGame, custom:finishCustomGame,
   atc:finishAtcGame, shanghai:finishShanghaiGame, baseball:finishBaseballGame,
   halveit:finishHalveItGame, killer:finishKillerGame,
+  war:finishWarGame,
 };
 function forceEndCurrentTurnFromTakeout(){
   if(!state.settings.dartsCallerCameraMode) return;
@@ -7033,10 +7134,53 @@ function renderTipsSection(s){
   }
   return objective;
 }
+function renderWarBoard(s){
+  const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
+  let wedges = '', labels = '';
+  for(let i=0;i<20;i++){
+    const num = BOARD_ORDER[i];
+    const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
+    const fill = warColorFor(s.sections[String(num)]);
+    wedges += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_DOUBLE_OUT,aStart,aEnd)}" fill="${fill}" stroke="var(--ink)" stroke-width="1" class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;"/>`;
+    const lp = polar(cx,cy,R_NUMBER_LABEL,(aStart+aEnd)/2);
+    labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
+  }
+  const outerFill = warColorFor(s.sections['OB']);
+  const innerFill = warColorFor(s.sections['IB']);
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerFill}" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>`;
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerFill}" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
+  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">${wedges}${labels}</svg>`;
+}
+function renderWarPlayerBoxes(s){
+  return s.participants.map((p,i)=>{
+    const count = Object.values(s.sections).filter(v=>v===i).length;
+    const isCurrent = i===s.currentIdx;
+    return `<div class="player-section ${isCurrent?'active':'collapsed'}">
+      <div class="ps-header">
+        <div class="ps-avatar" style="background:${warColorFor(i)}; color:#1c1c1c;">${playerEmojiOrInitials(p.playerId)}</div>
+        <div class="ps-name">${plainPlayerName(p.playerId)}</div>
+        <div class="ps-score" style="color:${warColorFor(i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${count}/22</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderWarActiveShell(s){
+  return `<div class="game-header-row">
+    <div><div class="round-label">ROUND</div><div class="round-value">${s.round}</div></div>
+    <div class="game-title-center">War</div>
+    <div style="text-align:right;">${renderCameraHelpTrigger()}</div>
+  </div>
+  <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderWarBoard(s)}</div></div>
+  ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
+  ${renderWarPlayerBoxes(s)}
+  ${renderBottomControls(s)}
+  ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
+}
 function renderActiveShell(){
   const s = state.session;
   if(!s) return renderHomeShell();
   if(s.kind==='callshot') return renderCallShotActiveShell(s);
+  if(s.kind==='war') return renderWarActiveShell(s);
   const GNAMES = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer', personalbest:'Personal Best'};
   const gname = s.kind==='x01' ? (s.startScore+'') : s.kind==='custom' ? (s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':s.cfg.name) : (GNAMES[s.kind]||s.kind);
   return `<div class="game-header-row">
@@ -7751,7 +7895,7 @@ function renderBottomControls(s){
   </div>`;
 }
 function renderGameMenu(s){
-  const KIND_TO_RULES_ID = {cricket:'cricket', atc:'atc', shanghai:'shanghai', baseball:'baseball', halveit:'halveit', killer:'killer', callshot:'callshot'};
+  const KIND_TO_RULES_ID = {cricket:'cricket', atc:'atc', shanghai:'shanghai', baseball:'baseball', halveit:'halveit', killer:'killer', callshot:'callshot', war:'war', personalbest:'personalbest'};
   let rulesId = null;
   if(s.kind==='x01') rulesId = s.startScore===301?'301':'501';
   else if(s.kind==='custom' && s.builtinId) rulesId = s.builtinId;
