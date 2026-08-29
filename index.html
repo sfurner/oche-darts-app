@@ -863,7 +863,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v3.1';
+const BUILD_STAMP = 'v3.2';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4561,8 +4561,21 @@ function isPracticeHistoryType(type){ return PRACTICE_HISTORY_TYPES.includes(typ
 // history — older games never recorded this per-player, so this
 // intentionally starts from zero rather than showing an inflated or
 // silently-incomplete "lifetime" number.
+let _totalDartsCache = null;
+let _totalDartsCacheLen = -1;
 function totalDartsThrown(playerId){
-  return state.history.reduce((sum,h)=> sum + ((h.throwCounts && h.throwCounts[playerId]) || 0), 0);
+  if(!_totalDartsCache || _totalDartsCacheLen !== state.history.length){
+    _totalDartsCache = {};
+    state.history.forEach(h=>{
+      if(h.throwCounts){
+        Object.keys(h.throwCounts).forEach(pid=>{
+          _totalDartsCache[pid] = (_totalDartsCache[pid]||0) + (h.throwCounts[pid]||0);
+        });
+      }
+    });
+    _totalDartsCacheLen = state.history.length;
+  }
+  return _totalDartsCache[playerId] || 0;
 }
 function getManagementPlayerOrder(){ return state.players.map(p=>p.id); }
 function setManagementPlayerOrder(newOrder){
