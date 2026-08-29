@@ -845,8 +845,10 @@ function pickPlayerEmoji(){
 
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
-const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/28/2026, 11:42 PM';
+// Version number shown in the sidebar footer for deploy verification.
+// Bump the whole number for a major change (a new game, a big rework),
+// bump the decimal for a smaller change like this one.
+const BUILD_STAMP = 'v2.5';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1408,7 +1410,7 @@ function cricketUndo(s){
 // color, stealing it from whoever held it. The instant all 22 sections have
 // been claimed by someone, the game ends immediately and whoever holds the
 // most wins (ties allowed).
-const WAR_PLAYER_COLORS = ['#2DE0E6','#E63DBE','#FFB23D','#7CFF3D','#B87AFF','#FF5C5C'];
+const WAR_PLAYER_COLORS = ['#3B82F6','#22C55E','#DC2626','#EAB308','#8B5CF6','#F97316'];
 function warColorFor(idx){ return (idx===null || idx===undefined) ? '#2a3554' : WAR_PLAYER_COLORS[idx % WAR_PLAYER_COLORS.length]; }
 function startWarSession(playerIds, opts){
   const bullMode = (opts && opts.bullMode) || 'separate';
@@ -6410,7 +6412,7 @@ function renderGameplaySettings(){
       Camera Mode — real throws from the board drive gameplay instead of taps/clicks
     </div>
     <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered. Oche also auto-resets Board Manager on its own if throws stop registering for more than a few seconds. If you need to reset it by hand, there's a button for that directly on the gameplay screen itself — no need to come here mid-game.</p>
-    <div style="font-size:8px; color:var(--cream-dim); opacity:0.4; text-align:center; padding-top:16px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">${APP_VERSION} &middot; ${BUILD_STAMP}</div>
+    <div style="font-size:8px; color:var(--cream-dim); opacity:0.4; text-align:center; padding-top:16px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">${BUILD_STAMP}</div>
   </div>`;
 }
 
@@ -7157,69 +7159,58 @@ function renderTipsSection(s){
   }
   return objective;
 }
-// Dark "neon edge" board: unclaimed wedges stay quiet and dark, every ring
-// boundary and wedge divider has a constant soft ambient glow, and claimed
-// sections get their own brighter player-colored glow layered on top.
-// Layering matters here — fills draw first, then the glow lines draw over
-// them (visible everywhere, not just at wedge gaps), then the claimed-wedge
-// overlay glow draws last so it reads as the most prominent thing on screen.
-const WAR_GLOW = '#5a9ab8';
+// Solid-outline board: unclaimed wedges show a dim neutral outline, claimed
+// wedges switch every one of their boundary lines (both side spokes, the
+// arcs top and bottom, all four ring bands) to a solid colored outline —
+// no blur or glow, just clean lines. The two single bands (inner and outer)
+// fill in solid with the owner's color once claimed; the triple and double
+// bands stay dark and outline-only, keeping the traditional ring structure
+// visually distinct from the claim color itself.
+const WAR_NEUTRAL = '#3a4560';
 function renderWarBoard(s){
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
-  const gapDeg = 1.4;
-  const glowStroke = `stroke="${WAR_GLOW}" stroke-width="1.25" style="filter:drop-shadow(0 0 2px ${WAR_GLOW}) drop-shadow(0 0 6px ${WAR_GLOW});"`;
-  let fills = '', glowLines = '', overlays = '', labels = '';
+  const gapDeg = 1.2;
+  let fills = '', labels = '';
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
     const aFull1 = -9+i*18+WEDGE_ROTATION, aFull2 = aFull1+18;
     const aStart = aFull1 + gapDeg, aEnd = aFull2 - gapDeg;
-    const segAttrs = `class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;"`;
-    fills += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="#151c30" ${segAttrs}/>`;
-    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="#1c2438" ${segAttrs}/>`;
-    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_OUT,R_DOUBLE_IN,aStart,aEnd)}" fill="#151c30" ${segAttrs}/>`;
-    fills += `<path d="${wedgePath(cx,cy,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="#1c2438" ${segAttrs}/>`;
     const owner = s.sections[String(num)];
-    if(owner!==null && owner!==undefined){
-      const c = warColorFor(owner);
-      overlays += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_DOUBLE_OUT,aStart,aEnd)}" fill="${c}" fill-opacity="0.12" stroke="${c}" stroke-width="2.25" style="pointer-events:none; filter:drop-shadow(0 0 3px ${c}) drop-shadow(0 0 9px ${c}) drop-shadow(0 0 18px ${c});"/>`;
-    }
+    const claimed = owner!==null && owner!==undefined;
+    const strokeColor = claimed ? warColorFor(owner) : WAR_NEUTRAL;
+    const sw = claimed ? 2 : 1;
+    const singleFill = claimed ? warColorFor(owner) : '#151c30';
+    const dtFill = '#1c2438';
+    const segAttrs = `class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;"`;
+    fills += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="${strokeColor}" stroke-width="${sw}" ${segAttrs}/>`;
+    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="${strokeColor}" stroke-width="${sw}" ${segAttrs}/>`;
+    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_OUT,R_DOUBLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="${strokeColor}" stroke-width="${sw}" ${segAttrs}/>`;
+    fills += `<path d="${wedgePath(cx,cy,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="${strokeColor}" stroke-width="${sw}" ${segAttrs}/>`;
     const lp = polar(cx,cy,R_NUMBER_LABEL,(aFull1+aFull2)/2);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
-    const spokeInner = polar(cx,cy,R_BULL_OUTER,aFull1), spokeOuter = polar(cx,cy,R_DOUBLE_OUT,aFull1);
-    glowLines += `<line x1="${spokeInner[0]}" y1="${spokeInner[1]}" x2="${spokeOuter[0]}" y2="${spokeOuter[1]}" ${glowStroke}/>`;
   }
-  glowLines += `<circle cx="${cx}" cy="${cy}" r="${R_DOUBLE_OUT}" fill="none" ${glowStroke}/>`;
-  glowLines += `<circle cx="${cx}" cy="${cy}" r="${R_DOUBLE_IN}" fill="none" ${glowStroke}/>`;
-  glowLines += `<circle cx="${cx}" cy="${cy}" r="${R_TRIPLE_OUT}" fill="none" ${glowStroke}/>`;
-  glowLines += `<circle cx="${cx}" cy="${cy}" r="${R_TRIPLE_IN}" fill="none" ${glowStroke}/>`;
-  let bullFills = '', bullOverlay = '';
+  let bullMarkup;
   if(s.bullMode==='together'){
     const owner = s.sections['B'];
-    bullFills = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="#151c30" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
-      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="#1c2438" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
-    if(owner!==null && owner!==undefined){
-      const c = warColorFor(owner);
-      bullOverlay = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${c}" fill-opacity="0.14" stroke="${c}" stroke-width="2.25" style="pointer-events:none; filter:drop-shadow(0 0 3px ${c}) drop-shadow(0 0 9px ${c}) drop-shadow(0 0 18px ${c});"/>`;
-    }
+    const claimed = owner!==null && owner!==undefined;
+    const c = claimed ? warColorFor(owner) : WAR_NEUTRAL;
+    const fill = claimed ? warColorFor(owner) : '#151c30';
+    bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${fill}" stroke="${c}" stroke-width="${claimed?2:1}" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
+      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${fill}" stroke="${c}" stroke-width="${claimed?2:1}" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
   } else {
     // 'none' still renders the same clickable bull circles — a hit there
     // just becomes a wasted dart via warApplyDart's null-key handling.
-    bullFills = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="#151c30" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
-      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="#1c2438" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
-    if(s.bullMode==='separate'){
-      const outerOwner = s.sections['OB'], innerOwner = s.sections['IB'];
-      if(outerOwner!==null && outerOwner!==undefined){
-        const c = warColorFor(outerOwner);
-        bullOverlay += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${c}" fill-opacity="0.14" stroke="${c}" stroke-width="2" style="pointer-events:none; filter:drop-shadow(0 0 3px ${c}) drop-shadow(0 0 8px ${c});"/>`;
-      }
-      if(innerOwner!==null && innerOwner!==undefined){
-        const c = warColorFor(innerOwner);
-        bullOverlay += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${c}" fill-opacity="0.28" stroke="${c}" stroke-width="2" style="pointer-events:none; filter:drop-shadow(0 0 3px ${c}) drop-shadow(0 0 8px ${c});"/>`;
-      }
-    }
+    const outerOwner = s.sections['OB'], innerOwner = s.sections['IB'];
+    const outerClaimed = s.bullMode==='separate' && outerOwner!==null && outerOwner!==undefined;
+    const innerClaimed = s.bullMode==='separate' && innerOwner!==null && innerOwner!==undefined;
+    const outerStroke = outerClaimed ? warColorFor(outerOwner) : WAR_NEUTRAL;
+    const innerStroke = innerClaimed ? warColorFor(innerOwner) : WAR_NEUTRAL;
+    const outerFill = outerClaimed ? warColorFor(outerOwner) : '#151c30';
+    const innerFill = innerClaimed ? warColorFor(innerOwner) : '#1c2438';
+    bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerFill}" stroke="${outerStroke}" stroke-width="${outerClaimed?2:1}" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
+      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerFill}" stroke="${innerStroke}" stroke-width="${innerClaimed?2:1}" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
   }
-  glowLines += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="none" ${glowStroke}/><circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="none" ${glowStroke}/>`;
-  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">${fills}${bullFills}${glowLines}${overlays}${bullOverlay}${labels}</svg>`;
+  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">${fills}${bullMarkup}${labels}</svg>`;
 }
 function renderWarPlayerBoxes(s){
   const total = Object.keys(s.sections).length;
