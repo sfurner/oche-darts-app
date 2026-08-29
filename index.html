@@ -863,7 +863,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v3.0';
+const BUILD_STAMP = 'v3.1';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -910,6 +910,7 @@ let state = {
   navTab: 'play',
   players: [], // {id,name,color}
   selectedPlayerIds: [],
+  playerOrderManual: false,
   rulesGameId: null,
   pendingGameId: null,
   gameOptions: null,
@@ -4569,7 +4570,7 @@ function setManagementPlayerOrder(newOrder){
   state.players = newOrder.map(id=>byId[id]).filter(Boolean);
 }
 function getSetupPlayerOrder(){ return state.selectedPlayerIds; }
-function setSetupPlayerOrder(newOrder){ state.selectedPlayerIds = newOrder; }
+function setSetupPlayerOrder(newOrder){ state.selectedPlayerIds = newOrder; state.playerOrderManual = true; }
 // Generic pointer-based drag-to-reorder, reused by both Player Management
 // (reorders your saved roster) and Who's Playing (reorders turn order).
 // listGetter/listSetter let each screen supply its own array without this
@@ -4657,6 +4658,7 @@ function togglePlayerSelect(id){
   const i = state.selectedPlayerIds.indexOf(id);
   if(i===-1) state.selectedPlayerIds.push(id);
   else state.selectedPlayerIds.splice(i,1);
+  state.playerOrderManual = false;
   render();
 }
 function randomizeOrder(){
@@ -4679,7 +4681,8 @@ function ensureGameOptionsInitialized(){
   };
 }
 function launchCustomGame(){
-  state.session = startCustomGameSession(state.selectedPlayerIds, state.pendingCustomGame);
+  const playerIds = state.playerOrderManual ? state.selectedPlayerIds : shuffleArray(state.selectedPlayerIds);
+  state.session = startCustomGameSession(playerIds, state.pendingCustomGame);
   state.showAllNumbers = false;
   state.pendingSelection = null;
   state.pendingBoard = null;
@@ -5023,10 +5026,11 @@ function launchGame(){
   const toRemember = {...state.gameOptions};
   delete toRemember._forGameId;
   state.rememberedGameOptions[id] = toRemember;
+  const playerIds = state.playerOrderManual ? state.selectedPlayerIds : shuffleArray(state.selectedPlayerIds);
   if(GAME_LAUNCHERS[id]){
-    state.session = GAME_LAUNCHERS[id](state.selectedPlayerIds, state.gameOptions);
+    state.session = GAME_LAUNCHERS[id](playerIds, state.gameOptions);
   } else {
-    state.session = startX01Session(state.selectedPlayerIds, state.gameOptions);
+    state.session = startX01Session(playerIds, state.gameOptions);
   }
   state.showAllNumbers = false;
   state.pendingSelection = null;
