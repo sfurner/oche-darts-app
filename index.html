@@ -846,7 +846,7 @@ function pickPlayerEmoji(){
 // Bumped every time this file is regenerated — visible in the sidenav footer so you can confirm
 // at a glance whether what's live actually matches the latest build, without checking file sizes.
 const APP_VERSION = 'v1.0';
-const BUILD_STAMP = '8/28/2026, 10:23 PM';
+const BUILD_STAMP = '8/28/2026, 11:07 PM';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1408,23 +1408,28 @@ function cricketUndo(s){
 // color, stealing it from whoever held it. The instant all 22 sections have
 // been claimed by someone, the game ends immediately and whoever holds the
 // most wins (ties allowed).
-const WAR_PLAYER_COLORS = ['#4a7fd6','#b05fd0','#d68a4a','#4ad6a8','#d6524a','#a8d64a','#4ad6d0','#d64aa8'];
+const WAR_PLAYER_COLORS = ['#A84545','#B87A3D','#B8A23D','#4A8A66','#7A8FCC','#B77AC7'];
 function warColorFor(idx){ return (idx===null || idx===undefined) ? '#2a3554' : WAR_PLAYER_COLORS[idx % WAR_PLAYER_COLORS.length]; }
-function startWarSession(playerIds){
+function startWarSession(playerIds, opts){
+  const bullMode = (opts && opts.bullMode) || 'separate';
   const sections = {};
   for(let n=1;n<=20;n++) sections[String(n)] = null;
-  sections['IB'] = null; sections['OB'] = null;
+  if(bullMode==='separate'){ sections['IB'] = null; sections['OB'] = null; }
+  else if(bullMode==='together'){ sections['B'] = null; }
+  // bullMode 'none' — Bull simply isn't part of the sections map at all.
   return {
-    kind:'war',
+    kind:'war', bullMode,
     participants: playerIds.map(pid=>({playerId:pid})),
     sections, currentIdx:0, round:1,
     currentTurnDarts:[], turnHistory:[],
     complete:false, winnerId:null, tied:null, finalCounts:null,
   };
 }
-function warSectionKey(num, segType){
-  if(num==='B') return segType==='bull' ? 'IB' : 'OB';
-  return String(num);
+function warSectionKey(s, num, segType){
+  if(num!=='B') return String(num);
+  if(s.bullMode==='none') return null;
+  if(s.bullMode==='together') return 'B';
+  return segType==='bull' ? 'IB' : 'OB';
 }
 function warCheckWin(s){
   if(!Object.values(s.sections).every(v=>v!==null)) return;
@@ -1437,10 +1442,16 @@ function warCheckWin(s){
   else { s.winnerId = null; s.tied = winners.map(p=>p.playerId); }
 }
 function warApplyDart(s, num, segType){
-  const key = warSectionKey(num, segType);
+  const key = warSectionKey(s, num, segType);
+  // Bull excluded entirely (bullMode 'none') — a hit there is just a wasted
+  // dart, same treatment Cricket gives an off-number hit.
+  if(key===null){
+    s.currentTurnDarts.push({label:'No Score', key:null, prevOwner:null});
+    return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
+  }
   const prevOwner = s.sections[key];
   s.sections[key] = s.currentIdx;
-  const label = num==='B' ? (segType==='bull'?'Inner Bull':'Outer Bull') : fullDartLabel(num, segType);
+  const label = num==='B' ? (s.bullMode==='together' ? 'Bull' : (segType==='bull'?'Inner Bull':'Outer Bull')) : fullDartLabel(num, segType);
   s.currentTurnDarts.push({label, key, prevOwner});
   warCheckWin(s);
   return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
@@ -4649,6 +4660,7 @@ function proceedToOptions(){
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
+    bullMode:'separate',
     ...remembered,
   };
   render();
@@ -6132,6 +6144,17 @@ function renderGameOptions(){
         <div class="leg-item ${o.variant==='cutthroat'?'active-leg':''}"><b>Cut Throat</b> — extra hits work against your opponents instead of for you. Points get added to every rival who still has that number open, so closing early protects you.</div>
       </div>
     </div>`;
+  } else if(id==='war'){
+    body = `
+    <div>
+      <span class="field-label">Bull</span>
+      <div class="chip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
+      <div class="option-legend">
+        <div class="leg-item ${o.bullMode==='none'?'active-leg':''}"><b>Not Required</b> — Bull isn't part of the board at all. Only the 20 numbered wedges count.</div>
+        <div class="leg-item ${o.bullMode==='together'?'active-leg':''}"><b>Together</b> — Inner and Outer Bull are treated as one shared section. Hitting either claims it.</div>
+        <div class="leg-item ${o.bullMode==='separate'?'active-leg':''}"><b>Both Required</b> — Inner and Outer Bull are tracked separately, as their own two sections. Both need to be claimed.</div>
+      </div>
+    </div>`;
   } else if(id==='atc'){
     body = `
     <div>
@@ -7136,31 +7159,57 @@ function renderTipsSection(s){
 }
 function renderWarBoard(s){
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
-  let wedges = '', labels = '';
+  let wedges = '', labels = '', overlays = '';
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
     const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
-    const fill = warColorFor(s.sections[String(num)]);
-    wedges += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_DOUBLE_OUT,aStart,aEnd)}" fill="${fill}" stroke="var(--ink)" stroke-width="1" class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;"/>`;
+    const even = i%2===0;
+    const dtFill = even ? '#4A8A66' : '#A84545';
+    const singleFill = even ? '#E8E1D0' : '#232D28';
+    const segAttrs = `class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;"`;
+    wedges += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="var(--ink)" stroke-width="0.5" ${segAttrs}/>`;
+    wedges += `<path d="${wedgePath(cx,cy,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="0.5" ${segAttrs}/>`;
+    wedges += `<path d="${wedgePath(cx,cy,R_TRIPLE_OUT,R_DOUBLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="var(--ink)" stroke-width="0.5" ${segAttrs}/>`;
+    wedges += `<path d="${wedgePath(cx,cy,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="0.5" ${segAttrs}/>`;
+    const owner = s.sections[String(num)];
+    if(owner!==null && owner!==undefined){
+      overlays += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_DOUBLE_OUT,aStart,aEnd)}" fill="${warColorFor(owner)}" fill-opacity="0.62" style="pointer-events:none;"/>`;
+    }
     const lp = polar(cx,cy,R_NUMBER_LABEL,(aStart+aEnd)/2);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
   }
-  const outerFill = warColorFor(s.sections['OB']);
-  const innerFill = warColorFor(s.sections['IB']);
-  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerFill}" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>`;
-  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerFill}" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
-  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">${wedges}${labels}</svg>`;
+  let bullMarkup;
+  if(s.bullMode==='none'){
+    bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="#4A8A66" stroke="var(--ink)"/>
+      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="#A84545" stroke="var(--ink)"/>`;
+  } else if(s.bullMode==='together'){
+    const owner = s.sections['B'];
+    const tint = (owner!==null && owner!==undefined) ? `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${warColorFor(owner)}" fill-opacity="0.62" style="pointer-events:none;"/>` : '';
+    bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="#4A8A66" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
+      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="#A84545" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>
+      ${tint}`;
+  } else {
+    const outerOwner = s.sections['OB'], innerOwner = s.sections['IB'];
+    const outerFill = (outerOwner!==null && outerOwner!==undefined) ? warColorFor(outerOwner) : '#4A8A66';
+    const innerFill = (innerOwner!==null && innerOwner!==undefined) ? warColorFor(innerOwner) : '#A84545';
+    bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerFill}" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
+      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerFill}" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
+  }
+  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">${wedges}${overlays}${labels}${bullMarkup}</svg>`;
 }
 function renderWarPlayerBoxes(s){
+  const total = Object.keys(s.sections).length;
   return s.participants.map((p,i)=>{
     const count = Object.values(s.sections).filter(v=>v===i).length;
     const isCurrent = i===s.currentIdx;
+    const darts = participantDisplayDarts(s, i);
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
       <div class="ps-header">
         <div class="ps-avatar" style="background:${warColorFor(i)}; color:#1c1c1c;">${playerEmojiOrInitials(p.playerId)}</div>
         <div class="ps-name">${plainPlayerName(p.playerId)}</div>
-        <div class="ps-score" style="color:${warColorFor(i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${count}/22</div>
+        <div class="ps-score" style="color:${warColorFor(i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${count}/${total}</div>
       </div>
+      ${isCurrent ? miniDartChips(darts, true, true) : ''}
     </div>`;
   }).join('');
 }
