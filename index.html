@@ -863,7 +863,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v3.5';
+const BUILD_STAMP = 'v3.6';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1427,9 +1427,17 @@ function cricketUndo(s){
 // been claimed by someone, the game ends immediately and whoever holds the
 // most wins (ties allowed).
 const WAR_PLAYER_COLORS = ['#3B82F6','#22C55E','#DC2626','#EAB308','#8B5CF6','#F97316'];
-function warColorFor(idx){ return (idx===null || idx===undefined) ? '#2a3554' : WAR_PLAYER_COLORS[idx % WAR_PLAYER_COLORS.length]; }
+// A player's War color is either one they explicitly picked (locked in as
+// "theirs" until they clear it back to Random), or falls back to the
+// auto-assigned palette color by turn position.
+function warColorFor(s, idx){
+  if(idx===null || idx===undefined) return '#2a3554';
+  const custom = s && s.participants[idx] && s.participants[idx].color;
+  return custom || WAR_PLAYER_COLORS[idx % WAR_PLAYER_COLORS.length];
+}
 function startWarSession(playerIds, opts){
   const bullMode = (opts && opts.bullMode) || 'separate';
+  const customColors = (opts && opts.warPlayerColors) || {};
   const sections = {};
   for(let n=1;n<=20;n++) sections[String(n)] = null;
   if(bullMode==='separate'){ sections['IB'] = null; sections['OB'] = null; }
@@ -1437,7 +1445,7 @@ function startWarSession(playerIds, opts){
   // bullMode 'none' — Bull simply isn't part of the sections map at all.
   return {
     kind:'war', bullMode,
-    participants: playerIds.map(pid=>({playerId:pid})),
+    participants: playerIds.map(pid=>({playerId:pid, color: customColors[pid]||null})),
     sections, currentIdx:0, round:1,
     currentTurnDarts:[], turnHistory:[],
     complete:false, winnerId:null, tied:null, finalCounts:null,
@@ -4701,6 +4709,12 @@ function launchCustomGame(){
   render();
 }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
+function setWarPlayerColor(playerId, color){
+  if(!state.gameOptions.warPlayerColors) state.gameOptions.warPlayerColors = {};
+  if(color) state.gameOptions.warPlayerColors[playerId] = color;
+  else delete state.gameOptions.warPlayerColors[playerId];
+  render();
+}
 // Prototype for 501/301 only — compact row showing the current choice,
 // expands in place to show every option with its description (reusing
 // the exact same copy the old always-visible legend blocks had), rather
@@ -6186,6 +6200,7 @@ function renderGameOptionsBody(){
       </div>
     </div>`;
   } else if(id==='war'){
+    if(!o.warPlayerColors) o.warPlayerColors = {};
     body += `
     <div>
       <span class="field-label">Bull</span>
@@ -6195,7 +6210,21 @@ function renderGameOptionsBody(){
         <div class="leg-item ${o.bullMode==='together'?'active-leg':''}"><b>Together</b> — Inner and Outer Bull are treated as one shared section. Hitting either claims it.</div>
         <div class="leg-item ${o.bullMode==='separate'?'active-leg':''}"><b>Both Required</b> — Inner and Outer Bull are tracked separately, as their own two sections. Both need to be claimed.</div>
       </div>
-    </div>`;
+    </div>
+    ${state.selectedPlayerIds.length ? `<div>
+      <span class="field-label">Player Colors</span>
+      ${state.selectedPlayerIds.map(pid=>{
+        const p = state.players.find(pp=>pp.id===pid);
+        const current = o.warPlayerColors[pid];
+        const swatches = WAR_PLAYER_COLORS.map(c=>`<span onclick="setWarPlayerColor('${pid}','${c}')" style="width:26px; height:26px; border-radius:50%; background:${c}; display:inline-block; cursor:pointer; box-sizing:border-box; border:${current===c?'3px solid var(--cream)':'2px solid transparent'};"></span>`).join('');
+        return `<div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+          <div style="min-width:80px; color:var(--cream-dim); font-size:13px;">${p?p.name:pid}</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; flex:1;">${swatches}</div>
+          <span class="tiny-edit-btn ${!current?'disabled':''}" ${current?`onclick="setWarPlayerColor('${pid}',null)"`:''}>Random</span>
+        </div>`;
+      }).join('')}
+      <p class="info-note">Pick a color to lock it in as yours for this and future War games — tap "Random" to release it back to auto-assignment.</p>
+    </div>` : ''}`;
   } else if(id==='atc'){
     body += `
     <div>
@@ -7208,9 +7237,9 @@ function renderWarBoard(s){
     const aStart = aFull1 + gapDeg, aEnd = aFull2 - gapDeg;
     const owner = s.sections[String(num)];
     const claimed = owner!==null && owner!==undefined;
-    const strokeColor = claimed ? warColorFor(owner) : WAR_NEUTRAL;
+    const strokeColor = claimed ? warColorFor(s,owner) : WAR_NEUTRAL;
     const sw = claimed ? 2 : 1;
-    const singleFill = claimed ? warColorFor(owner) : '#151c30';
+    const singleFill = claimed ? warColorFor(s,owner) : '#151c30';
     const dtFill = '#1c2438';
     const segAttrs = `class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;"`;
     fills += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="${strokeColor}" stroke-width="${sw}" ${segAttrs}/>`;
@@ -7224,22 +7253,22 @@ function renderWarBoard(s){
   if(s.bullMode==='together'){
     const owner = s.sections['B'];
     const claimed = owner!==null && owner!==undefined;
-    const c = claimed ? warColorFor(owner) : WAR_NEUTRAL;
-    const fill = claimed ? warColorFor(owner) : '#151c30';
-    bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${fill}" stroke="${c}" stroke-width="${claimed?2:1}" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
-      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${fill}" stroke="${c}" stroke-width="${claimed?2:1}" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
+    const c = claimed ? warColorFor(s,owner) : WAR_NEUTRAL;
+    const fill = claimed ? warColorFor(s,owner) : '#151c30';
+    bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${fill}" stroke="${c}" stroke-width="${claimed?3:2}" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
+      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${fill}" stroke="${c}" stroke-width="${claimed?3:2}" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
   } else {
     // 'none' still renders the same clickable bull circles — a hit there
     // just becomes a wasted dart via warApplyDart's null-key handling.
     const outerOwner = s.sections['OB'], innerOwner = s.sections['IB'];
     const outerClaimed = s.bullMode==='separate' && outerOwner!==null && outerOwner!==undefined;
     const innerClaimed = s.bullMode==='separate' && innerOwner!==null && innerOwner!==undefined;
-    const outerStroke = outerClaimed ? warColorFor(outerOwner) : WAR_NEUTRAL;
-    const innerStroke = innerClaimed ? warColorFor(innerOwner) : WAR_NEUTRAL;
-    const outerFill = outerClaimed ? warColorFor(outerOwner) : '#151c30';
-    const innerFill = innerClaimed ? warColorFor(innerOwner) : '#1c2438';
-    bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerFill}" stroke="${outerStroke}" stroke-width="${outerClaimed?2:1}" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
-      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerFill}" stroke="${innerStroke}" stroke-width="${innerClaimed?2:1}" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
+    const outerStroke = outerClaimed ? warColorFor(s,outerOwner) : WAR_NEUTRAL;
+    const innerStroke = innerClaimed ? warColorFor(s,innerOwner) : WAR_NEUTRAL;
+    const outerFill = outerClaimed ? warColorFor(s,outerOwner) : '#151c30';
+    const innerFill = innerClaimed ? warColorFor(s,innerOwner) : '#1c2438';
+    bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerFill}" stroke="${outerStroke}" stroke-width="${outerClaimed?3:2}" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
+      <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerFill}" stroke="${innerStroke}" stroke-width="${innerClaimed?3:2}" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
   }
   return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">${fills}${bullMarkup}${labels}</svg>`;
 }
@@ -7251,15 +7280,16 @@ function renderWarPlayerBoxes(s){
     const darts = participantDisplayDarts(s, i);
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
       <div class="ps-header">
-        <div class="ps-avatar" style="background:${warColorFor(i)}; color:#1c1c1c;">${playerEmojiOrInitials(p.playerId)}</div>
+        <div class="ps-avatar" style="background:${warColorFor(s,i)}; color:#1c1c1c;">${playerEmojiOrInitials(p.playerId)}</div>
         <div class="ps-name">${plainPlayerName(p.playerId)}</div>
-        <div class="ps-score" style="color:${warColorFor(i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${count}/${total}</div>
+        <div class="ps-score" style="color:${warColorFor(s,i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${count}/${total}</div>
       </div>
       ${isCurrent ? miniDartChips(darts, true, true) : ''}
     </div>`;
   }).join('');
 }
 function renderWarActiveShell(s){
+  const waitingOnTakeout = !!cameraPendingTurnEnd;
   return `<div class="game-header-row">
     <div><div class="round-label">ROUND</div><div class="round-value">${s.round}</div></div>
     <div class="game-title-center">War</div>
@@ -7268,6 +7298,7 @@ function renderWarActiveShell(s){
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderWarBoard(s)}</div></div>
   ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderWarPlayerBoxes(s)}
+  ${waitingOnTakeout ? `<div class="tiny-edit-btn primary" style="margin:8px 0; text-align:center; padding:10px;" onclick="forceEndCurrentTurnFromTakeout()">&#9203; Waiting on takeout — tap if it doesn't clear</div>` : ''}
   ${renderBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
