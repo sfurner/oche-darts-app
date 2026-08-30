@@ -863,7 +863,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v3.6';
+const BUILD_STAMP = 'v3.7';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4715,6 +4715,22 @@ function setWarPlayerColor(playerId, color){
   else delete state.gameOptions.warPlayerColors[playerId];
   render();
 }
+// A fully independent manual advance for War — deliberately does NOT touch
+// cameraPendingTurnEnd or go through warEndTurn/wrapEndTurnForCamera at all.
+// This is a direct escape hatch: whatever is or isn't happening with takeout
+// detection, tapping this always works, every time, no exceptions.
+function warForceNextPlayer(){
+  const s = state.session;
+  if(!s || s.kind!=='war' || s.complete) return;
+  cameraPendingTurnEnd = null;
+  s.participants[s.currentIdx].lastTurnDarts = s.currentTurnDarts.map(d=>d.label);
+  s.turnHistory.push({participantIdx:s.currentIdx, darts:s.currentTurnDarts});
+  s.currentTurnDarts = [];
+  s.turnHitPoints = [];
+  s.currentIdx = (s.currentIdx+1) % s.participants.length;
+  if(s.currentIdx===0) s.round++;
+  render();
+}
 // Prototype for 501/301 only — compact row showing the current choice,
 // expands in place to show every option with its description (reusing
 // the exact same copy the old always-visible legend blocks had), rather
@@ -7025,6 +7041,7 @@ function renderEditTurnRow(s){
       <div class="subgroup-row">
         <div class="tiny-edit-btn danger" onclick="doClearTurn()">Restart Turn</div>
         <div class="tiny-edit-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous Player</div>
+        ${s.kind==='war' ? `<div class="tiny-edit-btn primary" onclick="warForceNextPlayer()">Next Player</div>` : ''}
       </div>
     </div>
   </div>`;
@@ -7298,7 +7315,7 @@ function renderWarActiveShell(s){
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderWarBoard(s)}</div></div>
   ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderWarPlayerBoxes(s)}
-  ${waitingOnTakeout ? `<div class="tiny-edit-btn primary" style="margin:8px 0; text-align:center; padding:10px;" onclick="forceEndCurrentTurnFromTakeout()">&#9203; Waiting on takeout — tap if it doesn't clear</div>` : ''}
+  ${waitingOnTakeout ? `<div class="tiny-edit-btn primary" style="margin:8px 0; text-align:center; padding:10px;" onclick="warForceNextPlayer()">&#9203; Waiting on takeout — tap if it doesn't clear</div>` : ''}
   ${renderBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
