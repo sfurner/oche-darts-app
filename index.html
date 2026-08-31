@@ -153,6 +153,12 @@ body{
 }
 .screen-footer:empty{ display:none; }
 .panel-controls{ display:flex; gap:8px; padding-top:12px; margin-top:auto; }
+.war-controls-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:auto; padding-top:12px; }
+.war-ctrl-btn{ text-align:center; padding:12px 6px; border-radius:8px; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:1px solid var(--felt-lighter); color:var(--cream-dim); line-height:1.3; }
+.war-ctrl-btn.primary{ border-color:var(--brass); color:var(--brass); }
+.war-ctrl-btn.danger{ border-color:var(--red); color:#e08a7d; }
+.war-ctrl-btn.leave{ border-color:var(--red); color:#e08a7d; }
+.war-ctrl-btn.disabled{ opacity:0.35; cursor:default; }
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .header-action-btn{ background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; }
 .header-action-btn:active{ transform:scale(0.96); }
@@ -863,7 +869,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v3.7';
+const BUILD_STAMP = 'v3.8';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -7026,7 +7032,6 @@ function renderCameraHelpPanel(){
       <div class="tiny-edit-btn primary${busy?' disabled':''}" ${busy?'':'onclick="fixBoardNow()"'}>&#128295; Fix Board</div>
     </div>
     <div class="subgroup-row" style="margin-top:6px;">
-      <div class="tiny-edit-btn${busy?' disabled':''}" ${busy?'':'onclick="startBoardManagerDetection()"'}>&#9654; Start</div>
       <div class="tiny-edit-btn${busy?' disabled':''}" ${busy?'':'onclick="resetBoardManagerNow()"'}>&#8635; Soft Reset</div>
       <div class="tiny-edit-btn${busy?' disabled':''}" ${busy?'':'onclick="hardRestartBoardManager()"'}>&#9850; Hard Reset</div>
     </div>
@@ -7041,7 +7046,6 @@ function renderEditTurnRow(s){
       <div class="subgroup-row">
         <div class="tiny-edit-btn danger" onclick="doClearTurn()">Restart Turn</div>
         <div class="tiny-edit-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous Player</div>
-        ${s.kind==='war' ? `<div class="tiny-edit-btn primary" onclick="warForceNextPlayer()">Next Player</div>` : ''}
       </div>
     </div>
   </div>`;
@@ -7305,6 +7309,15 @@ function renderWarPlayerBoxes(s){
     </div>`;
   }).join('');
 }
+function renderWarBottomControls(s){
+  const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
+  return `<div class="war-controls-grid">
+    <div class="war-ctrl-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous Player</div>
+    <div class="war-ctrl-btn primary" onclick="warForceNextPlayer()">Next Player</div>
+    <div class="war-ctrl-btn danger" onclick="doClearTurn()">Restart Turn</div>
+    <div class="war-ctrl-btn leave" onclick="openGameMenu()">Leave Game</div>
+  </div>`;
+}
 function renderWarActiveShell(s){
   const waitingOnTakeout = !!cameraPendingTurnEnd;
   return `<div class="game-header-row">
@@ -7316,7 +7329,7 @@ function renderWarActiveShell(s){
   ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderWarPlayerBoxes(s)}
   ${waitingOnTakeout ? `<div class="tiny-edit-btn primary" style="margin:8px 0; text-align:center; padding:10px;" onclick="warForceNextPlayer()">&#9203; Waiting on takeout — tap if it doesn't clear</div>` : ''}
-  ${renderBottomControls(s)}
+  ${renderWarBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
 function renderActiveShell(){
