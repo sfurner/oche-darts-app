@@ -869,7 +869,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v3.8';
+const BUILD_STAMP = 'v4.0';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1279,7 +1279,10 @@ function x01ApplyDart(s, throwObj){
     else if(s.outRule==='master' && !(throwObj.type==='double'||throwObj.type==='triple'||throwObj.label==='DB')) bust = true;
     else win = true;
   } else if(newScore === 1 && (s.outRule==='double'||s.outRule==='master')){
-    // still playable in theory only if more darts could recover... but leaving 1 is effectively dead this turn only if it's final dart standing at 1 - not an automatic bust, just unfinishable this turn.
+    // No double is worth 1 (the smallest is D1 = 2), so a player left needing
+    // exactly 1 can never finish, ever. This is always an immediate bust,
+    // not just "unfinishable this turn" — matches standard darts rules.
+    bust = true;
   }
   s.currentTurnDarts.push({label:throwObj.label, value, bust, win});
   if(!bust){ p.score = newScore; }
@@ -3342,6 +3345,13 @@ function dispatchThrowCore(num, segType){
     const res = x01ApplyDart(s, throwObj);
     if(res.turnOver){
       if(res.bust){ finalizeBustThenAdvance(s); }
+      else if(res.win){
+        // A checkout ends the entire game right then — there's no next
+        // player to protect against camera confusion, so this deliberately
+        // bypasses the camera-takeout wait every other turn-end uses.
+        ORIGINAL_END_TURN_FNS.x01(s);
+        if(s.complete) finishX01Game(s);
+      }
       else { x01EndTurn(s); if(s.complete) finishX01Game(s); }
     }
   } else if(s.kind==='cricket'){
@@ -3562,8 +3572,21 @@ function botChooseX01Target(s){
 }
 // Picks a target for any bot-playable game kind except Call Your Shot (which has its own engine
 // below, since its target system is fundamentally different — zones, not num+multiplier).
+// Deliberately picks from every section with equal chance, regardless of who
+// (if anyone) already owns it — claimed sections are just as fair game as
+// open ones in War, since stealing is core to the game. No smart weighting
+// toward open sections, just genuinely random for maximum unpredictability.
+function botChooseWarTarget(s){
+  const keys = Object.keys(s.sections);
+  const key = keys[Math.floor(Math.random()*keys.length)];
+  if(key==='IB') return {num:'B', seg:'bull'};
+  if(key==='OB') return {num:'B', seg:'single'};
+  if(key==='B') return {num:'B', seg:'bull'};
+  return {num:parseInt(key,10), seg:'single'};
+}
 function botChooseGenericTarget(s){
   if(s.kind==='x01') return botChooseX01Target(s);
+  if(s.kind==='war') return botChooseWarTarget(s);
   const highlighted = getCurrentGameTargetHighlightRaw(s);
   if(highlighted) return highlighted;
   if(s.kind==='killer'){
@@ -7350,6 +7373,7 @@ function renderActiveShell(){
   ${renderBoardConfirmLine(s)}
   ${renderPlayerBoxes(s)}
   ${renderPriorityOrTips(s)}
+  ${cameraPendingTurnEnd ? `<div class="tiny-edit-btn primary" style="margin:8px 0; text-align:center; padding:10px;" onclick="forceEndCurrentTurnFromTakeout()">&#9203; Waiting on takeout — tap if it doesn't clear</div>` : ''}
   ${renderBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
@@ -7912,8 +7936,7 @@ function renderEntryArea(s){
       </div>`;
   if(botTurn){
     return `${toggle}
-    ${entryHtml.replace('class="board-area"', 'class="board-area bot-dimmed"')}
-    <div class="confirm-banner" style="opacity:0.8;">&#129302; Bot is throwing — no input needed</div>`;
+    ${entryHtml.replace('class="board-area"', 'class="board-area bot-dimmed"')}`;
   }
   return `${toggle}${entryHtml}`;
 }
