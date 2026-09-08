@@ -871,7 +871,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v5.2';
+const BUILD_STAMP = 'v5.3';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1481,15 +1481,17 @@ function warCheckWin(s){
 function warApplyDart(s, num, segType){
   const key = warSectionKey(s, num, segType);
   // Bull excluded entirely (bullMode 'none') — a hit there is just a wasted
-  // dart, same treatment Cricket gives an off-number hit.
+  // dart, same treatment Cricket gives an off-number hit. Shows the real
+  // segment rather than a generic label, colored red since it didn't count.
   if(key===null){
-    s.currentTurnDarts.push({label:'No Score', key:null, prevOwner:null});
+    const excludedLabel = num==='B' ? (segType==='bull'?'Inner Bull':'Outer Bull') : fullDartLabel(num, segType);
+    s.currentTurnDarts.push({label:excludedLabel, hitTarget:false, key:null, prevOwner:null});
     return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
   }
   const prevOwner = s.sections[key];
   s.sections[key] = s.currentIdx;
   const label = num==='B' ? (s.bullMode==='together' ? 'Bull' : (segType==='bull'?'Inner Bull':'Outer Bull')) : fullDartLabel(num, segType);
-  s.currentTurnDarts.push({label, key, prevOwner});
+  s.currentTurnDarts.push({label, key, prevOwner, hitTarget:true});
   warCheckWin(s);
   return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
 }
@@ -7348,12 +7350,12 @@ function renderTipsSection(s){
     const small = p.isKiller ? 'Hit opponents\' numbers to remove lives. Hitting your own number now costs you a life!' : 'Hit your double ('+p.number+') to become a killer. '+p.lives+' lives.';
     objective = `<div class="objective-banner"><div class="big">${big}</div><div class="small">${small}</div></div>`;
   } else if(s.kind==='callshot'){
-    // Deliberately terse — one line, no player emoji, silent unless there's
-    // genuinely something worth announcing (target set or target hit).
-    // An ordinary miss with darts still left says nothing at all.
-    objective = s.calledTargets.length===0
-      ? (s.lastTurnSummary || '')
-      : (s.currentTurnDarts.length===0 ? (s.lastTurnSummary || '') : '');
+    // Nothing shown here at all — the target is already visible via the
+    // board highlight and the player's own Target box, and repeated
+    // attempts at getting the wording right weren't landing. Simplest,
+    // most reliable fix: just don't show anything in this corner for this
+    // game.
+    objective = '';
   }
   return objective;
 }
@@ -7415,14 +7417,22 @@ function renderWarPlayerBoxes(s){
   const sections = s.participants.map((p,i)=>{
     const count = Object.values(s.sections).filter(v=>v===i).length;
     const isCurrent = i===s.currentIdx;
-    const darts = participantDisplayDarts(s, i);
+    const darts = s.currentTurnDarts;
+    // Same dart-row callout every other game uses — was previously its own
+    // separate miniDartChips display, which is why it looked inconsistent.
+    const rows = isCurrent ? [0,1,2].map(idx=>{
+      const d = darts[idx];
+      if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
+      const rowClass = d.hitTarget===true ? ' hit-target' : (d.hitTarget===false ? ' miss' : '');
+      return `<div class="turn-dart-row${rowClass}"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val"></div></div>`;
+    }).join('') : '';
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
       <div class="ps-header">
         <div class="ps-avatar" style="background:${warColorFor(s,i)}; color:#1c1c1c;">${playerEmojiOrInitials(p.playerId)}</div>
         <div class="ps-name">${plainPlayerName(p.playerId)}</div>
         <div class="ps-score" style="color:${warColorFor(s,i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${count}/${total}</div>
       </div>
-      ${isCurrent ? miniDartChips(darts, true, true) : ''}
+      ${isCurrent ? `<div class="ps-body">${rows}</div>` : ''}
     </div>`;
   }).join('');
   // Was missing the same "PLAYERS" label header every other game's sidebar
