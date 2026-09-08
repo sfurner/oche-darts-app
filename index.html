@@ -153,8 +153,8 @@ body{
 }
 .screen-footer:empty{ display:none; }
 .panel-controls{ display:flex; gap:8px; padding-top:12px; margin-top:auto; }
-.war-controls-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:auto; padding-top:12px; }
-.war-ctrl-btn{ text-align:center; padding:12px 6px; border-radius:8px; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:1px solid var(--felt-lighter); color:var(--cream-dim); line-height:1.3; }
+.war-controls-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:auto; padding-top:12px; }
+.war-ctrl-btn{ text-align:center; padding:11px 4px; border-radius:8px; font-family:'Inter',sans-serif; font-weight:600; font-size:11.5px; cursor:pointer; border:1px solid var(--felt-lighter); color:var(--cream-dim); line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .war-ctrl-btn.primary{ border-color:var(--brass); color:var(--brass); }
 .war-ctrl-btn.danger{ border-color:var(--red); color:#e08a7d; }
 .war-ctrl-btn.leave{ border-color:var(--red); color:#e08a7d; }
@@ -666,7 +666,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .camera-help-trigger{ display:flex; align-items:center; gap:5px; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); opacity:0.65; cursor:pointer; padding:4px 8px; border:1px solid var(--felt-lighter); border-radius:20px; }
 .camera-help-trigger:active{ opacity:1; }
 .camera-help-dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; }
-.camera-help-panel{ position:absolute; top:calc(100% + 6px); right:0; width:210px; background:var(--felt); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; box-shadow:var(--shadow); z-index:20; text-align:left; }
+.camera-help-panel{ position:absolute; top:calc(100% + 6px); left:0; width:210px; background:var(--felt); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; box-shadow:var(--shadow); z-index:20; text-align:left; }
 .camera-help-stats{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--cream-dim); line-height:1.6; margin-bottom:8px; }
 .ladder-stat-row{ display:flex; gap:10px; margin-bottom:8px; }
 .ladder-stat{ flex:1; background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; text-align:center; }
@@ -705,7 +705,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .confirm-banner{margin:0 18px 8px 18px; text-align:center; background:var(--felt-dark); border:1px solid var(--brass); border-radius:10px; padding:8px; font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--brass);}
 
 .modal-overlay{
-  position:absolute; inset:0; background:rgba(6,10,8,0.72); display:flex; align-items:center; justify-content:center; z-index:50; padding:24px;
+  position:absolute; inset:0; background:rgba(6,10,8,0.72); display:flex; align-items:center; justify-content:center; z-index:50; padding:24px; overflow-y:auto;
 }
 .celebration-overlay{
   position:fixed; inset:0; background:rgba(4,8,14,0.55); display:flex; align-items:center; justify-content:center; z-index:80; overflow:hidden;
@@ -721,7 +721,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .confetti-piece{ position:absolute; top:-5%; border-radius:1px; animation-name:confettiFall; animation-timing-function:linear; animation-iteration-count:infinite; opacity:0.9; }
 @keyframes confettiFall{ 0%{ top:-5%; opacity:0.9; } 100%{ top:105%; opacity:0.6; } }
 .modal{
-  background:var(--felt); border:1px solid var(--brass); border-radius:16px; padding:22px; width:100%; max-width:340px;
+  background:var(--felt); border:1px solid var(--brass); border-radius:16px; padding:22px; width:100%; max-width:340px; max-height:calc(100vh - 48px); overflow-y:auto; box-sizing:border-box;
 }
 .modal h3{color:var(--brass); margin-bottom:10px;}
 .modal-actions{display:flex; gap:8px; margin-top:16px;}
@@ -869,7 +869,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v5.0';
+const BUILD_STAMP = 'v5.1';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4454,10 +4454,10 @@ function renderUnifiedBottomControls(s){
   const restartFn = isCallShot ? 'callShotUndo()' : 'doClearTurn()';
   const canReturn = !isCallShot && s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
   return `<div class="war-controls-grid">
-    <div class="war-ctrl-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous player</div>
-    <div class="war-ctrl-btn primary" onclick="${nextFn}">Next player</div>
-    <div class="war-ctrl-btn danger" onclick="${restartFn}">Restart turn</div>
-    <div class="war-ctrl-btn leave" onclick="openGameMenu()">Leave game</div>
+    <div class="war-ctrl-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous</div>
+    <div class="war-ctrl-btn primary" onclick="${nextFn}">Next</div>
+    <div class="war-ctrl-btn danger" onclick="${restartFn}">Restart</div>
+    <div class="war-ctrl-btn leave" onclick="openGameMenu()">Leave</div>
   </div>`;
 }
 
@@ -5034,13 +5034,13 @@ function callShotResolveAttempt(s, success){
     const callerName = playerName(s.participants[s.callerIdx].playerId);
     if(success){
       s.lastTurnSummary = s.leaderMustProve
-        ? `<b>${callerName} calls it and nails it — ${targetLabelForSummary}!</b>`
-        : `<b>${callerName} plants the target on ${targetLabelForSummary}.</b>`;
+        ? `${callerName} hit the target!`
+        : `${callerName} set the target.`;
     } else {
       const caller = s.participants[s.callerIdx];
       caller.letters++;
       const newLetter = s.word[caller.letters-1] || '';
-      s.lastTurnSummary = `<b>${callerName} couldn't back it up${newLetter?` — that's a ${newLetter}`:''}.</b>`;
+      s.lastTurnSummary = `${callerName} missed${newLetter?` — that's a ${newLetter}`:''}.`;
       if(caller.letters >= s.word.length){ caller.eliminated = true; }
     }
   } else if(s.stage==='follow'){
@@ -5049,10 +5049,10 @@ function callShotResolveAttempt(s, success){
       const p = s.participants[s.currentIdx];
       p.letters++;
       const newLetter = s.word[p.letters-1] || '';
-      s.lastTurnSummary = `<b>${followerName} couldn't find ${targetLabelForSummary}${newLetter?` — that's a ${newLetter}`:''}.</b>`;
+      s.lastTurnSummary = `${followerName} missed${newLetter?` — that's a ${newLetter}`:''}.`;
       if(p.letters >= s.word.length){ p.eliminated = true; }
     } else {
-      s.lastTurnSummary = `<b>${followerName} found it!</b>`;
+      s.lastTurnSummary = `${followerName} hit the target!`;
     }
   }
   render();
@@ -7309,7 +7309,7 @@ function renderTipsSection(s){
       small = s.participants.filter(x=>!x.eliminated).length+' player(s) still standing.';
     } else if(cfg.winCondition==='highScore'||cfg.winCondition==='lowScore'){
       big = (cfg.mode==='teams'?customTeamScore(s,p.team):p.score)+' points';
-      small = 'Round '+s.round+' of '+(cfg.rounds||8)+' — '+(cfg.winCondition==='highScore'?'highest':'lowest')+' score wins.';
+      small = (cfg.winCondition==='highScore'?'Highest':'Lowest')+' score wins.';
     } else {
       big = (cfg.mode==='teams'?customTeamScore(s,p.team):p.score)+' points';
       small = 'Manual ending — host ends the game when ready.';
@@ -7326,10 +7326,10 @@ function renderTipsSection(s){
     const target = s.round;
     const need = ['single','double','triple'].filter(m=>!p.hitTypesThisRound.includes(m));
     const big = 'Target: '+target;
-    const small = 'Round '+s.round+' of '+s.rounds+' — hit single, double, and triple '+target+' in one turn for an instant Shanghai win. Still need: '+(need.length?need.join(', '):'nothing, go for it!');
+    const small = 'Hit single, double, and triple '+target+' in one turn for an instant Shanghai win. Still need: '+(need.length?need.join(', '):'nothing, go for it!');
     objective = `<div class="objective-banner"><div class="big">${big}</div><div class="small">${small}</div></div>`;
   } else if(s.kind==='baseball'){
-    const big = 'Inning '+s.round+' — Target: '+s.round;
+    const big = 'Target: '+s.round;
     const small = 'Singles score 1 run, doubles 2, triples 3, only on number '+s.round+'.';
     objective = `<div class="objective-banner"><div class="big">${big}</div><div class="small">${small}</div></div>`;
   } else if(s.kind==='halveit'){
@@ -7342,6 +7342,25 @@ function renderTipsSection(s){
     const big = p.isKiller ? 'Killer — hunt number '+p.number+"'s rivals" : 'Your number: '+p.number;
     const small = p.isKiller ? 'Hit opponents\' numbers to remove lives. Hitting your own number now costs you a life!' : 'Hit your double ('+p.number+') to become a killer. '+p.lives+' lives.';
     objective = `<div class="objective-banner"><div class="big">${big}</div><div class="small">${small}</div></div>`;
+  } else if(s.kind==='callshot'){
+    // Deliberately terse, and deliberately NOT the two-tier objective-banner
+    // every other kind uses here — this lives in the quiet bottom-left
+    // corner note now instead of the crowded sidebar, so it stays to one
+    // short line, same spot "Aim at 20" style tips already live.
+    const name = playerName(s.participants[s.currentIdx].playerId);
+    if(s.calledTargets.length===0){
+      objective = s.lastTurnSummary || 'Throw one dart to set the target.';
+    } else {
+      const darts = s.currentTurnDarts;
+      if(darts.length===0){
+        objective = s.lastTurnSummary || `${name}'s up.`;
+      } else {
+        const last = darts[darts.length-1];
+        const missed = !last || last.label==='Miss';
+        const remaining = s.maxDarts - (s.dartsUsedThisAttempt||0);
+        objective = (missed && remaining>0) ? `${name} missed — ${remaining} left.` : (s.lastTurnSummary || `${name}'s up.`);
+      }
+    }
   }
   return objective;
 }
@@ -7423,9 +7442,9 @@ function renderWarPlayerBoxes(s){
 }
 function renderWarActiveShell(s){
   return `<div class="game-header-row">
-    <div style="width:80px;"></div>
+    <div style="width:80px;">${renderCameraHelpTrigger()}</div>
     <div class="game-title-center">War</div>
-    <div style="width:80px; text-align:right;">${renderCameraHelpTrigger()}</div>
+    <div style="width:80px;"></div>
   </div>
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderWarBoard(s)}</div></div>
   ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
@@ -7443,11 +7462,9 @@ function renderActiveShell(){
   const GNAMES = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer', personalbest:'Personal Best'};
   const gname = s.kind==='x01' ? (s.startScore+'') : s.kind==='custom' ? (s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':s.cfg.name) : (GNAMES[s.kind]||s.kind);
   return `<div class="game-header-row">
-    <div style="width:80px;"></div>
+    <div style="width:80px;">${renderCameraHelpTrigger()}</div>
     <div class="game-title-center">${gname}</div>
-    <div style="width:80px; text-align:right;">
-      ${renderCameraHelpTrigger()}
-    </div>
+    <div style="width:80px;"></div>
   </div>
   ${renderEntryArea(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
@@ -7500,7 +7517,8 @@ function renderCallShotActiveShell(s){
   // until the round changes — there's no "unset" state once calledTargets
   // has an entry.
   const currentTargetId = s.calledTargets.length===0 ? null : (s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i)));
-  board = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${actorIsBot?'pointer-events:none; opacity:0.85;':''}">${renderDartboardSVG(null, callShotHighlightFromZoneId(currentTargetId), s.turnHitPoints)}</div></div>`;
+  const cornerNote = renderBoardCornerNote(s);
+  board = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap" style="${actorIsBot?'pointer-events:none; opacity:0.85;':''}">${renderDartboardSVG(null, callShotHighlightFromZoneId(currentTargetId), s.turnHitPoints)}</div>${cornerNote}</div>`;
   const playerBoxes = `<div class="panel-zone-players">
     <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
     <div class="player-sections">${s.participants.map((p,i)=>
@@ -7508,14 +7526,13 @@ function renderCallShotActiveShell(s){
     ).join('')}</div>
   </div>`;
   return `<div class="game-header-row">
-    <div style="width:80px;"></div>
+    <div style="width:80px;">${renderCameraHelpTrigger()}</div>
     <div class="game-title-center">Call Your Shot</div>
-    <div style="width:80px; text-align:right;">${renderCameraHelpTrigger()}</div>
+    <div style="width:80px;"></div>
   </div>
   ${board}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
   ${playerBoxes}
-  ${renderPriorityOrTips(s)}
   ${renderUnifiedBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
