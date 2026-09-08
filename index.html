@@ -153,8 +153,8 @@ body{
 }
 .screen-footer:empty{ display:none; }
 .panel-controls{ display:flex; gap:8px; padding-top:12px; margin-top:auto; }
-.war-controls-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:auto; padding-top:12px; }
-.war-ctrl-btn{ text-align:center; padding:11px 4px; border-radius:8px; font-family:'Inter',sans-serif; font-weight:600; font-size:11.5px; cursor:pointer; border:1px solid var(--felt-lighter); color:var(--cream-dim); line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.war-controls-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:auto; padding-top:12px; }
+.war-ctrl-btn{ text-align:center; padding:12px 6px; border-radius:8px; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:1px solid var(--felt-lighter); color:var(--cream-dim); line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .war-ctrl-btn.primary{ border-color:var(--brass); color:var(--brass); }
 .war-ctrl-btn.danger{ border-color:var(--red); color:#e08a7d; }
 .war-ctrl-btn.leave{ border-color:var(--red); color:#e08a7d; }
@@ -201,7 +201,9 @@ body{
 .ps-target-sub{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); margin-top:2px; }
 .turn-dart-row{ display:flex; align-items:center; gap:8px; background:var(--felt); border-radius:6px; padding:6px 8px; margin-bottom:5px; font-size:12px; }
 .turn-dart-row.pending{ opacity:0.4; border:1px dashed var(--felt-lighter); background:transparent; }
-.turn-dart-row.miss{ border:1px solid var(--red); }
+.turn-dart-row.miss{ background:color-mix(in srgb, var(--red) 38%, var(--felt)); }
+.turn-dart-row.hit-target{ background:color-mix(in srgb, var(--green) 38%, var(--felt)); }
+.turn-dart-row.miss .turn-dart-num, .turn-dart-row.hit-target .turn-dart-num{ background:rgba(255,255,255,0.14); color:var(--cream); }
 .turn-dart-num{ width:16px; height:16px; border-radius:50%; background:var(--felt-lighter); color:var(--cream-dim); font-family:'JetBrains Mono',monospace; font-size:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .turn-dart-label{ font-family:'Oswald',sans-serif; color:var(--cream); flex:1; }
 .turn-dart-val{ font-family:'JetBrains Mono',monospace; color:var(--brass); font-weight:600; }
@@ -869,7 +871,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v5.1';
+const BUILD_STAMP = 'v5.2';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1377,7 +1379,7 @@ function cricketApplyDart(s, num, marksHit){
       }
     }
   }
-  s.currentTurnDarts.push({label:(num==='B'?'Bull':num)+' x'+marksHit, num, marksHit, pointsScored});
+  s.currentTurnDarts.push({label:(num==='B'?'Bull':num)+' x'+marksHit, num, marksHit, pointsScored, hitTarget:true});
   cricketCheckWin(s);
   return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
 }
@@ -3334,13 +3336,13 @@ function dispatchThrowCore(num, segType){
   if(thisPoint) s.turnHitPoints.push(thisPoint);
   if(s.kind==='x01'){
     let throwObj;
-    if(num==='B' && segType==='bull') throwObj = {label:fullDartLabel('B','bull'),value:50,type:'bull'};
-    else if(num==='B' && segType==='single') throwObj = {label:fullDartLabel('B','single'),value:25,type:'bull'};
+    if(num==='B' && segType==='bull') throwObj = {label:fullDartLabel('B','bull'),value:50,type:'bull',hitTarget:true};
+    else if(num==='B' && segType==='single') throwObj = {label:fullDartLabel('B','single'),value:25,type:'bull',hitTarget:true};
     else {
       const n = num;
-      if(segType==='single') throwObj = {label:fullDartLabel(n,'single'),value:n,type:'single',n};
-      else if(segType==='double') throwObj = {label:fullDartLabel(n,'double'),value:n*2,type:'double',n};
-      else throwObj = {label:fullDartLabel(n,'triple'),value:n*3,type:'triple',n};
+      if(segType==='single') throwObj = {label:fullDartLabel(n,'single'),value:n,type:'single',n,hitTarget:true};
+      else if(segType==='double') throwObj = {label:fullDartLabel(n,'double'),value:n*2,type:'double',n,hitTarget:true};
+      else throwObj = {label:fullDartLabel(n,'triple'),value:n*3,type:'triple',n,hitTarget:true};
     }
     const res = x01ApplyDart(s, throwObj);
     if(res.turnOver){
@@ -3357,8 +3359,8 @@ function dispatchThrowCore(num, segType){
   } else if(s.kind==='cricket'){
     const validNums = [20,19,18,17,16,15,'B'];
     const targetNum = num==='B' ? 'B' : num;
-    if(!validNums.includes(targetNum)){ /* off-cricket-number hit: just record as miss-equivalent */
-      state.session.currentTurnDarts.push({label:'No Score', num:null, marksHit:0, pointsScored:0});
+    if(!validNums.includes(targetNum)){ /* off-cricket-number hit: show what actually landed, just doesn't count */
+      state.session.currentTurnDarts.push({label:fullDartLabel(num, segType), offTarget:true, num:null, marksHit:0, pointsScored:0});
       if(state.session.currentTurnDarts.length>=3 || s.complete){
         cricketEndTurn(s);
         if(s.complete){ finishCricketGame(s); }
@@ -4956,7 +4958,11 @@ function callShotRegisterDart(hitZoneId){
     ? (canonicalHit === s.calledTargets[s.targetIndex])
     : s.calledTargets.some((tid,i)=> tid===canonicalHit && !s.hitTargets.includes(i));
   s.dartsUsedThisAttempt++;
-  s.currentTurnDarts.push({label: hit?'Hit':'Miss'});
+  // Show what actually landed (e.g. "Single 1") even when it wasn't the
+  // called target — only a genuine off-board miss shows the bare word
+  // "Miss". hitTarget drives the row's green/red styling separately.
+  const realLabel = hitZoneId ? sectionZoneLabel(canonicalHit) : 'Miss';
+  s.currentTurnDarts.push({label: realLabel, hitTarget: hitZoneId ? hit : undefined});
   if(hit){
     if(sequential){ s.targetIndex++; }
     else { const idx = s.calledTargets.findIndex((tid,i)=>tid===canonicalHit && !s.hitTargets.includes(i)); s.hitTargets.push(idx); }
@@ -5031,28 +5037,24 @@ function callShotResolveAttempt(s, success){
   // right away, same as every other game shows a dart's score the instant
   // it's thrown. Only *whose turn it is next* waits for takeout, below.
   if(s.stage==='callattempt'){
-    const callerName = playerName(s.participants[s.callerIdx].playerId);
     if(success){
-      s.lastTurnSummary = s.leaderMustProve
-        ? `${callerName} hit the target!`
-        : `${callerName} set the target.`;
+      s.lastTurnSummary = s.leaderMustProve ? 'Target hit.' : 'Set the target.';
     } else {
       const caller = s.participants[s.callerIdx];
       caller.letters++;
       const newLetter = s.word[caller.letters-1] || '';
-      s.lastTurnSummary = `${callerName} missed${newLetter?` — that's a ${newLetter}`:''}.`;
+      s.lastTurnSummary = newLetter ? `Letter given — ${newLetter}.` : 'Missed.';
       if(caller.letters >= s.word.length){ caller.eliminated = true; }
     }
   } else if(s.stage==='follow'){
-    const followerName = playerName(s.participants[s.currentIdx].playerId);
     if(!success){
       const p = s.participants[s.currentIdx];
       p.letters++;
       const newLetter = s.word[p.letters-1] || '';
-      s.lastTurnSummary = `${followerName} missed${newLetter?` — that's a ${newLetter}`:''}.`;
+      s.lastTurnSummary = newLetter ? `Letter given — ${newLetter}.` : 'Missed.';
       if(p.letters >= s.word.length){ p.eliminated = true; }
     } else {
-      s.lastTurnSummary = `${followerName} hit the target!`;
+      s.lastTurnSummary = 'Target hit.';
     }
   }
   render();
@@ -7058,9 +7060,12 @@ function renderActivePlayerSection(s,p,i){
   const rows = [0,1,2].map(idx=>{
     const d = darts[idx];
     if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
-    const isMiss = d.label==='Miss' || d.bust;
+    const isBustLike = d.label==='Miss' || d.bust;
+    const isHitTarget = d.hitTarget===true && !isBustLike;
+    const isMiss = isBustLike || d.hitTarget===false;
+    const rowClass = isHitTarget ? ' hit-target' : (isMiss ? ' miss' : '');
     const val = dartDisplayValue(d);
-    return `<div class="turn-dart-row${isMiss?' miss':''}"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val${isMiss?' miss':''}">${val}</div></div>`;
+    return `<div class="turn-dart-row${rowClass}"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val${isMiss?' miss':''}">${val}</div></div>`;
   }).join('');
   return `<div class="player-section active">
     <div class="ps-header">
@@ -7343,24 +7348,12 @@ function renderTipsSection(s){
     const small = p.isKiller ? 'Hit opponents\' numbers to remove lives. Hitting your own number now costs you a life!' : 'Hit your double ('+p.number+') to become a killer. '+p.lives+' lives.';
     objective = `<div class="objective-banner"><div class="big">${big}</div><div class="small">${small}</div></div>`;
   } else if(s.kind==='callshot'){
-    // Deliberately terse, and deliberately NOT the two-tier objective-banner
-    // every other kind uses here — this lives in the quiet bottom-left
-    // corner note now instead of the crowded sidebar, so it stays to one
-    // short line, same spot "Aim at 20" style tips already live.
-    const name = playerName(s.participants[s.currentIdx].playerId);
-    if(s.calledTargets.length===0){
-      objective = s.lastTurnSummary || 'Throw one dart to set the target.';
-    } else {
-      const darts = s.currentTurnDarts;
-      if(darts.length===0){
-        objective = s.lastTurnSummary || `${name}'s up.`;
-      } else {
-        const last = darts[darts.length-1];
-        const missed = !last || last.label==='Miss';
-        const remaining = s.maxDarts - (s.dartsUsedThisAttempt||0);
-        objective = (missed && remaining>0) ? `${name} missed — ${remaining} left.` : (s.lastTurnSummary || `${name}'s up.`);
-      }
-    }
+    // Deliberately terse — one line, no player emoji, silent unless there's
+    // genuinely something worth announcing (target set or target hit).
+    // An ordinary miss with darts still left says nothing at all.
+    objective = s.calledTargets.length===0
+      ? (s.lastTurnSummary || '')
+      : (s.currentTurnDarts.length===0 ? (s.lastTurnSummary || '') : '');
   }
   return objective;
 }
@@ -7478,6 +7471,16 @@ function renderCallShotActiveSection(s, p, i){
   const lettersShown = word.slice(0, p.letters);
   const remaining = word.slice(p.letters);
   const target = renderTargetBoxHtml(s, p);
+  const darts = s.currentTurnDarts;
+  const rows = [0,1,2].map(idx=>{
+    const d = darts[idx];
+    if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
+    const isBustLike = d.label==='Miss';
+    const isHitTarget = d.hitTarget===true;
+    const isMiss = isBustLike || d.hitTarget===false;
+    const rowClass = isHitTarget ? ' hit-target' : (isMiss ? ' miss' : '');
+    return `<div class="turn-dart-row${rowClass}"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val"></div></div>`;
+  }).join('');
   return `<div class="player-section active">
     <div class="ps-header">
       <div class="ps-avatar">${playerEmojiOrInitials(p.playerId)}</div>
@@ -7485,12 +7488,13 @@ function renderCallShotActiveSection(s, p, i){
       <div class="ps-score" style="font-family:'JetBrains Mono',monospace; letter-spacing:1.5px; font-size:16px;"><span style="color:var(--red);">${lettersShown}</span><span style="color:var(--cream-dim);">${remaining}</span></div>
     </div>
     <div class="ps-body">
-      <div class="ps-target"><div class="ps-target-lab">Target</div><div class="ps-target-val">${target.label}</div>${target.sub?`<div class="ps-target-sub">${target.sub}</div>`:''}</div>
+      <div class="ps-target"><div class="ps-target-lab">Target</div><div class="ps-target-val">${target.label}</div></div>
       ${s.calledTargets.length>1 ? `<div class="chip-wrap" style="margin-top:8px;">${s.calledTargets.map((tid,idx)=>{
         const done = s.orderMatters ? idx<s.targetIndex : s.hitTargets.includes(idx);
         const isCurrent = s.orderMatters ? idx===s.targetIndex : !done;
         return `<span class="chip ${done?'selected':''}" style="${isCurrent&&!done?'border-color:var(--brass);':''} ${done?'opacity:0.6;':''}">${done?'&#10003; ':''}${sectionZoneLabel(tid)}</span>`;
       }).join('')}</div>` : ''}
+      ${rows}
     </div>
   </div>`;
 }
@@ -7618,7 +7622,7 @@ function renderTargetBoxHtml(s, actor){
     return {label:`Score to beat: ${actor.currentGameBest+1}`, sub:null};
   }
   if(s.kind==='callshot'){
-    if(s.calledTargets.length===0) return {label:'Anywhere on the board', sub:'Wherever it lands sets the target'};
+    if(s.calledTargets.length===0) return {label:'Anywhere on the board', sub:null};
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
     return {label: currentTargetId ? sectionZoneLabel(currentTargetId) : 'the target', sub:null};
   }
