@@ -869,7 +869,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v4.0';
+const BUILD_STAMP = 'v5.0';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -4420,6 +4420,46 @@ function doEndTurnManually(){
   }
   render();
 }
+// The one shared "Next Player" for every ENGINE_HOOKS game plus x01/cricket
+// (everything except War, which keeps its own already-correct version, and
+// Call Your Shot, whose stage-based turn structure genuinely needs its own
+// dedicated version too). Forces through a pending takeout wait if one
+// exists; otherwise manually ends the current turn right now, whatever's
+// been thrown so far.
+function forceNextPlayerUniversal(){
+  const s = state.session;
+  if(!s || s.complete) return;
+  if(cameraPendingTurnEnd){
+    const fn = cameraPendingTurnEnd;
+    cameraPendingTurnEnd = null;
+    fn();
+    render();
+    return;
+  }
+  if(s.currentTurnDarts.length===0){
+    s.turnHitPoints = [];
+    render();
+    return;
+  }
+  doEndTurnManually();
+}
+// The one shared bottom-control block every game now uses — same four
+// buttons, same order, same styling, regardless of kind. Each kind's
+// specific "next player" and "previous player" behavior is resolved here
+// once, rather than duplicated per shell.
+function renderUnifiedBottomControls(s){
+  const isWar = s.kind==='war';
+  const isCallShot = s.kind==='callshot';
+  const nextFn = isWar ? 'warForceNextPlayer()' : isCallShot ? 'callShotForceNextPlayer()' : 'forceNextPlayerUniversal()';
+  const restartFn = isCallShot ? 'callShotUndo()' : 'doClearTurn()';
+  const canReturn = !isCallShot && s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
+  return `<div class="war-controls-grid">
+    <div class="war-ctrl-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous player</div>
+    <div class="war-ctrl-btn primary" onclick="${nextFn}">Next player</div>
+    <div class="war-ctrl-btn danger" onclick="${restartFn}">Restart turn</div>
+    <div class="war-ctrl-btn leave" onclick="openGameMenu()">Leave game</div>
+  </div>`;
+}
 
 /* ========================= NAVIGATION HANDLERS ========================= */
 function goTab(tab){ state.navTab = tab; state.screen = 'home'; render(); }
@@ -4828,6 +4868,7 @@ function callShotDartboardClickForCall(evt){
   callShotSelectTarget(zoneId);
 }
 function callShotDartboardClickForAttempt(evt){
+  if(cameraPendingTurnEnd) return; // same reasoning as callShotBoardClickForAttempt
   const t = evt.target;
   if(!t.classList || !t.classList.contains('board-seg')) return;
   const zoneId = callShotZoneIdFromNumSeg(t.getAttribute('data-num'), t.getAttribute('data-seg'));
@@ -4874,6 +4915,7 @@ function callShotSelectTarget(zoneId){
   render();
 }
 function callShotBoardClickForAttempt(evt){
+  if(cameraPendingTurnEnd) return; // same protection the camera-throw path already has — a manual tap shouldn't be able to bypass a pending takeout wait either
   const t = evt.target;
   const hitZoneId = (t.classList && t.classList.contains('section-zone')) ? t.getAttribute('data-zone') : null;
   const point = svgPointFromEvent(evt);
@@ -4957,6 +4999,29 @@ function callShotDeferAdvance(advanceFn){
   advanceFn();
   render();
 }
+function callShotForceNextPlayer(){
+  const s = state.session;
+  if(!s || s.kind!=='callshot' || s.complete) return;
+  if(cameraPendingTurnEnd){
+    // A hit or miss was already resolved and is just waiting on a real
+    // takeout that isn't registering — run the already-decided next step
+    // immediately, exactly as a real takeout would. This is deliberately
+    // NOT a reimplementation of the stage-transition logic (caller→follower,
+    // follower→next follower, round→next caller) — that logic already lives
+    // correctly inside the deferred callback, so this just forces it through.
+    const fn = cameraPendingTurnEnd;
+    cameraPendingTurnEnd = null;
+    fn();
+    render();
+    return;
+  }
+  // Nothing's actually been resolved yet — there's no decided "next step" to
+  // force. Safety valve only: clear a stuck dart display rather than guess
+  // at a stage transition that was never actually decided.
+  s.currentTurnDarts = [];
+  s.turnHitPoints = [];
+  render();
+}
 function callShotResolveAttempt(s, success){
   // Captured before any state resets below, since s.calledTargets/targetIndex
   // describe the attempt that's *just finishing* right now.
@@ -4969,13 +5034,13 @@ function callShotResolveAttempt(s, success){
     const callerName = playerName(s.participants[s.callerIdx].playerId);
     if(success){
       s.lastTurnSummary = s.leaderMustProve
-        ? `<b>${callerName} proved it: ${targetLabelForSummary}!</b>`
-        : `<b>${callerName} set the target: ${targetLabelForSummary}.</b>`;
+        ? `<b>${callerName} calls it and nails it — ${targetLabelForSummary}!</b>`
+        : `<b>${callerName} plants the target on ${targetLabelForSummary}.</b>`;
     } else {
       const caller = s.participants[s.callerIdx];
       caller.letters++;
       const newLetter = s.word[caller.letters-1] || '';
-      s.lastTurnSummary = `<b>${callerName} missed ${targetLabelForSummary}${newLetter?` and receives ${newLetter}`:''}.</b>`;
+      s.lastTurnSummary = `<b>${callerName} couldn't back it up${newLetter?` — that's a ${newLetter}`:''}.</b>`;
       if(caller.letters >= s.word.length){ caller.eliminated = true; }
     }
   } else if(s.stage==='follow'){
@@ -4984,10 +5049,10 @@ function callShotResolveAttempt(s, success){
       const p = s.participants[s.currentIdx];
       p.letters++;
       const newLetter = s.word[p.letters-1] || '';
-      s.lastTurnSummary = `<b>${followerName} missed ${targetLabelForSummary}${newLetter?` and receives ${newLetter}`:''}.</b>`;
+      s.lastTurnSummary = `<b>${followerName} couldn't find ${targetLabelForSummary}${newLetter?` — that's a ${newLetter}`:''}.</b>`;
       if(p.letters >= s.word.length){ p.eliminated = true; }
     } else {
-      s.lastTurnSummary = `<b>${followerName} matched ${targetLabelForSummary}!</b>`;
+      s.lastTurnSummary = `<b>${followerName} found it!</b>`;
     }
   }
   render();
@@ -7125,7 +7190,11 @@ function activeSectionHeadline(s,p){
 // own corner now instead (see renderBoardCornerNote), not in the sidebar.
 function renderPriorityOrTips(s){
   const darts = s.currentTurnDarts;
-  const showSummary = darts.length===0 && s.lastTurnSummary && (s.kind==='killer' || s.kind==='halveit' || s.kind==='x01');
+  // No kind restriction anymore — every game's lastTurnSummary shows the
+  // same way, invisible whenever a game doesn't happen to set one (Cricket,
+  // ATC, Shanghai, Baseball, Personal Best, Custom, War, and Call Your Shot
+  // were all previously excluded here despite sharing the same shell).
+  const showSummary = darts.length===0 && s.lastTurnSummary;
   if(showSummary){
     return `<div class="panel-zone-tips"><div class="objective-banner" style="border-color:var(--brass);">${s.lastTurnSummary}</div></div>`;
   }
@@ -7134,11 +7203,16 @@ function renderPriorityOrTips(s){
 // The routine, non-urgent strategy note (checkout suggestions, "aim for
 // the biggest number", etc.) — reuses the exact same per-game text logic
 // as before, just displayed as a brief, quiet corner note on the board
-// itself rather than a block in the sidebar.
+// itself rather than a block in the sidebar. Round info now lives here
+// too (for games with a fixed length) instead of the header — invisible
+// for open-ended games (301, Cricket, ATC, Killer, War, Call Your Shot),
+// prepended above the routine tip text for the ones that have a real total.
 function renderBoardCornerNote(s){
+  const {label, total} = roundInfoData(s);
+  const roundLine = total ? `<div style="font-size:11px; color:var(--brass); opacity:0.8; margin-bottom:2px;">${label} ${s.round} of ${total}</div>` : '';
   const tips = renderTipsSection(s);
-  if(!tips) return '';
-  return `<div class="board-corner-note">${tips}</div>`;
+  if(!tips && !roundLine) return '';
+  return `<div class="board-corner-note">${roundLine}${tips}</div>`;
 }
 function renderInstructionBox(s){
   const hint = renderTurnHint(s);
@@ -7149,15 +7223,23 @@ function renderInstructionBox(s){
     </div>
   </div>`;
 }
-function renderRoundInfo(s){
+// Returns {label, total} — total is null for open-ended games (301,
+// Cricket, ATC, Killer, War, Call Your Shot, most Custom). Shared by both
+// the header (main gameplay screens) and the bottom-left corner note
+// (where round info now lives instead, per the unified layout).
+function roundInfoData(s){
   let total = null;
   if(s.kind==='shanghai') total = s.rounds;
   else if(s.kind==='baseball') total = s.innings;
   else if(s.kind==='halveit') total = s.sequence.length;
   else if(s.kind==='personalbest') total = s.totalRounds;
   else if(s.kind==='custom' && (s.cfg.winCondition==='highScore'||s.cfg.winCondition==='lowScore')) total = s.cfg.rounds||8;
-  const label = s.kind==='baseball' ? 'INNING' : 'ROUND';
-  return `<div><div class="round-label">${label}</div><div class="round-value">${s.round}${total?' of '+total:''}</div></div>`;
+  const label = s.kind==='baseball' ? 'Inning' : 'Round';
+  return {label, total};
+}
+function renderRoundInfo(s){
+  const {label, total} = roundInfoData(s);
+  return `<div><div class="round-label">${label.toUpperCase()}</div><div class="round-value">${s.round}${total?' of '+total:''}</div></div>`;
 }
 function renderTipsSection(s){
   let objective='', top='';
@@ -7253,7 +7335,7 @@ function renderTipsSection(s){
   } else if(s.kind==='halveit'){
     const target = s.sequence[s.round-1];
     const big = 'Target: '+(target==='B'?'Bull':target);
-    const small = 'Round '+s.round+' of '+s.sequence.length+' — miss it entirely this turn and your score halves.';
+    const small = 'Miss it entirely this turn and your score halves.';
     objective = `<div class="objective-banner"><div class="big">${big}</div><div class="small">${small}</div></div>`;
   } else if(s.kind==='killer'){
     const p = killerCurrent(s);
@@ -7318,7 +7400,7 @@ function renderWarBoard(s){
 }
 function renderWarPlayerBoxes(s){
   const total = Object.keys(s.sections).length;
-  return s.participants.map((p,i)=>{
+  const sections = s.participants.map((p,i)=>{
     const count = Object.values(s.sections).filter(v=>v===i).length;
     const isCurrent = i===s.currentIdx;
     const darts = participantDisplayDarts(s, i);
@@ -7331,28 +7413,26 @@ function renderWarPlayerBoxes(s){
       ${isCurrent ? miniDartChips(darts, true, true) : ''}
     </div>`;
   }).join('');
-}
-function renderWarBottomControls(s){
-  const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
-  return `<div class="war-controls-grid">
-    <div class="war-ctrl-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous Player</div>
-    <div class="war-ctrl-btn primary" onclick="warForceNextPlayer()">Next Player</div>
-    <div class="war-ctrl-btn danger" onclick="doClearTurn()">Restart Turn</div>
-    <div class="war-ctrl-btn leave" onclick="openGameMenu()">Leave Game</div>
+  // Was missing the same "PLAYERS" label header every other game's sidebar
+  // has — genuinely just an oversight, War's sections were never wrapped
+  // in the same panel-zone-players container.
+  return `<div class="panel-zone-players">
+    <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
+    <div class="player-sections">${sections}</div>
   </div>`;
 }
 function renderWarActiveShell(s){
-  const waitingOnTakeout = !!cameraPendingTurnEnd;
   return `<div class="game-header-row">
-    <div><div class="round-label">ROUND</div><div class="round-value">${s.round}</div></div>
+    <div style="width:80px;"></div>
     <div class="game-title-center">War</div>
-    <div style="text-align:right;">${renderCameraHelpTrigger()}</div>
+    <div style="width:80px; text-align:right;">${renderCameraHelpTrigger()}</div>
   </div>
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderWarBoard(s)}</div></div>
   ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
+  ${renderBoardConfirmLine(s)}
   ${renderWarPlayerBoxes(s)}
-  ${waitingOnTakeout ? `<div class="tiny-edit-btn primary" style="margin:8px 0; text-align:center; padding:10px;" onclick="warForceNextPlayer()">&#9203; Waiting on takeout — tap if it doesn't clear</div>` : ''}
-  ${renderWarBottomControls(s)}
+  ${renderPriorityOrTips(s)}
+  ${renderUnifiedBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
 function renderActiveShell(){
@@ -7363,9 +7443,9 @@ function renderActiveShell(){
   const GNAMES = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer', personalbest:'Personal Best'};
   const gname = s.kind==='x01' ? (s.startScore+'') : s.kind==='custom' ? (s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':s.cfg.name) : (GNAMES[s.kind]||s.kind);
   return `<div class="game-header-row">
-    ${renderRoundInfo(s)}
+    <div style="width:80px;"></div>
     <div class="game-title-center">${gname}</div>
-    <div style="text-align:right;">
+    <div style="width:80px; text-align:right;">
       ${renderCameraHelpTrigger()}
     </div>
   </div>
@@ -7373,8 +7453,7 @@ function renderActiveShell(){
   ${renderBoardConfirmLine(s)}
   ${renderPlayerBoxes(s)}
   ${renderPriorityOrTips(s)}
-  ${cameraPendingTurnEnd ? `<div class="tiny-edit-btn primary" style="margin:8px 0; text-align:center; padding:10px;" onclick="forceEndCurrentTurnFromTakeout()">&#9203; Waiting on takeout — tap if it doesn't clear</div>` : ''}
-  ${renderBottomControls(s)}
+  ${renderUnifiedBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
 function renderCallShotActiveSection(s, p, i){
@@ -7428,26 +7507,16 @@ function renderCallShotActiveShell(s){
       i===s.currentIdx ? renderCallShotActiveSection(s,p,i) : renderCallShotCollapsedSection(s,p)
     ).join('')}</div>
   </div>`;
-  const cameraGroup = '';
   return `<div class="game-header-row">
-    <div><div class="round-label">ROUND</div><div class="round-value">${s.round}</div></div>
+    <div style="width:80px;"></div>
     <div class="game-title-center">Call Your Shot</div>
-    <div>${renderCameraHelpTrigger()}</div>
+    <div style="width:80px; text-align:right;">${renderCameraHelpTrigger()}</div>
   </div>
   ${board}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
+  ${renderBoardConfirmLine(s)}
   ${playerBoxes}
-  <div class="panel-controls-wrap">
-    <div class="home-base">
-      ${cameraGroup}
-      <div class="controls-subgroup">
-        <div class="subgroup-label">This Turn</div>
-        <div class="subgroup-row"><div class="tiny-edit-btn" onclick="callShotUndo()">Undo</div></div>
-      </div>
-    </div>
-    <div class="panel-controls">
-      <button class="btn-leave" onclick="openGameMenu()">Leave Game</button>
-    </div>
-  </div>
+  ${renderPriorityOrTips(s)}
+  ${renderUnifiedBottomControls(s)}
   ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
 }
 function cricketMarkSVG(n, color){
@@ -7585,7 +7654,7 @@ function renderTurnHint(s){
     // the next actor's situation naturally replaces it.
     if(s.calledTargets.length===0 && s.lastTurnSummary) return s.lastTurnSummary;
     if(s.calledTargets.length===0){
-      return `<b>${name} is the leader</b><br>Throw one dart. Wherever it lands becomes the target.`;
+      return `<b>${name} is calling the shot</b><br>Throw anywhere — wherever it lands sets the target.`;
     }
     const isProving = s.stage==='callattempt'; // leader proving their own call (Prove It mode)
     const currentTargetId = s.orderMatters ? s.calledTargets[s.targetIndex] : s.calledTargets.find((tid,i)=>!s.hitTargets.includes(i));
@@ -7594,17 +7663,17 @@ function renderTurnHint(s){
     const remaining = s.maxDarts - (s.dartsUsedThisAttempt||0);
     if(darts.length===0){
       return isProving
-        ? `<b>Target: ${label}</b><br>${name} must prove it. Hit ${label} within ${s.maxDarts} dart${s.maxDarts!==1?'s':''}.`
-        : `<b>Target: ${label}</b><br>${name} must match ${label}. ${s.maxDarts} dart${s.maxDarts!==1?'s':''} available.`;
+        ? `<b>Target: ${label}</b><br>${name} has to back up their own call. ${s.maxDarts} dart${s.maxDarts!==1?'s':''} to do it.`
+        : `<b>Target: ${label}</b><br>${name}'s hunting for it. ${s.maxDarts} dart${s.maxDarts!==1?'s':''} to find it.`;
     }
     const last = darts[darts.length-1];
     const missed = !last || last.label==='Miss';
     if(missed && remaining>0){
-      return `<b>Target: ${label}</b><br>${name} missed. ${remaining} dart${remaining!==1?'s':''} left to ${isProving?'prove it':'match it'}.`;
+      return `<b>Target: ${label}</b><br>${name} just missed. ${remaining} dart${remaining!==1?'s':''} left to find it.`;
     }
     return missed
-      ? `<b>${name} missed ${label} and receives a letter.</b>`
-      : `<b>${name} ${isProving?'proved it':'matched'} ${label}!</b>`;
+      ? `<b>${name} couldn't find ${label} — that's a letter.</b>`
+      : `<b>${name} ${isProving?'calls it and nails it':'found it'}!</b>`;
   }
   const darts = s.currentTurnDarts;
   if(darts.length===0){
