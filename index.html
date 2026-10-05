@@ -871,7 +871,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v5.3';
+const BUILD_STAMP = 'v5.4';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -910,6 +910,153 @@ function applyTheme(){
     root.setProperty(k,v);
   });
   document.body.style.background = `radial-gradient(ellipse at top, ${t.vars['--bodybg1']} 0%, ${t.vars['--bodybg2']} 75%)`;
+}
+
+
+/* ========================= SOUND EFFECTS =========================
+   Every effect is synthesized live with the Web Audio API, so there are no
+   audio files to load and the app stays a single file. Each effect is a
+   small function that schedules oscillators/noise on the shared context.
+   Three moments are wired up today: a dart landing on the board (hit),
+   a dart missing the board completely (miss), and a game being won. Each
+   moment has its own setting, so any effect in the library can be assigned
+   to any moment. */
+let _sfxCtx = null, _sfxMaster = null, _sfxNoiseBuf = null;
+const _sfxLastPlayed = {};
+function sfxEnsureContext(){
+  try{
+    if(!_sfxCtx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return null;
+      _sfxCtx = new AC();
+      _sfxMaster = _sfxCtx.createGain();
+      _sfxMaster.connect(_sfxCtx.destination);
+      const len = _sfxCtx.sampleRate * 2;
+      _sfxNoiseBuf = _sfxCtx.createBuffer(1, len, _sfxCtx.sampleRate);
+      const d = _sfxNoiseBuf.getChannelData(0);
+      for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+    }
+    if(_sfxCtx.state==='suspended') _sfxCtx.resume();
+    return _sfxCtx;
+  } catch(e){ return null; }
+}
+// Browsers only allow audio after the person has touched the page once, so
+// the context is created/unlocked on the first tap or key press.
+['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev, ()=>{ sfxEnsureContext(); }, {passive:true}));
+function sfxTone(c, o){ // o: {f, f2, dur, type, vol, at, attack}
+  const t0 = c.currentTime + (o.at||0);
+  const osc = c.createOscillator(); const g = c.createGain();
+  osc.type = o.type || 'sine';
+  osc.frequency.setValueAtTime(o.f, t0);
+  if(o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(1,o.f2), t0 + o.dur);
+  const peak = o.vol===undefined ? 0.5 : o.vol;
+  const atk = o.attack===undefined ? 0.005 : o.attack;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002,peak), t0 + atk);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+  osc.connect(g); g.connect(_sfxMaster);
+  osc.start(t0); osc.stop(t0 + o.dur + 0.05);
+  return {osc, g, t0};
+}
+function sfxNoise(c, o){ // o: {dur, ftype, f, f2, q, vol, at, attack}
+  const t0 = c.currentTime + (o.at||0);
+  const src = c.createBufferSource(); src.buffer = _sfxNoiseBuf; src.loop = true;
+  const flt = c.createBiquadFilter(); flt.type = o.ftype || 'lowpass';
+  flt.frequency.setValueAtTime(o.f||1000, t0);
+  if(o.f2) flt.frequency.exponentialRampToValueAtTime(Math.max(20,o.f2), t0 + o.dur);
+  flt.Q.value = o.q===undefined ? 1 : o.q;
+  const g = c.createGain();
+  const peak = o.vol===undefined ? 0.5 : o.vol;
+  const atk = o.attack===undefined ? 0.005 : o.attack;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002,peak), t0 + atk);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+  src.connect(flt); flt.connect(g); g.connect(_sfxMaster);
+  src.start(t0, Math.random()); src.stop(t0 + o.dur + 0.05);
+}
+function sfxBrass(c, f, at, dur, vol){ // one trumpet-ish note: two detuned saws through a opening filter, with a little vibrato
+  const t0 = c.currentTime + at;
+  const flt = c.createBiquadFilter(); flt.type='lowpass'; flt.Q.value = 2;
+  flt.frequency.setValueAtTime(500, t0);
+  flt.frequency.exponentialRampToValueAtTime(3200, t0 + 0.06);
+  flt.frequency.exponentialRampToValueAtTime(1800, t0 + dur);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol, t0 + 0.04);
+  g.gain.setValueAtTime(vol, t0 + Math.max(0.05, dur-0.12));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  const lfo = c.createOscillator(); const lfoG = c.createGain();
+  lfo.frequency.value = 5.5; lfoG.gain.value = f*0.006;
+  lfo.connect(lfoG);
+  [0,6].forEach(detune=>{
+    const o = c.createOscillator(); o.type='sawtooth'; o.frequency.value = f; o.detune.value = detune;
+    lfoG.connect(o.frequency);
+    o.connect(flt); o.start(t0); o.stop(t0+dur+0.05);
+  });
+  flt.connect(g); g.connect(_sfxMaster);
+  lfo.start(t0); lfo.stop(t0+dur+0.05);
+}
+const SFX_LIBRARY = {
+  none:     {name:'Silent', group:'none', play(){}},
+  // ---- dart landing on the board ----
+  thud:     {name:'Thud', group:'hit', play(c){ sfxTone(c,{f:150,f2:55,dur:0.16,type:'sine',vol:0.9}); sfxNoise(c,{dur:0.05,ftype:'lowpass',f:900,vol:0.35}); }},
+  thunk:    {name:'Wooden thunk', group:'hit', play(c){ sfxTone(c,{f:260,f2:110,dur:0.12,type:'triangle',vol:0.7}); sfxNoise(c,{dur:0.04,ftype:'bandpass',f:1400,q:2,vol:0.3}); }},
+  tock:     {name:'Tock', group:'hit', play(c){ sfxTone(c,{f:820,f2:520,dur:0.07,type:'square',vol:0.22}); sfxTone(c,{f:200,f2:120,dur:0.09,type:'sine',vol:0.5}); }},
+  pop:      {name:'Pop', group:'hit', play(c){ sfxTone(c,{f:520,f2:140,dur:0.09,type:'sine',vol:0.7}); }},
+  thwack:   {name:'Sharp thwack', group:'hit', play(c){ sfxNoise(c,{dur:0.07,ftype:'bandpass',f:2200,q:1.2,vol:0.6}); sfxTone(c,{f:180,f2:70,dur:0.1,type:'triangle',vol:0.55}); }},
+  ding:     {name:'Bell ding', group:'hit', play(c){ sfxTone(c,{f:1320,dur:0.7,type:'sine',vol:0.35,attack:0.003}); sfxTone(c,{f:1980,dur:0.45,type:'sine',vol:0.15,attack:0.003}); }},
+  coin:     {name:'Coin', group:'hit', play(c){ sfxTone(c,{f:988,dur:0.08,type:'square',vol:0.2}); sfxTone(c,{f:1319,dur:0.4,type:'square',vol:0.2,at:0.07}); }},
+  // ---- dart missing the board ----
+  swish:    {name:'Swish', group:'miss', play(c){ sfxNoise(c,{dur:0.28,ftype:'bandpass',f:5200,f2:900,q:1.5,vol:0.55,attack:0.06}); }},
+  whoosh:   {name:'Whoosh', group:'miss', play(c){ sfxNoise(c,{dur:0.45,ftype:'bandpass',f:400,f2:3000,q:0.8,vol:0.5,attack:0.18}); }},
+  fwip:     {name:'Quick fwip', group:'miss', play(c){ sfxNoise(c,{dur:0.12,ftype:'highpass',f:3500,f2:1200,q:0.7,vol:0.5,attack:0.02}); }},
+  whistle:  {name:'Falling whistle', group:'miss', play(c){ sfxTone(c,{f:1400,f2:300,dur:0.5,type:'sine',vol:0.25,attack:0.02}); }},
+  womp:     {name:'Sad womp', group:'miss', play(c){ sfxTone(c,{f:220,f2:150,dur:0.35,type:'sawtooth',vol:0.18,attack:0.02}); sfxTone(c,{f:165,f2:110,dur:0.5,type:'sawtooth',vol:0.18,at:0.3,attack:0.02}); }},
+  buzzer:   {name:'Buzzer', group:'miss', play(c){ sfxTone(c,{f:120,dur:0.38,type:'square',vol:0.22,attack:0.01}); }},
+  // ---- celebrations ----
+  trumpets: {name:'Trumpet fanfare', group:'win', play(c){
+              const n = [[392,0,0.16],[392,0.18,0.16],[392,0.36,0.16],[523.25,0.54,0.7]]; // G G G high-C: ta-ta-ta-DAAA
+              n.forEach(([f,at,d])=>{ sfxBrass(c,f,at,d,0.22); sfxBrass(c,f*1.25,at,d,0.12); }); }},
+  fanfare2: {name:'Royal fanfare', group:'win', play(c){
+              [[523.25,0,0.2],[659.25,0.2,0.2],[783.99,0.4,0.2],[1046.5,0.6,0.8]].forEach(([f,at,d])=>{ sfxBrass(c,f,at,d,0.2); sfxBrass(c,f*0.75,at,d,0.12); }); }},
+  chimes:   {name:'Victory chimes', group:'win', play(c){ [523.25,659.25,783.99,1046.5,1318.5].forEach((f,i)=>sfxTone(c,{f,dur:0.9,type:'sine',vol:0.25,at:i*0.11,attack:0.004})); }},
+  applause: {name:'Applause', group:'win', play(c){ for(let i=0;i<46;i++){ sfxNoise(c,{dur:0.05+Math.random()*0.04,ftype:'bandpass',f:1500+Math.random()*3000,q:0.8,vol:0.16+Math.random()*0.14,at:Math.random()*1.6,attack:0.003}); } sfxNoise(c,{dur:1.9,ftype:'bandpass',f:2400,q:0.5,vol:0.09,attack:0.3}); }},
+  airhorn:  {name:'Air horn', group:'win', play(c){ [0,0.32].forEach(at=>{ sfxTone(c,{f:466,dur:0.28,type:'sawtooth',vol:0.2,at,attack:0.01}); sfxTone(c,{f:622,dur:0.28,type:'sawtooth',vol:0.18,at,attack:0.01}); }); sfxTone(c,{f:466,dur:0.7,type:'sawtooth',vol:0.2,at:0.7,attack:0.01}); sfxTone(c,{f:622,dur:0.7,type:'sawtooth',vol:0.18,at:0.7,attack:0.01}); }},
+  levelup:  {name:'Level-up arpeggio', group:'win', play(c){ [392,494,587,784,988].forEach((f,i)=>sfxTone(c,{f,dur:0.16,type:'square',vol:0.17,at:i*0.08})); sfxTone(c,{f:1175,dur:0.5,type:'square',vol:0.17,at:0.42}); }},
+  drumroll: {name:'Drum roll + cymbal', group:'win', play(c){ for(let i=0;i<26;i++){ sfxNoise(c,{dur:0.05,ftype:'bandpass',f:380,q:1.2,vol:0.1+i*0.01,at:i*0.035,attack:0.003}); } sfxNoise(c,{dur:1.1,ftype:'highpass',f:5000,q:0.6,vol:0.3,at:0.95,attack:0.004}); }},
+};
+// Which setting controls which moment, plus the factory default for each.
+const SFX_EVENTS = {
+  hit: {setting:'sfxHit', label:'Dart lands on the board', def:'thud', group:'hit'},
+  miss:{setting:'sfxMiss', label:'Dart misses the board', def:'swish', group:'miss'},
+  win: {setting:'sfxWin', label:'Game is won', def:'trumpets', group:'win'},
+};
+function playSfxById(id){
+  const c = sfxEnsureContext(); const fx = SFX_LIBRARY[id];
+  if(!c || !fx || id==='none') return;
+  const vol = Math.max(0, Math.min(1, state.settings.soundVolume===undefined ? 0.7 : state.settings.soundVolume));
+  _sfxMaster.gain.cancelScheduledValues(c.currentTime);
+  _sfxMaster.gain.setValueAtTime(vol, c.currentTime);
+  try{ fx.play(c); } catch(e){}
+}
+function playSfx(eventKey){
+  const ev = SFX_EVENTS[eventKey];
+  if(!ev || state.settings.soundOn===false) return;
+  // Several code paths can report the same dart (e.g. the camera path and
+  // the game engine), so identical events inside 80ms count as one.
+  const now = Date.now();
+  if(_sfxLastPlayed[eventKey] && now-_sfxLastPlayed[eventKey] < 80) return;
+  _sfxLastPlayed[eventKey] = now;
+  playSfxById(state.settings[ev.setting] || ev.def);
+}
+function previewSfx(id){ playSfxById(id); }
+function sfxOptionsHtml(group, selected){
+  const groups = [['hit','Hits'],['miss','Misses'],['win','Celebrations']];
+  const keepOrder = groups.map(([g,label])=>{
+    const items = Object.entries(SFX_LIBRARY).filter(([id,fx])=>fx.group===g).map(([id,fx])=>`<option value="${id}" ${selected===id?'selected':''}>${fx.name}</option>`).join('');
+    return `<optgroup label="${label}">${items}</optgroup>`;
+  }).join('');
+  return `<option value="none" ${selected==='none'?'selected':''}>Silent</option>${keepOrder}`;
 }
 
 /* ========================= STATE ========================= */
@@ -999,6 +1146,8 @@ let state = {
     panelWidth: 230,
     boardManagerHost: '', // darts PC IP, e.g. 10.0.0.13 — Board Manager itself runs on port 3180 there
     dartsCallerCameraMode: false, // when on, real throws from the board drive gameplay instead of clicks
+    soundOn: true, soundVolume: 0.7, // sound effects master switch + volume (0-1)
+    sfxHit: 'thud', sfxMiss: 'swish', sfxWin: 'trumpets', // which effect plays for each moment ('none' = silent)
   },
   dartsCallerStatus: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'error'
   freshCameraDot: false, // true briefly after a real camera-detected dart, makes the newest hit dot flash green
@@ -1448,22 +1597,43 @@ function warColorFor(s, idx){
 }
 function startWarSession(playerIds, opts){
   const bullMode = (opts && opts.bullMode) || 'separate';
+  const ringMode = (opts && opts.ringMode)==='split' ? 'split' : 'combined';
   const customColors = (opts && opts.warPlayerColors) || {};
   const sections = {};
-  for(let n=1;n<=20;n++) sections[String(n)] = null;
+  // 'split' gives every number two sections: the inner wedge (bull out to the
+  // inside of the treble, plus the treble ring itself) keyed '14i', and the
+  // outer wedge (outside the treble in to the double, plus the double ring)
+  // keyed '14o'. 'combined' is the original one-section-per-number layout.
+  for(let n=1;n<=20;n++){
+    if(ringMode==='split'){ sections[n+'i'] = null; sections[n+'o'] = null; }
+    else sections[String(n)] = null;
+  }
   if(bullMode==='separate'){ sections['IB'] = null; sections['OB'] = null; }
   else if(bullMode==='together'){ sections['B'] = null; }
   // bullMode 'none' — Bull simply isn't part of the sections map at all.
   return {
-    kind:'war', bullMode,
+    kind:'war', bullMode, ringMode,
     participants: playerIds.map(pid=>({playerId:pid, color: customColors[pid]||null})),
     sections, currentIdx:0, round:1,
     currentTurnDarts:[], turnHistory:[],
     complete:false, winnerId:null, tied:null, finalCounts:null,
   };
 }
-function warSectionKey(s, num, segType){
-  if(num!=='B') return String(num);
+// Inner = anything up to and including the treble ring; outer = everything
+// past it (outer single and the double ring). Used when a dart arrives with a
+// position but no explicit ring.
+function warRingFromRadius(r){ return r <= R_TRIPLE_OUT ? 'inner' : 'outer'; }
+function warRingFromLastPoint(s){
+  const pts = s.turnHitPoints;
+  const last = pts && pts.length ? pts[pts.length-1] : null;
+  if(!last) return 'inner';
+  return warRingFromRadius(Math.hypot(last.x-BOARD_CX, last.y-BOARD_CY));
+}
+function warSectionKey(s, num, segType, ring){
+  if(num!=='B'){
+    if(s.ringMode==='split') return String(num) + (ring==='outer' ? 'o' : 'i');
+    return String(num);
+  }
   if(s.bullMode==='none') return null;
   if(s.bullMode==='together') return 'B';
   return segType==='bull' ? 'IB' : 'OB';
@@ -1479,7 +1649,9 @@ function warCheckWin(s){
   else { s.winnerId = null; s.tied = winners.map(p=>p.playerId); }
 }
 function warApplyDart(s, num, segType){
-  const key = warSectionKey(s, num, segType);
+  const ring = state.pendingHitRing || (s.ringMode==='split' ? warRingFromLastPoint(s) : null);
+  state.pendingHitRing = null;
+  const key = warSectionKey(s, num, segType, ring);
   // Bull excluded entirely (bullMode 'none') — a hit there is just a wasted
   // dart, same treatment Cricket gives an off-number hit. Shows the real
   // segment rather than a generic label, colored red since it didn't count.
@@ -1490,7 +1662,8 @@ function warApplyDart(s, num, segType){
   }
   const prevOwner = s.sections[key];
   s.sections[key] = s.currentIdx;
-  const label = num==='B' ? (s.bullMode==='together' ? 'Bull' : (segType==='bull'?'Inner Bull':'Outer Bull')) : fullDartLabel(num, segType);
+  const label = num==='B' ? (s.bullMode==='together' ? 'Bull' : (segType==='bull'?'Inner Bull':'Outer Bull'))
+    : (s.ringMode==='split' ? (ring==='outer' ? 'Outer ' : 'Inner ') + num : fullDartLabel(num, segType));
   s.currentTurnDarts.push({label, key, prevOwner, hitTarget:true});
   warCheckWin(s);
   return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
@@ -3032,7 +3205,7 @@ function handleBoardClick(evt){
   if(seg==='bullouter'){ label='Outer Bull (25)'; }
   else if(seg==='bullinner'){ label='Bull (50)'; }
   else { label = (seg==='single'?'Single ':seg==='double'?'Double ':'Triple ')+num; }
-  commitBoardThrow({num, seg, label, point});
+  commitBoardThrow({num, seg, label, point, ring: t.getAttribute('data-ring')});
 }
 /* ========================= PRO ROUTINE: SIX-PHASE PRACTICE SESSION ========================= */
 // Adapted from a real coaching-style routine, converted from time-boxed
@@ -3251,7 +3424,9 @@ function commitBoardThrow(c){
   }
   state.pendingBoard = null;
   state.pendingHitPoint = c.point || null;
+  state.pendingHitRing = c.ring || null; // 'inner' | 'outer' — only War's split-ring mode reads this
   state.returnedToPreviousPlayer = false;
+  if(!cameraPendingTurnEnd) playSfx('hit'); // a dart that is being ignored while we wait for takeout stays silent
   if(state.practiceSession && c.point) state.practiceSession.lastHitPoint = c.point;
   if(state.checkoutPractice && c.point) state.checkoutPractice.lastHitPoint = c.point;
   let num, mult;
@@ -3332,6 +3507,7 @@ function dispatchThrowCore(num, segType){
   // visibly happens until takeout eventually fires and everything dumps at
   // once. This affects every camera-mode game, not just one.
   if(cameraPendingTurnEnd) return;
+  playSfx('hit');
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
@@ -3411,6 +3587,8 @@ function dispatchThrowCore(num, segType){
   render();
 }
 function recordMiss(){
+  if(!cameraPendingTurnEnd) playSfx('miss');
+  state.pendingHitRing = null;
   if(state.screen==='proRoutine'){ proRoutineRecordDart(0,'miss',null); return; }
   if(state.screen==='closeoutTrainerActive'){ closeoutTrainerRecordDart(0,'miss'); return; }
   if(state.screen==='theLadderActive'){ ladderRecordDart(0,'miss',null); return; }
@@ -3559,6 +3737,7 @@ function resolveBotDartResult(result){
   else if(result.ring==='triple'){ num=result.number; seg='triple'; }
   else if(result.ring==='double'){ num=result.number; seg='double'; }
   else { num=result.number; seg='single'; } // 'inner' or 'outer' single band
+  state.pendingHitRing = (result.ring==='inner' || result.ring==='triple') ? 'inner' : (result.ring==='outer' || result.ring==='double') ? 'outer' : null;
   dispatchThrow(num, seg);
 }
 function parseThrowLabel(label){
@@ -3583,6 +3762,8 @@ function botChooseX01Target(s){
 function botChooseWarTarget(s){
   const keys = Object.keys(s.sections);
   const key = keys[Math.floor(Math.random()*keys.length)];
+  // Split-ring sections: '14i' aims at the triple (inner wedge), '14o' at the double (outer wedge)
+  if(/^\d+[io]$/.test(key)) return {num:parseInt(key,10), seg: key.endsWith('i') ? 'triple' : 'double'};
   if(key==='IB') return {num:'B', seg:'bull'};
   if(key==='OB') return {num:'B', seg:'single'};
   if(key==='B') return {num:'B', seg:'bull'};
@@ -4190,6 +4371,7 @@ function participantThrowCounts(s){
   return counts;
 }
 function buildAndShowReview(opts){
+  if(opts && (opts.winnerId || opts.winnerName)) playSfx('win');
   const reviewPlayers = opts.participantIds.map(pid=>{
     const player = state.players.find(x=>x.id===pid);
     return {
@@ -4767,7 +4949,7 @@ function ensureGameOptionsInitialized(){
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
-    bullMode:'separate',
+    bullMode:'separate', ringMode:'combined',
     ...remembered,
     _forGameId: state.pendingGameId,
   };
@@ -4929,6 +5111,7 @@ function callShotBoardClickForAttempt(evt){
 function callShotRegisterDart(hitZoneId){
   const s = state.session;
   if(!s || s.kind!=='callshot') return;
+  playSfx(hitZoneId ? 'hit' : 'miss');
   callShotPushHistory(s);
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisPoint = state.pendingHitPoint || null;
@@ -5064,7 +5247,14 @@ function callShotResolveAttempt(s, success){
   // thrown darts off screen, wait for a real physical takeout in Camera
   // Mode, exactly like X01/Cricket/etc. already do via wrapEndTurnForCamera.
   const stageAtResolve = s.stage;
+  // Shown in the player's dart box until the darts are physically pulled (camera
+  // mode). Outside camera mode the deferral below runs instantly, so this is
+  // set and cleared in the same breath and never appears.
+  const resultHeadline = success ? (s.lastTurnSummary==='Set the target.' ? 'TARGET SET' : 'TARGET HIT') : 'MISSED';
+  s.pendingResult = {success, headline: resultHeadline, detail: String(s.lastTurnSummary||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim()};
+  render();
   callShotDeferAdvance(()=>{
+    s.pendingResult = null;
     s.currentTurnDarts = [];
     s.turnHitPoints = [];
     if(stageAtResolve==='callattempt'){
@@ -5129,6 +5319,7 @@ function callShotUndo(){
   const s = state.session;
   if(!s || s.kind!=='callshot') return;
   if(!s.history || s.history.length===0) return;
+  cameraPendingTurnEnd = null; // the hand-off it queued describes a result that is being undone
   const history = s.history;
   const prev = history.pop();
   Object.keys(s).forEach(k=>{ if(k!=='history') delete s[k]; });
@@ -6317,6 +6508,14 @@ function renderGameOptionsBody(){
     if(!o.warPlayerColors) o.warPlayerColors = {};
     body += `
     <div>
+      <span class="field-label">Board Sections</span>
+      <div class="gchip-wrap">${chip('Whole Wedges','ringMode','combined')}${chip('Split Inner & Outer','ringMode','split')}</div>
+      <div class="option-legend">
+        <div class="leg-item ${o.ringMode!=='split'?'active-leg':''}"><b>Whole Wedges</b> — each number is one section. Any single, double or triple of it claims the whole wedge.</div>
+        <div class="leg-item ${o.ringMode==='split'?'active-leg':''}"><b>Split Inner &amp; Outer</b> — every number becomes two sections, twice as many to play for. The inner section is the wedge between the bull and the treble, and triples count as inner. The outer section is the wedge between the treble and the double, and doubles count as outer.</div>
+      </div>
+    </div>
+    <div>
       <span class="field-label">Bull</span>
       <div class="gchip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
       <div class="option-legend">
@@ -6563,6 +6762,28 @@ function renderGameplaySettings(){
       Automatically end turn after three darts
     </div>
     <p class="info-note">These general play preferences apply everywhere darts get thrown — games, practice, and custom games alike.</p>
+
+    <div class="section-label" style="padding-left:0; margin-top:18px;">Sound Effects</div>
+    <div class="checkbox-row">
+      <input type="checkbox" ${s.soundOn!==false?'checked':''} onchange="setSetting('soundOn', ${s.soundOn===false})">
+      Play sound effects
+    </div>
+    <div>
+      <span class="field-label">Volume</span>
+      <input type="range" min="0" max="100" value="${Math.round((s.soundVolume===undefined?0.7:s.soundVolume)*100)}" style="width:100%;" aria-label="Sound effects volume"
+        onchange="state.settings.soundVolume = this.value/100; persistState(); previewSfx(state.settings.sfxHit||'thud');">
+    </div>
+    ${Object.entries(SFX_EVENTS).map(([key,ev])=>{
+      const cur = s[ev.setting] || ev.def;
+      return `<div>
+        <span class="field-label">${ev.label}</span>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select class="input" style="flex:1;" aria-label="${ev.label}" onchange="setSetting('${ev.setting}', this.value); previewSfx(this.value);">${sfxOptionsHtml(ev.group, cur)}</select>
+          <button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="previewSfx('${cur}')" aria-label="Preview ${ev.label}">&#9654;</button>
+        </div>
+      </div>`;
+    }).join('')}
+    <p class="info-note">Every effect in the list can be used for any of the three moments. The first tap anywhere in the app switches sound on, since browsers keep audio locked until you touch the page.</p>
 
     <div class="section-label" style="padding-left:0; margin-top:18px;">Live Board (Board Manager)</div>
     <div>
@@ -6864,7 +7085,17 @@ function mapBoardManagerSegmentToThrow(segment, coords){
   const segMap = {1:'single', 2:'double', 3:'triple'};
   const seg = segMap[multiplier] || 'single';
   const label = (seg==='single'?'Single ':seg==='double'?'Double ':'Triple ')+number;
-  return {num:number, seg, label, point};
+  // Inner/outer wedge (used by War's split-ring mode): triples count as inner,
+  // doubles as outer, and a single follows Board Manager's own bed name
+  // ("SingleInner" / "SingleOuter"), falling back to where the dart landed.
+  const bed = String(segment.bed || '');
+  let ring;
+  if(seg==='triple') ring = 'inner';
+  else if(seg==='double') ring = 'outer';
+  else if(/inner/i.test(bed)) ring = 'inner';
+  else if(/outer/i.test(bed)) ring = 'outer';
+  else ring = point ? warRingFromRadius(Math.hypot(point.x-BOARD_CX, point.y-BOARD_CY)) : 'inner';
+  return {num:number, seg, label, point, ring};
 }
 
 // Marks the most-recently-added hit dot as "fresh" so it renders as a brief
@@ -7375,17 +7606,25 @@ function renderWarBoard(s){
     const num = BOARD_ORDER[i];
     const aFull1 = -9+i*18+WEDGE_ROTATION, aFull2 = aFull1+18;
     const aStart = aFull1 + gapDeg, aEnd = aFull2 - gapDeg;
-    const owner = s.sections[String(num)];
-    const claimed = owner!==null && owner!==undefined;
-    const strokeColor = claimed ? warColorFor(s,owner) : WAR_NEUTRAL;
-    const sw = claimed ? 2 : 1;
-    const singleFill = claimed ? warColorFor(s,owner) : '#151c30';
+    // One owner for the whole wedge, or (split mode) one for the inner part
+    // (inner single + treble ring) and one for the outer part (outer single + double ring).
+    const split = s.ringMode==='split';
+    const ownerIn = split ? s.sections[num+'i'] : s.sections[String(num)];
+    const ownerOut = split ? s.sections[num+'o'] : ownerIn;
+    const claimedIn = ownerIn!==null && ownerIn!==undefined;
+    const claimedOut = ownerOut!==null && ownerOut!==undefined;
+    const strokeIn = claimedIn ? warColorFor(s,ownerIn) : WAR_NEUTRAL;
+    const strokeOut = claimedOut ? warColorFor(s,ownerOut) : WAR_NEUTRAL;
+    const swIn = claimedIn ? 2 : 1, swOut = claimedOut ? 2 : 1;
+    const fillIn = claimedIn ? warColorFor(s,ownerIn) : '#151c30';
+    const fillOut = claimedOut ? warColorFor(s,ownerOut) : '#151c30';
     const dtFill = '#1c2438';
-    const segAttrs = `class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;"`;
-    fills += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="${strokeColor}" stroke-width="${sw}" ${segAttrs}/>`;
-    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="${strokeColor}" stroke-width="${sw}" ${segAttrs}/>`;
-    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_OUT,R_DOUBLE_IN,aStart,aEnd)}" fill="${singleFill}" stroke="${strokeColor}" stroke-width="${sw}" ${segAttrs}/>`;
-    fills += `<path d="${wedgePath(cx,cy,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="${strokeColor}" stroke-width="${sw}" ${segAttrs}/>`;
+    const segIn = `class="board-seg" data-num="${num}" data-seg="single" data-ring="inner" style="cursor:pointer;"`;
+    const segOut = `class="board-seg" data-num="${num}" data-seg="single" data-ring="outer" style="cursor:pointer;"`;
+    fills += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${fillIn}" stroke="${strokeIn}" stroke-width="${swIn}" ${segIn}/>`;
+    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="${strokeIn}" stroke-width="${swIn}" ${segIn}/>`;
+    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_OUT,R_DOUBLE_IN,aStart,aEnd)}" fill="${fillOut}" stroke="${strokeOut}" stroke-width="${swOut}" ${segOut}/>`;
+    fills += `<path d="${wedgePath(cx,cy,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="${strokeOut}" stroke-width="${swOut}" ${segOut}/>`;
     const lp = polar(cx,cy,R_NUMBER_LABEL,(aFull1+aFull2)/2);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
   }
@@ -7482,7 +7721,15 @@ function renderCallShotActiveSection(s, p, i){
   const remaining = word.slice(p.letters);
   const target = renderTargetBoxHtml(s, p);
   const darts = s.currentTurnDarts;
-  const rows = [0,1,2].map(idx=>{
+  const waiting = (cameraPendingTurnEnd && s.pendingResult) ? s.pendingResult : null;
+  const dartRecap = darts.map(d=>d.label).join(' · ');
+  const resultBanner = waiting ? `<div style="margin-top:8px; padding:16px 10px; border-radius:12px; text-align:center; border:2px solid ${waiting.success?'var(--green)':'var(--red)'}; background:${waiting.success?'rgba(76,175,112,0.16)':'rgba(224,90,90,0.16)'};">
+      <div style="font-family:'Oswald',sans-serif; font-weight:700; font-size:30px; letter-spacing:0.08em; color:${waiting.success?'var(--green)':'var(--red)'};">${waiting.headline}</div>
+      ${waiting.detail ? `<div style="margin-top:4px; font-size:13px; color:var(--cream);">${waiting.detail}</div>` : ''}
+      ${dartRecap ? `<div style="margin-top:6px; font-size:12px; color:var(--cream-dim);">${dartRecap}</div>` : ''}
+      <div style="margin-top:8px; font-size:12px; color:var(--cream-dim); letter-spacing:0.04em;">Pull your darts to continue</div>
+    </div>` : '';
+  const rows = waiting ? '' : [0,1,2].map(idx=>{
     const d = darts[idx];
     if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
     const isBustLike = d.label==='Miss';
@@ -7504,7 +7751,7 @@ function renderCallShotActiveSection(s, p, i){
         const isCurrent = s.orderMatters ? idx===s.targetIndex : !done;
         return `<span class="chip ${done?'selected':''}" style="${isCurrent&&!done?'border-color:var(--brass);':''} ${done?'opacity:0.6;':''}">${done?'&#10003; ':''}${sectionZoneLabel(tid)}</span>`;
       }).join('')}</div>` : ''}
-      ${rows}
+      ${resultBanner}${rows}
     </div>
   </div>`;
 }
