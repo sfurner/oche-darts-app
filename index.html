@@ -871,7 +871,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v5.4';
+const BUILD_STAMP = 'v5.5-singlecam';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1145,6 +1145,8 @@ let state = {
     chalkboardPos: null,
     panelWidth: 230,
     boardManagerHost: '', // darts PC IP, e.g. 10.0.0.13 — Board Manager itself runs on port 3180 there
+    detectionSource: 'autodarts', // 'autodarts' = Autodarts Board Manager (3 cameras, home) | 'singlecam' = single-camera program (travel)
+    singleCamHost: '', // host[:port] of the single-camera program; blank = localhost:3180. Kept separate so switching never overwrites boardManagerHost.
     dartsCallerCameraMode: false, // when on, real throws from the board drive gameplay instead of clicks
     soundOn: true, soundVolume: 0.7, // sound effects master switch + volume (0-1)
     sfxHit: 'thud', sfxMiss: 'swish', sfxWin: 'trumpets', // which effect plays for each moment ('none' = silent)
@@ -6785,12 +6787,25 @@ function renderGameplaySettings(){
     }).join('')}
     <p class="info-note">Every effect in the list can be used for any of the three moments. The first tap anywhere in the app switches sound on, since browsers keep audio locked until you touch the page.</p>
 
-    <div class="section-label" style="padding-left:0; margin-top:18px;">Live Board (Board Manager)</div>
+    <div class="section-label" style="padding-left:0; margin-top:18px;">Live Board</div>
     <div>
+      <span class="field-label">Detection source</span>
+      <div class="chip-wrap">
+        <span class="chip ${!usingSingleCam()?'selected':''}" onclick="setDetectionSource('autodarts')">Autodarts board (3 cameras)</span>
+        <span class="chip ${usingSingleCam()?'selected':''}" onclick="setDetectionSource('singlecam')">Single camera (travel)</span>
+      </div>
+    </div>
+    ${usingSingleCam() ? `
+    <div style="margin-top:10px;">
+      <span class="field-label">Single-camera program address</span>
+      <input class="input" placeholder="localhost:3180" value="${s.singleCamHost}"
+        onchange="setSetting('singleCamHost', this.value.trim()); disconnectBoardManager();">
+    </div>` : `
+    <div style="margin-top:10px;">
       <span class="field-label">Darts PC address</span>
       <input class="input" placeholder="10.0.0.13" value="${s.boardManagerHost}"
         onchange="setSetting('boardManagerHost', this.value.trim()); disconnectBoardManager();">
-    </div>
+    </div>`}
     <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
       ${state.dartsCallerStatus==='connected'
         ? `<button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="disconnectBoardManager()">Disconnect</button>`
@@ -6798,7 +6813,7 @@ function renderGameplaySettings(){
       <span class="info-note" style="margin:0;">
         ${state.dartsCallerStatus==='connected' ? '🟢 Connected'
           : state.dartsCallerStatus==='connecting' ? '🟡 Connecting…'
-          : state.dartsCallerStatus==='error' ? ('🔴 Connection failed — check the address, and that Board Manager is reachable at http://'+(s.boardManagerHost||'&lt;ip&gt;')+':3180')
+          : state.dartsCallerStatus==='error' ? ('🔴 Connection failed — check the address, and that ' + (usingSingleCam() ? 'the single-camera program is running at ' : 'Board Manager is reachable at ') + (boardManagerBase() || 'http://&lt;ip&gt;:3180'))
           : '⚪ Not connected'}
       </span>
     </div>
@@ -6806,6 +6821,7 @@ function renderGameplaySettings(){
       <input type="checkbox" ${s.dartsCallerCameraMode?'checked':''} onchange="setSetting('dartsCallerCameraMode', ${!s.dartsCallerCameraMode})">
       Camera Mode — real throws from the board drive gameplay instead of taps/clicks
     </div>
+    ${usingSingleCam() ? `<p class="info-note">Single camera mode listens to the single-camera program on your laptop instead of the Autodarts board. One camera is less accurate than three (a dart hidden behind another can be missed, and darts close to a wire can be miscalled), so keep an eye on the score and use Oche's undo or edit to fix a dart. Switch back to "Autodarts board" at home — that setup is untouched.</p>` : ''}
     <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered. Oche also auto-resets Board Manager on its own if throws stop registering for more than a few seconds. If you need to reset it by hand, there's a button for that directly on the gameplay screen itself — no need to come here mid-game.</p>
     <div style="font-size:8px; color:var(--cream-dim); opacity:0.4; text-align:center; padding-top:16px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">${BUILD_STAMP}</div>
   </div>`;
@@ -6827,10 +6843,42 @@ let boardManagerStartAttempts = 0;
 const BOARD_MANAGER_MAX_AUTO_ATTEMPTS = 3; // cap auto-recovery so a genuinely broken engine gets surfaced instead of hammered with requests indefinitely
 const BOARD_MANAGER_STUCK_TIMEOUT_MS = 6000; // a real physical takeout takes 1-3s; this is a generous grace period before assuming the vision engine itself is stuck
 
-function boardManagerUrl(){
+// Which detector Oche polls. 'autodarts' (default) is the home Board Manager
+// exactly as before; 'singlecam' points the very same poller at the
+// single-camera program, which serves the same /api/state contract.
+function usingSingleCam(){ return state.settings.detectionSource === 'singlecam'; }
+function singleCamBase(){
+  let h = (state.settings.singleCamHost || '').trim() || 'localhost:3180';
+  h = h.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  if(!/:\d+$/.test(h)) h += ':3180';
+  return 'http://' + h;
+}
+// Base URL of whichever detector is selected, or null if not configured.
+function boardManagerBase(){
+  if(usingSingleCam()) return singleCamBase();
   const host = (state.settings.boardManagerHost || '').trim();
   if(!host) return null;
   return 'http://' + host + ':3180';
+}
+// The launcher helper (hard restart). Autodarts PC: port 9090. Single-camera
+// program serves the same endpoint on its own port.
+function boardManagerLauncherBase(){
+  if(usingSingleCam()) return singleCamBase();
+  const host = (state.settings.boardManagerHost || '').trim();
+  if(!host) return null;
+  return 'http://' + host + ':9090';
+}
+function boardManagerUrl(){ return boardManagerBase(); }
+function setDetectionSource(src){
+  if(state.settings.detectionSource === src) return;
+  const wasLive = state.dartsCallerStatus === 'connected' || state.dartsCallerStatus === 'connecting';
+  state.settings.detectionSource = src;
+  // Start clean so nothing from the other detector (health readout, retry
+  // counters, takeout timers) leaks across the switch.
+  state.boardManagerHealth = null;
+  boardManagerStartAttempts = 0; boardManagerResetAttempts = 0; boardManagerTakeoutStuckSince = null;
+  disconnectBoardManager();
+  if(wasLive && boardManagerBase()) connectBoardManager();
 }
 
 function connectBoardManager(){
@@ -6872,9 +6920,9 @@ function pollBoardManagerOnce(url, isFirst){
 // Confirmed endpoint (from the ha-autodarts-local Home Assistant
 // integration's source, which implements the same button).
 function resetBoardManagerNow(){
-  const host = state.settings.boardManagerHost;
-  if(!host) return;
-  fetch('http://' + host + ':3180/api/reset', { method:'POST' })
+  const base = boardManagerBase();
+  if(!base) return;
+  fetch(base + '/api/reset', { method:'POST' })
     .then(()=> console.log('Oche: Board Manager reset triggered'))
     .catch(err => console.warn('Oche: Board Manager reset failed', err && err.message));
 }
@@ -6884,9 +6932,9 @@ function resetBoardManagerNow(){
 // engine has actually stopped (data.running === false), reset does nothing
 // at all — this is what start_detection is for.
 function startBoardManagerDetection(){
-  const host = state.settings.boardManagerHost;
-  if(!host) return;
-  fetch('http://' + host + ':3180/api/start', { method:'PUT' })
+  const base = boardManagerBase();
+  if(!base) return;
+  fetch(base + '/api/start', { method:'PUT' })
     .then(()=> console.log('Oche: Board Manager start triggered'))
     .catch(err => console.warn('Oche: Board Manager start failed', err && err.message));
 }
@@ -6897,9 +6945,9 @@ function startBoardManagerDetection(){
 // Goes through the launcher helper (port 9090), not Board Manager directly,
 // since only the launcher has permission to run systemctl.
 function hardRestartBoardManager(){
-  const host = state.settings.boardManagerHost;
-  if(!host) return;
-  fetch('http://' + host + ':9090/api/board-manager/hard-restart', { method:'POST' })
+  const launcher = boardManagerLauncherBase();
+  if(!launcher) return;
+  fetch(launcher + '/api/board-manager/hard-restart', { method:'POST' })
     .then(()=> console.log('Oche: Board Manager hard restart triggered'))
     .catch(err => console.warn('Oche: Board Manager hard restart failed', err && err.message));
 }
@@ -6938,8 +6986,7 @@ async function waitForBoardManagerHealthy(maxWaitMs, checkEveryMs){
 let boardFixRunning = false;
 async function fixBoardNow(){
   if(boardFixRunning) return; // guard against double-tapping mid-sequence
-  const host = state.settings.boardManagerHost;
-  if(!host) return;
+  if(!boardManagerBase()) return;
   boardFixRunning = true;
   try{
     state.boardFixInProgress = { phase:'soft', message:'Resetting…' };
@@ -10619,7 +10666,7 @@ function renderPlayerDetail(){
 hydrateState();
 initDartFieldOptions();
 render();
-if(state.settings.boardManagerHost){ connectBoardManager(); }
+if(boardManagerBase()){ connectBoardManager(); }
 
 // Kiosk convenience: browsers won't allow fullscreen to trigger purely on
 // page load (requires a real user gesture), so instead we go fullscreen
