@@ -675,7 +675,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .camera-help-trigger{ display:flex; align-items:center; gap:5px; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); opacity:0.65; cursor:pointer; padding:4px 8px; border:1px solid var(--felt-lighter); border-radius:20px; }
 .camera-help-trigger:active{ opacity:1; }
 .camera-help-dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; }
-.camera-help-panel{ position:absolute; top:calc(100% + 6px); left:0; width:210px; background:var(--felt); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; box-shadow:var(--shadow); z-index:20; text-align:left; }
+.camera-help-panel{ position:absolute; top:calc(100% + 6px); right:0; width:250px; background:var(--felt); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; box-shadow:var(--shadow); z-index:20; text-align:left; }
 .camera-help-stats{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--cream-dim); line-height:1.6; margin-bottom:8px; }
 .ladder-stat-row{ display:flex; gap:10px; margin-bottom:8px; }
 .ladder-stat{ flex:1; background:var(--felt-light); border:1px solid var(--felt-lighter); border-radius:10px; padding:10px; text-align:center; }
@@ -818,7 +818,7 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 .hub-resume-x{ width:40px; height:40px; border-radius:50%; border:1px solid var(--felt-lighter); background:var(--felt); color:var(--cream-dim); font-size:16px; cursor:pointer; }
 .hub-spacer{ flex:1; }
 .hub-lobby-slot{ position:relative; border-radius:20px; border:1px dashed var(--felt-lighter); padding:12px 18px; color:var(--cream-dim); font-size:13px; }
-.hub-tiles{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(3,minmax(0,1fr)); gap:14px; min-height:0; }
+.hub-tiles{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(4,minmax(0,1fr)); gap:14px; min-height:0; }
 .hub-tile{ border-radius:24px; border:1px solid var(--felt-lighter); background:var(--felt); padding:18px 22px; display:flex; flex-direction:column; justify-content:space-between; cursor:pointer; box-sizing:border-box; min-height:0; overflow:hidden; }
 .hub-tile:active, .hub-chip:active, .hub-pill:active{ transform:scale(0.985); }
 .hub-tile svg{ width:clamp(30px,5vh,46px); height:clamp(30px,5vh,46px); stroke:var(--brass); }
@@ -923,6 +923,32 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 .tb-prev .pv-btn{background:var(--brass); color:var(--felt-dark); padding:10px 18px; border-radius:10px; font-weight:700; font-size:14px;}
 .tb-prev .pv-t{color:var(--cream); font-size:16px; font-weight:600;}
 .tb-prev .pv-s{color:var(--cream-dim); font-size:12px;}
+
+/* ---- v6.5 Camera tab ---- */
+.cam-wrap{display:flex; flex-direction:column; gap:16px; padding:0 18px 24px 18px; max-width:1000px;}
+.cam-tabs{display:flex; gap:6px; padding:5px; border-radius:12px; background:rgba(0,0,0,0.25); border:1px solid var(--felt-lighter); align-self:flex-start;}
+.cam-tabs button{height:40px; padding:0 20px; border-radius:9px; border:none; background:none; color:var(--cream-dim); font-family:'Inter',sans-serif; font-size:15px; font-weight:600; cursor:pointer;}
+.cam-tabs button.on{background:var(--brass); color:var(--felt-dark);}
+.cam-status{display:flex; align-items:center; gap:16px; border-radius:16px; padding:18px 20px; background:var(--felt-dark); border:1px solid var(--felt-lighter);}
+.cam-status .big{width:20px; height:20px; border-radius:50%; flex:none; background:var(--cream-dim);}
+.cam-status.ok .big{background:var(--green);} .cam-status.warn .big{background:var(--brass);} .cam-status.bad .big{background:var(--red);}
+.cam-status .ct{font-size:22px; font-weight:700; color:var(--cream);}
+.cam-status .cs{font-size:14px; color:var(--cream-dim); margin-top:2px;}
+.cam-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px;}
+.cam-kv{background:var(--felt-dark); border:1px solid var(--felt-lighter); border-radius:12px; padding:10px 14px;}
+.cam-kv .k{font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:0.1em; color:var(--cream-dim); text-transform:uppercase;}
+.cam-kv .v{font-size:16px; color:var(--cream); margin-top:3px; word-break:break-word;}
+.cam-step{display:flex; gap:14px; align-items:flex-start; background:var(--felt-dark); border:1px solid var(--felt-lighter); border-radius:14px; padding:14px 16px;}
+.cam-step .n{width:34px; height:34px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-weight:800; border:2px solid var(--felt-lighter); color:var(--cream-dim);}
+.cam-step.done .n{background:var(--green); border-color:var(--green); color:#06210f;}
+.cam-step .st{font-size:16px; font-weight:600; color:var(--cream);}
+.cam-step .sd{font-size:13px; color:var(--cream-dim); margin-top:3px; line-height:1.45;}
+.cam-step .sa{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+.cam-msg{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--brass); padding:10px 14px; border-radius:10px; border:1px dashed var(--felt-lighter);}
+.cam-modal{max-width:760px !important; width:100%; display:flex; flex-direction:column; gap:12px;}
+.cam-menu-btns{display:flex; gap:8px; margin-top:8px;}
+.cam-menu-btns .tiny-edit-btn{flex:1; text-align:center; padding:9px 6px;}
+.hub-tile.span2{ grid-column:span 2; }
 </style>
 </head>
 <body>
@@ -1021,7 +1047,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v6.4';
+const BUILD_STAMP = 'v6.5';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5585,6 +5611,7 @@ const HUB_TILES = [
   {id:'players',  name:'Players',  note:'',                    d:'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M17.5 11.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM18 14c2.4.2 3.8 2 3.8 4.5', go:"goTab('players')"},
   {id:'darts',    name:'Darts',    note:'',                    d:'M3.5 20.5L13 11M13 11l4.5-6.5 2 2L13 11z', go:"goTab('darts')"},
   {id:'stats',    name:'Stats',    note:'Averages and history', d:'M5 20V11M12 20V4M19 20v-6', go:"goTab('stats')"},
+  {id:'camera',   name:'Camera',   note:'', d:'M4 8h3l1.5-2h7L17 8h3v11H4zM12 17a3.5 3.5 0 100-7 3.5 3.5 0 000 7z', go:"goTab('camera')"},
   {id:'settings', name:'Settings', note:'Look, sound, board',  d:'M12 15a3 3 0 100-6 3 3 0 000 6zM12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8', go:"openContextualSettings()"},
 ];
 function renderHub(){
@@ -5593,6 +5620,7 @@ function renderHub(){
   const hubNote = (id)=>{
     if(id==='players') return state.players.length+' player'+(state.players.length===1?'':'s');
     if(id==='darts') return (state.dartSetups||[]).length+' setup'+((state.dartSetups||[]).length===1?'':'s');
+    if(id==='camera') return camSummary().text;
     return null;
   };
   const board = `<div class="hub-board">
@@ -5627,7 +5655,7 @@ function renderHub(){
         <div class="hub-lobby-slot">Lobby: friends and match requests will live here.</div>
       </div>
       <div class="hub-tiles">
-        ${HUB_TILES.map(t=>`<div class="hub-tile" onclick="${t.go}">
+        ${HUB_TILES.map(t=>`<div class="hub-tile${t.id==='settings'?' span2':''}" onclick="${t.go}">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${t.d}"/></svg>
           <div><div class="tn">${t.name}</div><div class="tt">${hubNote(t.id) || t.note}</div></div>
         </div>`).join('')}
@@ -5636,7 +5664,7 @@ function renderHub(){
   </div>`;
 }
 function tabTitle(){
-  return {play:'Games', practice:'Practice', custom:'Custom', players:'Players', darts:'Darts', stats:'Stats'}[state.navTab] || 'Oche';
+  return {play:'Games', practice:'Practice', custom:'Custom', players:'Players', darts:'Darts', stats:'Stats', camera:'Camera'}[state.navTab] || 'Oche';
 }
 
 /* ---- Winner screen ---- */
@@ -7029,6 +7057,10 @@ function render(){
     case 'checkoutTable': html = renderCheckoutTable(); break;
     default: html = renderHomeShell();
   }
+  if(state.camTroubleOpen){
+    const cm = renderCamTroubleModal();
+    html = html.includes(FOOTER_MARKER) ? html.replace(FOOTER_MARKER, cm+FOOTER_MARKER) : html + cm;
+  }
   if(state.emojiPickerPlayerId) html += renderEmojiPickerModal(state.emojiPickerPlayerId);
   if(state.celebration) html += renderCelebrationOverlay();
   if(state.pbFlash) html += renderPBFlashOverlay();
@@ -7140,7 +7172,7 @@ function bottomNav(){
   </div>`;
 }
 function openContextualSettings(){
-  const pageMap = {play:'defaults', practice:'defaults', custom:'defaults', players:'lobby', stats:'about', hub:'look'};
+  const pageMap = {play:'defaults', practice:'defaults', custom:'defaults', players:'lobby', stats:'about', hub:'look', camera:'board'};
   state.settingsReturnTo = {screen:'home', navTab: state.navTab};
   if(state.navTab==='darts'){ state.screen='dartSettings'; }
   else { state.settingsPage = pageMap[state.navTab] || 'look'; state.screen='settingsHub'; }
@@ -7176,6 +7208,7 @@ function renderHomeShell(){
   else if(state.navTab==='custom') body = renderCustomTab();
   else if(state.navTab==='players') body = renderPlayerManager();
   else if(state.navTab==='darts') body = renderDartManager();
+  else if(state.navTab==='camera') body = renderCameraTab();
   else body = renderStatsHub();
   return `${topbar(tabTitle())}
     <div class="screen" style="flex:1; overflow-y:auto;">${body}</div>`;
@@ -7909,7 +7942,7 @@ function settingsPageBoard(){
     </div>
     ${usingSingleCam() ? `<p class="info-note">Single camera mode listens to the single-camera program on your laptop instead of the Autodarts board. One camera is less accurate than three (a dart hidden behind another can be missed, and darts close to a wire can be miscalled), so keep an eye on the score and use Oche's undo or edit to fix a dart. Switch back to "Autodarts board" at home — that setup is untouched.</p>` : ''}
     <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered. Oche also auto-resets Board Manager on its own if throws stop registering for more than a few seconds. If you need to reset it by hand, there's a button for that directly on the gameplay screen itself — no need to come here mid-game.</p>
-    <p class="info-note">Camera tools (live view, setup guide, troubleshooting) are coming in the next stage.</p>
+    <p class="info-note">Live status, the setup guide and troubleshooting are in the Camera tab on Home.</p><div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="goTab('camera')">Open Camera tab</button></div>
     </div>`;
 }
 /* ---- Game defaults ---- */
@@ -7983,6 +8016,138 @@ function settingsPageAbout(){
       <div class="btn-row"><button class="btn btn-danger" style="flex:none; padding:8px 16px;" onclick="confirmResetAll()">Erase all data</button></div>
     </div>`;
 }
+
+
+/* ========================= CAMERA TAB ========================= */
+function camAddress(){
+  const b = boardManagerBase();
+  return b ? b.replace(/^http:\/\//,'') : '';
+}
+// One plain-language read of how the camera link is doing, shared by the
+// hub tile, the Live page, Troubleshoot and the in-game camera menu.
+function camSummary(){
+  const st = state.dartsCallerStatus;
+  const h = state.boardManagerHealth;
+  if(!boardManagerBase()) return {level:'off', text:'No camera set up', hint:'Open the Setup guide to add your camera address.'};
+  if(st==='connecting') return {level:'warn', text:'Connecting', hint:'Reaching the camera software.'};
+  if(st==='error') return {level:'bad', text:'Cannot reach camera', hint:'Check the camera PC is on and the address is right.'};
+  if(st!=='connected') return {level:'off', text:'Not connected', hint:'Tap Connect on the Live page.'};
+  if(!h) return {level:'warn', text:'Connected, waiting', hint:'No data from the camera yet.'};
+  if(Date.now()-h.updatedAt > 5000) return {level:'warn', text:'No recent data', hint:'The camera stopped reporting. Try Fix board.'};
+  const sx = (h.status||'').toLowerCase(), ev = (h.event||'').toLowerCase();
+  if(h.running===false) return {level:'bad', text:'Detection stopped', hint:'Try Fix board, or Start detection in Troubleshoot.'};
+  if(h.connected===false) return {level:'bad', text:'Camera not connected', hint:'The software cannot see the cameras.'};
+  if(sx.includes('error') || ev.includes('failed') || ev.includes('error')) return {level:'bad', text:'Camera error', hint:'Try Fix board.'};
+  return {level:'ok', text:'Ready', hint:'Throw a dart to test.'};
+}
+function camSetTab(t){ state.camTab = t; render(); }
+function camNote(msg){ state.camMsg = msg; render(); }
+function camTestConnection(){
+  const base = boardManagerBase();
+  if(!base){ camNote('Add the camera address first (Setup guide, step 2).'); return; }
+  camNote('Testing '+base+' ...');
+  fetch(base+'/api/state').then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(d=>camNote('Reached the camera software. Running: '+(d.running?'yes':'no')+', status: '+(d.status||'unknown')+'.'))
+    .catch(e=>camNote('Could not reach '+base+' ('+(e&&e.message||'no answer')+'). Is the camera PC on and on the same network?'));
+}
+function camSoftReset(){ resetBoardManagerNow(); camNote('Soft reset sent. Give it a few seconds, then throw a test dart.'); }
+function camStartDetection(){ startBoardManagerDetection(); camNote('Start detection sent. It should show as running within a few seconds.'); }
+function camHardRestart(){
+  if(!confirm('Restart the camera service? It is offline for up to 20 seconds.')) return;
+  hardRestartBoardManager(); camNote('Restart sent. Cameras can take 10 to 20 seconds to come back.');
+}
+function camToggleMode(){ setSetting('dartsCallerCameraMode', !state.settings.dartsCallerCameraMode); persistState(); }
+function openCamTrouble(){ state.boardHealthExpanded=false; state.camMsg=null; state.camTroubleOpen=true; render(); }
+function closeCamTrouble(){ state.camTroubleOpen=false; render(); }
+function camOpenLink(){
+  const b = boardManagerBase();
+  return b ? `<a class="btn btn-secondary" style="flex:none; padding:8px 16px; text-decoration:none;" href="${b}" target="_blank" rel="noopener">Open camera software</a>` : '';
+}
+function renderCameraTab(){
+  const t = state.camTab || 'live';
+  const page = t==='setup' ? renderCamSetup() : t==='trouble' ? renderCamTroubleBody() : renderCamLive();
+  return `<div class="cam-wrap">
+    <div class="cam-tabs">${[['live','Live'],['setup','Setup guide'],['trouble','Troubleshoot']].map(x=>`<button class="${t===x[0]?'on':''}" onclick="camSetTab('${x[0]}')">${x[1]}</button>`).join('')}</div>
+    ${page}
+  </div>`;
+}
+function camStatusCard(){
+  const sm = camSummary();
+  return `<div class="cam-status ${sm.level}"><div class="big"></div><div><div class="ct">${sm.text}</div><div class="cs">${sm.hint}</div></div></div>`;
+}
+function renderCamLive(){
+  const h = state.boardManagerHealth;
+  const connected = state.dartsCallerStatus==='connected';
+  const kv=(k,v)=>`<div class="cam-kv"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const age = h ? Math.max(0, Math.round((Date.now()-h.updatedAt)/1000))+'s ago' : '—';
+  return `${camStatusCard()}
+    <div class="cam-grid">
+      ${kv('Camera setup', usingSingleCam() ? 'Single camera' : 'Autodarts board')}
+      ${kv('Address', camAddress() || 'Not set')}
+      ${kv('Link', connected ? 'Connected' : state.dartsCallerStatus==='connecting' ? 'Connecting' : state.dartsCallerStatus==='error' ? 'Failed' : 'Not connected')}
+      ${kv('Detection', h ? (h.running ? 'Running' : 'Stopped') : '—')}
+      ${kv('Status', h && h.status ? h.status : '—')}
+      ${kv('Last event', h && h.event ? h.event : '—')}
+      ${kv('Darts this turn', h ? h.numThrows : '—')}
+      ${kv('Last update', age)}
+    </div>
+    <div class="sh-card" style="flex-direction:row; flex-wrap:wrap; align-items:center; gap:10px;">
+      ${connected
+        ? `<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="disconnectBoardManager()">Disconnect</button>`
+        : `<button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="connectBoardManager()">Connect</button>`}
+      <div class="checkbox-row" style="padding:0;"><input type="checkbox" ${state.settings.dartsCallerCameraMode?'checked':''} onchange="camToggleMode()"> Camera Mode: real throws drive the game</div>
+      ${camOpenLink()}
+    </div>`;
+}
+function renderCamSetup(){
+  const connected = state.dartsCallerStatus==='connected';
+  const step=(n,done,title,desc,actions)=>`<div class="cam-step ${done?'done':''}"><div class="n">${done?'&#10003;':n}</div><div style="flex:1; min-width:0;"><div class="st">${title}</div><div class="sd">${desc}</div>${actions?`<div class="sa">${actions}</div>`:''}</div></div>`;
+  const chip=(label,val)=>`<span class="chip ${(usingSingleCam()?'singlecam':'autodarts')===val?'selected':''}" onclick="setDetectionSource('${val}')">${label}</span>`;
+  const single = usingSingleCam();
+  return `<p class="info-note" style="margin:0;">Follow these in order. Each step ticks off by itself.</p>
+    ${step(1,true,'Choose your camera setup','Autodarts board is the 3-camera setup at home. Single camera is the travel program on a laptop.',`<div class="chip-wrap">${chip('Autodarts board (3 cameras)','autodarts')}${chip('Single camera (travel)','singlecam')}</div>`)}
+    ${step(2,!!boardManagerBase(), single?'Enter the program address':'Enter the darts PC address', single?'Usually localhost:3180 when it runs on this same laptop.':'The IP address of the PC the cameras are plugged into, for example 10.0.0.13.',
+      `<input class="input" style="max-width:260px;" placeholder="${single?'localhost:3180':'10.0.0.13'}" value="${single?state.settings.singleCamHost:state.settings.boardManagerHost}" onchange="setSetting('${single?'singleCamHost':'boardManagerHost'}', this.value.trim()); disconnectBoardManager();">`)}
+    ${step(3,connected,'Connect','Oche reaches the camera software over your network.',connected?`<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="disconnectBoardManager()">Disconnect</button>`:`<button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="connectBoardManager()">Connect</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="camTestConnection()">Test connection</button>`)}
+    ${step(4,!!state.settings.dartsCallerCameraMode,'Turn on Camera Mode','With it on, darts the camera sees are entered for you instead of tapped in.',`<div class="checkbox-row" style="padding:0;"><input type="checkbox" ${state.settings.dartsCallerCameraMode?'checked':''} onchange="camToggleMode()"> Camera Mode</div>`)}
+    ${step(5,boardManagerLooksHealthy(),'Check it is ready','The status on the Live page should say Ready. Then throw one dart: it should appear in a game within a second.',`<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="camSetTab('live')">Go to Live</button>`)}
+    ${state.camMsg ? `<div class="cam-msg">${state.camMsg}</div>` : ''}
+    <div class="sh-card"><span class="field-label">Other camera systems</span><p class="info-note" style="margin:0;">Oche reads the camera through a simple status link, the same one the Autodarts Board Manager and the single-camera program provide. Other systems that offer it can use the single-camera option. More camera types are planned.</p></div>`;
+}
+function renderCamTroubleBody(){
+  const fix = state.boardFixInProgress;
+  const busy = !!fix && fix.phase!=='ok' && fix.phase!=='stuck';
+  const sm = camSummary();
+  const step=(n,title,desc,btn)=>`<div class="cam-step"><div class="n">${n}</div><div style="flex:1; min-width:0;"><div class="st">${title}</div><div class="sd">${desc}</div><div class="sa">${btn}</div></div></div>`;
+  const b=(label,fn,cls)=>`<button class="btn ${cls||'btn-secondary'}" style="flex:none; padding:8px 16px;" onclick="${fn}">${label}</button>`;
+  return `${camStatusCard()}
+    <div class="sh-card" style="flex-direction:row; align-items:center; gap:14px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:220px;"><div class="st" style="font-size:16px; font-weight:600; color:var(--cream);">Fix board</div><div class="sd" style="font-size:13px; color:var(--cream-dim);">Tries a soft reset, checks it worked, and restarts the camera service only if needed.</div></div>
+      <button class="btn btn-primary" style="flex:none; padding:10px 22px;" ${busy?'disabled':''} onclick="fixBoardNow()">&#128295; Fix board</button>
+    </div>
+    ${fix ? `<div class="fix-board-status ${fix.phase==='ok'?'ok':fix.phase==='stuck'?'stuck':'working'}" style="font-size:13px;">${fix.message}</div>` : ''}
+    <p class="info-note" style="margin:0;">Or work through these one at a time, gentlest first.</p>
+    ${step(1,'Test the connection','Checks Oche can reach the camera software at all.',b('Test connection','camTestConnection()')+camOpenLink())}
+    ${step(2,'Soft reset','Clears a confused detection state, like pressing Reset in the camera software. Fixes darts that stop registering.',b('Soft reset','camSoftReset()'))}
+    ${step(3,'Start detection','Use this if detection shows as Stopped. A reset does nothing when detection is stopped.',b('Start detection','camStartDetection()'))}
+    ${step(4,'Check calibration','If darts land in the wrong place, the board or a camera may have moved. Open the camera software, make sure each camera sees the whole board, and run calibration there.',camOpenLink() || '<span class="sd">Set the camera address first.</span>')}
+    ${step(5,'Restart the camera service','Stronger than a reset. Restarts the camera service on the darts PC. Takes up to 20 seconds.',b('Restart service','camHardRestart()','btn-danger'))}
+    ${step(6,'Still stuck?','Restart the darts PC itself, then reconnect from the Live page.','')}
+    ${state.camMsg ? `<div class="cam-msg">${state.camMsg}</div>` : ''}`;
+}
+function renderCamTroubleModal(){
+  return `<div class="modal-overlay gx" onclick="if(event.target===this) closeCamTrouble();">
+    <div class="modal cam-modal" style="max-height:calc(100vh - 48px);">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <h3 style="margin:0;">Camera troubleshooting</h3>
+        <button class="gtb-btn" onclick="closeCamTrouble()">Close</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">${renderCamTroubleBody()}</div>
+    </div>
+  </div>`;
+}
+
+setInterval(()=>{ try{ if(state.screen==='home' && state.navTab==='camera' && (state.camTab||'live')!=='setup' && !document.hidden) render(); }catch(e){} }, 2000);
 
 /* ========================= BOARD MANAGER LIVE INTEGRATION =========================
    Talks directly to Autodarts' own Board Manager (the actual camera/vision
@@ -8552,30 +8717,21 @@ function renderCameraHelpTrigger(){
   const dotColor = !h ? 'var(--cream-dim)' : hasWarning ? 'var(--red)' : isStale ? 'var(--brass)' : 'var(--green)';
   return `<div class="camera-help-wrap">
     <div class="camera-help-trigger" onclick="state.boardHealthExpanded=!state.boardHealthExpanded; render();">
-      <span class="camera-help-dot" style="background:${dotColor};"></span>Camera Help
+      <span class="camera-help-dot" style="background:${dotColor};"></span>Camera
     </div>
     ${state.boardHealthExpanded ? renderCameraHelpPanel() : ''}
   </div>`;
 }
 function renderCameraHelpPanel(){
-  const h = state.boardManagerHealth;
   const fix = state.boardFixInProgress;
   const busy = !!fix && fix.phase!=='ok' && fix.phase!=='stuck';
   const statusClass = !fix ? '' : (fix.phase==='ok' ? 'ok' : fix.phase==='stuck' ? 'stuck' : 'working');
+  const sm = camSummary();
   return `<div class="camera-help-panel">
-    <div class="camera-help-stats">
-      Connected: ${h?(h.connected?'Yes':'No'):'—'}<br>
-      Running: ${h?(h.running?'Yes':'No'):'—'}<br>
-      Status: ${h?h.status:'—'}<br>
-      Last Event: ${h?h.event:'—'}<br>
-      Darts This Turn: ${h?h.numThrows:'—'}
-    </div>
-    <div class="subgroup-row">
-      <div class="tiny-edit-btn primary${busy?' disabled':''}" ${busy?'':'onclick="fixBoardNow()"'}>&#128295; Fix Board</div>
-    </div>
-    <div class="subgroup-row" style="margin-top:6px;">
-      <div class="tiny-edit-btn${busy?' disabled':''}" ${busy?'':'onclick="resetBoardManagerNow()"'}>&#8635; Soft Reset</div>
-      <div class="tiny-edit-btn${busy?' disabled':''}" ${busy?'':'onclick="hardRestartBoardManager()"'}>&#9850; Hard Reset</div>
+    <div class="camera-help-stats"><b>${sm.text}</b><br>${sm.hint}</div>
+    <div class="cam-menu-btns">
+      <div class="tiny-edit-btn primary${busy?' disabled':''}" ${busy?'':'onclick="fixBoardNow()"'}>&#128295; Fix board</div>
+      <div class="tiny-edit-btn" onclick="openCamTrouble()">Troubleshoot</div>
     </div>
     ${fix ? `<div class="fix-board-status ${statusClass}">${busy?'&#9203; ':fix.phase==='ok'?'&#9989; ':'&#9888; '}${fix.message}</div>` : ''}
   </div>`;
