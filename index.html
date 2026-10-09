@@ -949,6 +949,23 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 .cam-menu-btns{display:flex; gap:8px; margin-top:8px;}
 .cam-menu-btns .tiny-edit-btn{flex:1; text-align:center; padding:9px 6px;}
 .hub-tile.span2{ grid-column:span 2; }
+
+/* ---- v6.6 Lobby ---- */
+.lobby-block{ position:relative; border-radius:20px; border:1px solid var(--felt-lighter); background:rgba(0,0,0,0.18); padding:12px 16px; display:flex; flex-direction:column; gap:10px; max-height:46vh; overflow-y:auto; }
+.lb-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer; }
+.lb-head b{ font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:0.12em; color:var(--cream-dim); font-weight:600; }
+.lb-badge{ background:var(--brass); color:var(--felt-dark); border-radius:10px; font-size:12px; font-weight:800; padding:2px 8px; margin-left:8px; }
+.lb-row{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:12px; background:var(--felt-dark); border:1px solid var(--felt-lighter); }
+.lb-av{ width:34px; height:34px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-weight:800; background:var(--felt-lighter); color:var(--cream); }
+.lb-name{ font-size:15px; font-weight:600; color:var(--cream); }
+.lb-sub{ font-size:12px; color:var(--cream-dim); }
+.lb-btn{ flex:none; border:1px solid var(--felt-lighter); background:var(--felt); color:var(--cream); border-radius:10px; padding:6px 12px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; }
+.lb-btn.p{ background:var(--brass); color:var(--felt-dark); border-color:var(--brass); }
+.lb-add{ display:flex; gap:8px; }
+.lb-add input{ flex:1; min-width:0; text-transform:uppercase; letter-spacing:0.15em; }
+.lb-err{ font-size:12px; color:#e08a7d; }
+.lb-note{ font-size:11.5px; color:var(--cream-dim); line-height:1.4; }
+.lb-code{ font-family:'JetBrains Mono',monospace; font-size:26px; letter-spacing:0.2em; color:var(--brass); }
 </style>
 </head>
 <body>
@@ -1047,7 +1064,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v6.5';
+const BUILD_STAMP = 'v6.6';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -5652,7 +5669,7 @@ function renderHub(){
           <button class="hub-resume-x" title="Forget this saved game" onclick="forgetPausedGame()">&#10005;</button>
         </div>` : ''}
         <div class="hub-spacer"></div>
-        <div class="hub-lobby-slot">Lobby: friends and match requests will live here.</div>
+        ${renderLobbyBlock()}
       </div>
       <div class="hub-tiles">
         ${HUB_TILES.map(t=>`<div class="hub-tile${t.id==='settings'?' span2':''}" onclick="${t.go}">
@@ -6868,7 +6885,7 @@ function describeCustomGame(cfg){
 /* Settings */
 function setSetting(key, val){ state.settings[key]=val; render(); }
 function privacyPrefs(){ const p = (state.settings && state.settings.privacy) || {}; return {avg:!!p.avg, wins:!!p.wins, darts:!!p.darts}; }
-function togglePrivacy(k){ const p = privacyPrefs(); p[k] = !p[k]; state.settings.privacy = p; persistState(); render(); }
+function togglePrivacy(k){ const p = privacyPrefs(); p[k] = !p[k]; state.settings.privacy = p; persistState(); render(); try{ lobbyPushShared(); }catch(e){} }
 function renderPrivacyCard(){
   const p = privacyPrefs();
   const row=(k,l,d)=>`<div class="priv-row"><div><div class="pl">${l}</div><div class="pd">${d}</div></div><button class="sw ${p[k]?'on':''}" aria-label="${l}" onclick="togglePrivacy('${k}')"></button></div>`;
@@ -6878,7 +6895,7 @@ function renderPrivacyCard(){
     ${row('avg','My average','Your three-dart average')}
     ${row('wins','Wins and losses','Your record against friends')}
     ${row('darts','My darts','The dart setups you throw with')}
-    <div class="pd" style="margin-top:8px;">Your own stats stay private: only you see them on this device. Nothing is shared until online play arrives.</div>
+    <div class="pd" style="margin-top:8px;">Your own stats stay private. Only the items you switch on are shown to friends in the lobby.</div>
   </div>`;
 }
 function toggleSidenavCollapsed(){ state.settings.sidenavCollapsed = !state.settings.sidenavCollapsed; render(); }
@@ -7968,11 +7985,7 @@ function settingsPageDefaults(){
 }
 /* ---- Lobby and status ---- */
 function settingsPageLobby(){
-  return `${renderPrivacyCard()}
-    <div class="sh-card">
-      <span class="field-label">Lobby and status</span>
-      <p class="info-note" style="margin:0;">Online play is coming in a later stage. When it arrives you will set your status here, such as "Back at 7:30", shown to friends in their own time zone, and choose whether the lobby block shows on the home screen.</p>
-    </div>`;
+  return `${renderLobbyAccountCard()}${renderPrivacyCard()}`;
 }
 /* ---- About and data ---- */
 function exportOcheData(){
@@ -8148,6 +8161,284 @@ function renderCamTroubleModal(){
 }
 
 setInterval(()=>{ try{ if(state.screen==='home' && state.navTab==='camera' && (state.camTab||'live')!=='setup' && !document.hidden) render(); }catch(e){} }, 2000);
+
+
+/* ========================= LOBBY (Supabase) =========================
+   Friends, status and match requests. Talks to Supabase over plain fetch
+   (no library). The key below is the public publishable key; what each
+   person can read or change is enforced by row-level security in the
+   database, not by this file. */
+const SB_URL = 'https://puxgwwtmfqluvpaqmhbj.supabase.co';
+const SB_KEY = 'sb_publishable_9CMNZ_Dpv5t62UVQnykjTA_a0fR04GA';
+const SB_SESSION_KEY = 'oche-sb-session';
+let sbSession = null;
+let lobbyTimer = null;
+state.lobby = { me:null, profiles:{}, friendships:[], matches:[], err:'', busy:false, lastSync:0, auth:{stage:'email', email:'', msg:'', err:''}, challengeFor:null };
+
+function lobbyEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function sbLoad(){ try{ sbSession = JSON.parse(localStorage.getItem(SB_SESSION_KEY)||'null'); }catch(e){ sbSession=null; } }
+function sbSave(){ try{ if(sbSession) localStorage.setItem(SB_SESSION_KEY, JSON.stringify(sbSession)); else localStorage.removeItem(SB_SESSION_KEY); }catch(e){} }
+function sbSetSession(j){
+  const exp = j.expires_at ? j.expires_at : Math.floor(Date.now()/1000) + (j.expires_in||3600);
+  sbSession = { access_token:j.access_token, refresh_token:j.refresh_token, expires_at:exp, user:j.user || (sbSession && sbSession.user) || null };
+  sbSave();
+}
+async function sbRaw(path, opts){
+  opts = opts || {};
+  const h = Object.assign({ apikey:SB_KEY, 'Content-Type':'application/json' }, opts.headers||{});
+  h.Authorization = 'Bearer ' + ((opts.auth!==false && sbSession) ? sbSession.access_token : SB_KEY);
+  const r = await fetch(SB_URL + path, { method:opts.method||'GET', headers:h, body: opts.body!==undefined ? JSON.stringify(opts.body) : undefined });
+  const txt = await r.text(); let j = null; try{ j = txt ? JSON.parse(txt) : null; }catch(e){}
+  if(!r.ok){ const e = new Error((j && (j.message || j.msg || j.error_description || j.error)) || ('HTTP '+r.status)); e.status = r.status; throw e; }
+  return j;
+}
+async function sbFresh(){
+  if(!sbSession) return;
+  if(sbSession.expires_at - Math.floor(Date.now()/1000) > 60) return;
+  try{
+    const j = await sbRaw('/auth/v1/token?grant_type=refresh_token', { method:'POST', auth:false, body:{ refresh_token: sbSession.refresh_token } });
+    sbSetSession(j);
+  }catch(e){ if(e.status===400 || e.status===401 || e.status===403){ lobbySignedOut(); } throw e; }
+}
+async function sb(path, opts){ await sbFresh(); return sbRaw(path, opts); }
+function lobbySignedIn(){ return !!(sbSession && sbSession.access_token); }
+function lobbySignedOut(){
+  sbSession = null; sbSave();
+  state.lobby.me = null; state.lobby.profiles = {}; state.lobby.friendships = []; state.lobby.matches = [];
+  if(lobbyTimer){ clearInterval(lobbyTimer); lobbyTimer = null; }
+}
+function lobbyRedirect(){ return location.origin + location.pathname; }
+async function lobbySendCode(){
+  const a = state.lobby.auth; const email = (a.email||'').trim();
+  if(!/^\S+@\S+\.\S+$/.test(email)){ a.err = 'Enter a valid email address.'; render(); return; }
+  a.err=''; a.msg='Sending...'; render();
+  try{
+    await sbRaw('/auth/v1/otp?redirect_to=' + encodeURIComponent(lobbyRedirect()), { method:'POST', auth:false, body:{ email, create_user:true } });
+    a.stage='code'; a.msg='Check your email. Tap the link in it on this device, or type the code if the email shows one.'; a.err='';
+  }catch(e){ a.msg=''; a.err = e.message + (e.status===429 ? ' (the free email limit is a few per hour, wait a bit)' : ''); }
+  render();
+}
+async function lobbyVerifyCode(){
+  const a = state.lobby.auth; const code = (a.code||'').replace(/\s+/g,'');
+  if(!code){ a.err='Type the code from the email.'; render(); return; }
+  a.err=''; a.msg='Checking...'; render();
+  try{
+    const j = await sbRaw('/auth/v1/verify', { method:'POST', auth:false, body:{ type:'email', email:(a.email||'').trim(), token:code } });
+    sbSetSession(j); a.stage='email'; a.msg=''; a.code='';
+    await lobbyStart();
+  }catch(e){ a.msg=''; a.err = e.message; render(); }
+}
+async function lobbySignOut(){
+  try{ await sbRaw('/auth/v1/logout', { method:'POST' }); }catch(e){}
+  lobbySignedOut(); render();
+}
+function lobbyDefaultName(){
+  const p = state.players.find(x=>x.id===state.settings.lobbyPlayerId) || state.players.find(x=>!x.isBot && !x.isGuest);
+  if(p) return p.name;
+  const em = sbSession && sbSession.user && sbSession.user.email; return em ? em.split('@')[0] : 'Player';
+}
+async function lobbyStart(){
+  if(!lobbySignedIn()) return;
+  try{
+    if(!sbSession.user){ sbSession.user = await sb('/auth/v1/user'); sbSave(); }
+    let me = await sb('/rest/v1/rpc/ensure_profile', { method:'POST', body:{ p_name: lobbyDefaultName() } });
+    if(Array.isArray(me)) me = me[0];
+    state.lobby.me = me; state.lobby.err='';
+    await lobbyPushShared(true);
+    await lobbySync();
+    if(!lobbyTimer) lobbyTimer = setInterval(()=>{ if(!document.hidden) lobbySync(); }, 15000);
+  }catch(e){ state.lobby.err = e.message; render(); }
+}
+function lobbyVisible(){
+  return state.screen==='home' && (state.navTab==='hub') || (state.screen==='settingsHub' && state.settingsPage==='lobby');
+}
+async function lobbySync(){
+  if(!lobbySignedIn() || state.lobby.busy) return;
+  state.lobby.busy = true;
+  try{
+    const [profs, fr, ms] = await Promise.all([
+      sb('/rest/v1/profiles?select=*'),
+      sb('/rest/v1/friendships?select=*'),
+      sb('/rest/v1/match_requests?select=*&order=created_at.desc&limit=30'),
+    ]);
+    const map = {}; (profs||[]).forEach(p=>{ map[p.id]=p; });
+    state.lobby.profiles = map; state.lobby.friendships = fr||[]; state.lobby.matches = ms||[];
+    if(state.lobby.me && map[state.lobby.me.id]) state.lobby.me = map[state.lobby.me.id];
+    state.lobby.err=''; state.lobby.lastSync = Date.now();
+  }catch(e){ state.lobby.err = (e && e.message) || 'Could not reach the lobby'; }
+  state.lobby.busy = false;
+  if(lobbyVisible()) render();
+}
+function lobbyMyId(){ return state.lobby.me && state.lobby.me.id; }
+function lobbyShared(){
+  const pr = privacyPrefs(); const out = {};
+  const p = state.players.find(x=>x.id===state.settings.lobbyPlayerId);
+  if(!p) return out;
+  if(pr.wins){ const st = playerStatsFor(p.id); out.wins = st.wins; out.losses = Math.max(0, st.gamesPlayed - st.wins); }
+  if(pr.darts){
+    const d = state.dartSetups.find(x=>x.id===state.playerDartSelections[p.id]);
+    if(d) out.darts = dartSetupDisplayName(d);
+  }
+  return out;   // the three-dart average is not stored by Oche yet, so it is not shared
+}
+async function lobbyPushShared(quiet){
+  if(!lobbySignedIn() || !lobbyMyId()) return;
+  try{ await sb('/rest/v1/profiles?id=eq.'+lobbyMyId(), { method:'PATCH', body:{ shared: lobbyShared(), updated_at:new Date().toISOString() } }); }
+  catch(e){ if(!quiet){ state.lobby.err = e.message; render(); } }
+}
+async function lobbyAct(fn){
+  let err = '';
+  state.lobby.note = '';
+  try{ await fn(); }catch(e){ err = (e && e.message) || 'Something went wrong'; }
+  state.lobby.busy = false;
+  await lobbySync();
+  if(err) state.lobby.err = err;
+  render();
+}
+function lobbySetField(k,v){ state.lobby.auth[k]=v; }
+function lobbyAddFriend(){
+  const el = document.getElementById('lobbyCode'); const code = ((el&&el.value)||'').trim();
+  if(!code) return;
+  lobbyAct(async()=>{ const name = await sb('/rest/v1/rpc/request_friend', { method:'POST', body:{ p_code:code } }); state.lobby.note = 'Request sent to '+name+'.'; });
+}
+function lobbyAcceptFriend(id){ lobbyAct(()=>sb('/rest/v1/friendships?id=eq.'+id, { method:'PATCH', body:{ status:'accepted' } })); }
+function lobbyDropFriend(id){ if(confirm('Remove this friend or request?')) lobbyAct(()=>sb('/rest/v1/friendships?id=eq.'+id, { method:'DELETE' })); }
+function lobbyChallenge(fid){ state.lobby.challengeFor = state.lobby.challengeFor===fid ? null : fid; render(); }
+function lobbySendMatch(fid, game){
+  state.lobby.challengeFor = null;
+  lobbyAct(async()=>{ await sb('/rest/v1/match_requests', { method:'POST', body:{ from_id:lobbyMyId(), to_id:fid, game } }); state.lobby.note='Match request sent.'; });
+}
+function lobbyAnswerMatch(id, status){ lobbyAct(()=>sb('/rest/v1/match_requests?id=eq.'+id, { method:'PATCH', body:{ status } })); }
+function lobbyClearMatch(id){ lobbyAct(()=>sb('/rest/v1/match_requests?id=eq.'+id, { method:'DELETE' })); }
+function lobbyToggleCollapsed(){ state.settings.lobbyCollapsed = !state.settings.lobbyCollapsed; persistState(); render(); }
+function openLobbySettings(){ state.settingsReturnTo = {screen:'home', navTab:'hub'}; state.settingsPage='lobby'; state.screen='settingsHub'; render(); }
+function lobbySaveName(){ const el=document.getElementById('lobbyName'); const v=((el&&el.value)||'').trim(); if(!v) return; lobbyAct(()=>sb('/rest/v1/profiles?id=eq.'+lobbyMyId(), { method:'PATCH', body:{ name:v.slice(0,40) } })); }
+function lobbySetPlayer(id){ state.settings.lobbyPlayerId = id; persistState(); render(); lobbyPushShared(); }
+function lobbySetStatus(text, withTime){
+  const t = document.getElementById('lobbyBack'); let backAt = null;
+  if(withTime && t && t.value){
+    const [h,m] = t.value.split(':').map(Number); const d = new Date(); d.setHours(h, m, 0, 0);
+    if(d.getTime() < Date.now()) d.setDate(d.getDate()+1);
+    backAt = d.toISOString();
+  }
+  lobbyAct(()=>sb('/rest/v1/profiles?id=eq.'+lobbyMyId(), { method:'PATCH', body:{ status:text, back_at:backAt, updated_at:new Date().toISOString() } }));
+}
+function lobbyStatusText(p){
+  if(!p) return '';
+  let s = p.status || '';
+  if(p.back_at && new Date(p.back_at).getTime() > Date.now()){
+    s = (s ? s+', back' : 'Back') + ' at ' + new Date(p.back_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  }
+  return s;
+}
+function lobbyShareText(p){
+  const sh = (p && p.shared) || {}; const bits = [];
+  if(sh.wins!=null) bits.push(sh.wins+'W '+sh.losses+'L');
+  if(sh.avg!=null) bits.push('avg '+sh.avg);
+  if(sh.darts) bits.push(sh.darts);
+  return bits.join(' · ');
+}
+function lobbyLists(){
+  const L = state.lobby, me = lobbyMyId();
+  const friends = [], incoming = [], outgoing = [];
+  L.friendships.forEach(f=>{
+    const other = f.requester===me ? f.addressee : f.requester;
+    const p = L.profiles[other] || { id:other, name:'Player' };
+    if(f.status==='accepted') friends.push({ f, p });
+    else if(f.addressee===me) incoming.push({ f, p });
+    else outgoing.push({ f, p });
+  });
+  const mIn = L.matches.filter(m=>m.to_id===me && m.status==='pending');
+  const mOut = L.matches.filter(m=>m.from_id===me && m.status!=='pending' && m.status!=='cancelled');
+  return { friends, incoming, outgoing, mIn, mOut };
+}
+function lobbyCount(){ if(!lobbySignedIn() || !lobbyMyId()) return 0; const l = lobbyLists(); return l.incoming.length + l.mIn.length + l.mOut.length; }
+function lobbyNameOf(id){ const p = state.lobby.profiles[id]; return lobbyEsc(p ? p.name : 'A friend'); }
+function renderLobbyBlock(){
+  const collapsed = !!state.settings.lobbyCollapsed;
+  const n = lobbyCount();
+  const head = `<div class="lb-head" onclick="lobbyToggleCollapsed()"><div><b>LOBBY</b>${n?`<span class="lb-badge">${n}</span>`:''}</div><span style="color:var(--cream-dim);">${collapsed?'&#9662; Show':'&#9652; Hide'}</span></div>`;
+  if(collapsed) return `<div class="lobby-block">${head}</div>`;
+  if(!lobbySignedIn()){
+    return `<div class="lobby-block">${head}<div class="lb-note">Sign in to add friends, set your status and send match requests.</div><div><button class="lb-btn p" onclick="openLobbySettings()">Sign in</button></div></div>`;
+  }
+  if(!lobbyMyId()){
+    return `<div class="lobby-block">${head}<div class="lb-note">${state.lobby.err ? '<span class="lb-err">'+lobbyEsc(state.lobby.err)+'</span>' : 'Connecting to the lobby...'}</div></div>`;
+  }
+  const L = state.lobby, ls = lobbyLists();
+  const av = p => `<div class="lb-av">${lobbyEsc((p.name||'?').trim().charAt(0).toUpperCase())}</div>`;
+  const friendRow = ({f,p}) => `<div class="lb-row">${av(p)}<div style="flex:1; min-width:0;"><div class="lb-name">${lobbyEsc(p.name)}</div><div class="lb-sub">${lobbyEsc([lobbyStatusText(p), lobbyShareText(p)].filter(Boolean).join(' · ') || 'No status')}</div></div><button class="lb-btn p" onclick="lobbyChallenge('${p.id}')">Challenge</button></div>
+    ${L.challengeFor===p.id ? `<div class="lb-row" style="gap:6px; flex-wrap:wrap;"><span class="lb-sub">Ask ${lobbyEsc(p.name)} for:</span>${['501','301','Cricket'].map(g=>`<button class="lb-btn" onclick="lobbySendMatch('${p.id}','${g}')">${g}</button>`).join('')}</div>` : ''}`;
+  return `<div class="lobby-block">${head}
+    <div class="lb-row">${av(L.me)}<div style="flex:1; min-width:0;"><div class="lb-name">${lobbyEsc(L.me.name)} <span class="lb-sub">(you)</span></div><div class="lb-sub">${lobbyEsc(lobbyStatusText(L.me) || 'No status set')}</div></div><button class="lb-btn" onclick="openLobbySettings()">Edit</button></div>
+    ${ls.incoming.map(({f,p})=>`<div class="lb-row">${av(p)}<div style="flex:1;"><div class="lb-name">${lobbyEsc(p.name)}</div><div class="lb-sub">wants to be friends</div></div><button class="lb-btn p" onclick="lobbyAcceptFriend('${f.id}')">Accept</button><button class="lb-btn" onclick="lobbyDropFriend('${f.id}')">No</button></div>`).join('')}
+    ${ls.mIn.map(m=>`<div class="lb-row"><div style="flex:1;"><div class="lb-name">${lobbyNameOf(m.from_id)}</div><div class="lb-sub">wants a game of ${lobbyEsc(m.game)}</div></div><button class="lb-btn p" onclick="lobbyAnswerMatch('${m.id}','accepted')">Accept</button><button class="lb-btn" onclick="lobbyAnswerMatch('${m.id}','declined')">No</button></div>`).join('')}
+    ${ls.mOut.map(m=>`<div class="lb-row"><div style="flex:1;"><div class="lb-name">${lobbyNameOf(m.to_id)}</div><div class="lb-sub">${m.status==='accepted'?'said yes to':'said no to'} your ${lobbyEsc(m.game)} request</div></div><button class="lb-btn" onclick="lobbyClearMatch('${m.id}')">OK</button></div>`).join('')}
+    ${ls.friends.length ? ls.friends.map(friendRow).join('') : '<div class="lb-note">No friends yet. Share your code, or add theirs below.</div>'}
+    ${ls.outgoing.length ? `<div class="lb-note">Waiting on: ${ls.outgoing.map(o=>lobbyEsc(o.p.name)).join(', ')}</div>` : ''}
+    <div class="lb-add"><input class="input" id="lobbyCode" maxlength="6" placeholder="Friend code" onkeydown="if(event.key==='Enter')lobbyAddFriend()"><button class="lb-btn p" onclick="lobbyAddFriend()">Add</button></div>
+    ${L.err ? `<div class="lb-err">${lobbyEsc(L.err)}</div>` : (L.note ? `<div class="lb-note">${lobbyEsc(L.note)}</div>` : '')}
+    <div class="lb-note">Your code: <b style="color:var(--brass); letter-spacing:0.12em;">${lobbyEsc(L.me.code)}</b>. Requests tell a friend you want a match; live scoring between two boards is not in this version.</div>
+  </div>`;
+}
+function renderLobbyAccountCard(){
+  const L = state.lobby, a = L.auth;
+  if(!lobbySignedIn()){
+    return `<div class="sh-card">
+      <span class="field-label">Sign in to the lobby</span>
+      ${a.stage==='code' ? `
+        <p class="info-note" style="margin:0;">${lobbyEsc(a.msg)}</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;"><input class="input" style="max-width:240px; letter-spacing:0.2em;" placeholder="Code" value="${lobbyEsc(a.code||'')}" oninput="lobbySetField('code', this.value)" onkeydown="if(event.key==='Enter')lobbyVerifyCode()"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="lobbyVerifyCode()">Sign in</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="state.lobby.auth.stage='email'; state.lobby.auth.err=''; render();">Use another email</button></div>`
+      : `
+        <p class="info-note" style="margin:0;">Enter your email and we send a sign-in link. No password.</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;"><input class="input" style="max-width:320px;" type="email" placeholder="you@example.com" value="${lobbyEsc(a.email||'')}" oninput="lobbySetField('email', this.value)" onkeydown="if(event.key==='Enter')lobbySendCode()"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="lobbySendCode()">Send link</button></div>
+        ${a.msg ? `<p class="info-note" style="margin:0;">${lobbyEsc(a.msg)}</p>` : ''}`}
+      ${a.err ? `<div class="lb-err">${lobbyEsc(a.err)}</div>` : ''}
+    </div>`;
+  }
+  if(!lobbyMyId()){
+    return `<div class="sh-card"><span class="field-label">Lobby</span><p class="info-note" style="margin:0;">${L.err ? lobbyEsc(L.err) : 'Connecting...'}</p><div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbyStart()">Try again</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySignOut()">Sign out</button></div></div>`;
+  }
+  const me = L.me, mine = state.players.filter(p=>!p.isBot);
+  const cur = state.settings.lobbyPlayerId;
+  const backVal = me.back_at && new Date(me.back_at).getTime()>Date.now() ? new Date(me.back_at).toTimeString().slice(0,5) : '';
+  return `<div class="sh-card">
+      <span class="field-label">You in the lobby</span>
+      <div class="lb-sub">Signed in as ${lobbyEsc((sbSession.user&&sbSession.user.email)||'')}</div>
+      <div class="lb-sub">Your friend code</div><div class="lb-code">${lobbyEsc(me.code)}</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;"><input class="input" id="lobbyName" style="max-width:260px;" value="${lobbyEsc(me.name)}" maxlength="40"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySaveName()">Save name</button></div>
+      <div><span class="field-label">Which player on this device is you</span>
+        <div class="chip-wrap">${mine.map(p=>`<span class="chip ${cur===p.id?'selected':''}" onclick="lobbySetPlayer('${p.id}')">${lobbyEsc(p.name)}</span>`).join('') || '<span class="info-note">Add a player first.</span>'}</div>
+        <p class="info-note">Used for the stats you choose to share below.</p></div>
+    </div>
+    <div class="sh-card">
+      <span class="field-label">Your status</span>
+      <div class="chip-wrap">${['Available','In a game','Away'].map(t=>`<span class="chip ${me.status===t&&!backVal?'selected':''}" onclick="lobbySetStatus('${t}', false)">${t}</span>`).join('')}</div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><span class="lb-sub">Back at</span><input class="input" id="lobbyBack" type="time" value="${backVal}" style="max-width:150px;"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySetStatus('Away', true)">Set</button></div>
+      <p class="info-note" style="margin:0;">Friends see the time in their own time zone.</p>
+      ${L.err ? `<div class="lb-err">${lobbyEsc(L.err)}</div>` : ''}
+    </div>
+    <div class="sh-card">
+      <span class="field-label">Lobby display</span>
+      <div class="checkbox-row"><input type="checkbox" ${state.settings.lobbyCollapsed?'':'checked'} onchange="lobbyToggleCollapsed()"> Show the lobby block on Home</div>
+      <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySignOut()">Sign out</button></div>
+    </div>`;
+}
+async function lobbyInit(){
+  sbLoad();
+  // Returning from the emailed link: the session arrives in the address hash.
+  if(location.hash && location.hash.indexOf('access_token=')>-1){
+    try{
+      const q = new URLSearchParams(location.hash.slice(1));
+      sbSetSession({ access_token:q.get('access_token'), refresh_token:q.get('refresh_token'), expires_in:+q.get('expires_in')||3600, expires_at:+q.get('expires_at')||0 });
+      history.replaceState(null, '', location.pathname + location.search);
+    }catch(e){}
+  }
+  if(lobbySignedIn()) await lobbyStart();
+  render();
+}
+setTimeout(lobbyInit, 0);
+window.addEventListener('focus', ()=>{ if(lobbySignedIn() && lobbyMyId()) lobbySync(); });
 
 /* ========================= BOARD MANAGER LIVE INTEGRATION =========================
    Talks directly to Autodarts' own Board Manager (the actual camera/vision
