@@ -1064,7 +1064,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v6.6';
+const BUILD_STAMP = 'v6.7';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1518,7 +1518,7 @@ function callerPackKey(p){ return 'pack:'+p.id; }
 function callerCurrentKey(){
   const uri = state.settings.callerVoice;
   if(uri){
-    if(uri.indexOf('pack:')===0 ? callerPacks.some(p=>callerPackKey(p)===uri) : callerVoices.some(v=>v.voiceURI===uri)) return uri;
+    if(uri.indexOf('pack:')===0 ? callerPacks.some(p=>callerPackKey(p)===uri) : (!callerPacks.length && callerVoices.some(v=>v.voiceURI===uri))) return uri;
   }
   return callerPacks.length ? callerPackKey(callerPacks[0]) : '';
 }
@@ -1526,11 +1526,12 @@ function callerActivePack(){
   const k = callerCurrentKey();
   return k.indexOf('pack:')===0 ? (callerPacks.find(p=>callerPackKey(p)===k) || null) : null;
 }
+function callerSettingsOpen(){ return state.screen==='settingsHub' && state.settingsPage==='sound'; }
 function callerLoadPacks(){
   try{
     fetch('voices/index.json', {cache:'no-cache'}).then(r=>r.ok ? r.json() : []).then(list=>{
       callerPacks = (Array.isArray(list) ? list : []).filter(p=>p && p.id);
-      if(callerPacks.length && state.screen==='gameplaySettings') render();
+      if(callerPacks.length && callerSettingsOpen()) render();
     }).catch(()=>{});
   }catch(e){}
 }
@@ -1821,7 +1822,9 @@ function renderCallerSettings(){
   const chip = (label, val)=>`<span class="chip ${(s.callerStyle||'full')===val?'selected':''}" onclick="setSetting('callerStyle','${val}')">${label}</span>`;
   const entries = [];
   callerPacks.forEach(p=>entries.push({key:callerPackKey(p), name:p.name||p.id, sub:(p.desc||'Natural voice')+' · Oche voice', pack:p}));
-  const showBrowser = !!syn && callerVoices.length > 0;
+  // Recorded Oche voices are the only ones listed when any are installed; the
+  // browser's own voices are kept only as a fallback for when there are none.
+  const showBrowser = !callerPacks.length && !!syn && callerVoices.length > 0;
   let filterHtml = '';
   if(showBrowser){
     const codes = {};
@@ -1893,7 +1896,7 @@ function renderCallerSettings(){
   try{
     callerLoadPacks();
     const syn = callerSynth(); if(!syn) return;
-    const refresh = ()=>{ callerLoadVoices(); if(typeof state!=='undefined' && state.screen==='gameplaySettings') render(); };
+    const refresh = ()=>{ callerLoadVoices(); if(typeof state!=='undefined' && callerSettingsOpen()) render(); };
     callerLoadVoices();
     if('onvoiceschanged' in syn) syn.onvoiceschanged = refresh;
     setTimeout(refresh, 800);
