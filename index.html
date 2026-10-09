@@ -752,6 +752,16 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .theme-swatch.selected .circle{border-color:var(--brass); box-shadow:0 0 0 2px var(--brass);}
 .theme-swatch .tlabel{font-size:12px; color:var(--cream-dim); text-align:center; line-height:1.2;}
 .info-note{font-size:13px; color:var(--cream-dim); line-height:1.5; margin-top:6px; max-width:640px;}
+/* Caller voice browser (Gameplay settings) */
+.caller-list{ max-height:300px; overflow-y:auto; border:1px solid var(--felt-lighter); border-radius:10px; margin-top:8px; max-width:640px; }
+.caller-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-top:1px solid var(--felt-lighter); }
+.caller-row:first-child{ border-top:none; }
+.caller-row.sel{ background:color-mix(in srgb, var(--brass) 14%, transparent); }
+.caller-row.playing{ outline:2px solid var(--brass); outline-offset:-2px; }
+.caller-info{ min-width:0; display:flex; flex-direction:column; }
+.caller-info b{ font-size:14px; color:var(--cream); font-weight:600; overflow-wrap:anywhere; }
+.caller-info span{ font-size:12px; color:var(--cream-dim); }
+.caller-hear{ flex:none; padding:8px 14px; }
 .co-row{display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--felt-light); font-family:'JetBrains Mono',monospace; font-size:13px;}
 .co-row .co-score{color:var(--brass); font-family:'Oswald',sans-serif; font-size:17px; width:44px;}
 .co-row .co-route{color:var(--cream);}
@@ -878,7 +888,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v5.6';
+const BUILD_STAMP = 'v5.7';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1157,6 +1167,7 @@ let state = {
     dartsCallerCameraMode: false, // when on, real throws from the board drive gameplay instead of clicks
     soundOn: true, soundVolume: 0.7, // sound effects master switch + volume (0-1)
     sfxHit: 'thud', sfxMiss: 'swish', sfxWin: 'trumpets', // which effect plays for each moment ('none' = silent)
+    callerOn: true, callerVoice: '', callerRate: 1, callerPitch: 1, callerStyle: 'full', callerRequire: true, callerAllGames: true, // spoken score calls (see CALLER section); undefined is treated as the default so older saves keep working
   },
   dartsCallerStatus: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'error'
   freshCameraDot: false, // true briefly after a real camera-detected dart, makes the newest hit dot flash green
@@ -1260,6 +1271,239 @@ function hydrateState(){
     console.warn('Oche: could not load saved data', e);
   }
 }
+
+/* ========================= CALLER (spoken score calls) =========================
+   Reads each dart out loud ("Triple twenty"), then the turn total, "Bust", "Game shot!"
+   and "You require 40", using the browser's built-in speech voices (speechSynthesis).
+   Voices come from the browser and the computer it runs on, so the list differs per
+   machine. Options live under Gameplay settings > Caller. Every setting is undefined-safe
+   so saves from before the caller existed keep working. */
+const CALLER_SAMPLE = 'Triple twenty. One hundred and eighty!';
+const CALLER_ONES = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+const CALLER_TENS = ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+function callerWords(n){
+  if(n<20) return CALLER_ONES[n];
+  if(n<100) return CALLER_TENS[Math.floor(n/10)] + (n%10 ? '-'+CALLER_ONES[n%10] : '');
+  const h = Math.floor(n/100), r = n%100;
+  return CALLER_ONES[h] + ' hundred' + (r ? ' and '+callerWords(r) : '');
+}
+function callerCap(t){ return t.charAt(0).toUpperCase() + t.slice(1); }
+function callerSynth(){ try{ return window.speechSynthesis || null; }catch(e){ return null; } }
+let callerVoices = [];
+let callerLangFilter = 'en';
+let callerShown = [];
+let callerTour = null;
+function callerEsc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function callerBaseLang(v){ return String(v.lang||'').split(/[-_]/)[0].toLowerCase(); }
+function callerLangName(code){
+  try{ return new Intl.DisplayNames(['en'],{type:'language'}).of(String(code).replace('_','-')) || code; }
+  catch(e){ return code; }
+}
+function callerLoadVoices(){
+  const syn = callerSynth(); if(!syn) return;
+  const list = syn.getVoices();
+  if(!list || !list.length) return;
+  callerVoices = list.slice().sort((a,b)=> String(a.lang).localeCompare(String(b.lang)) || String(a.name).localeCompare(String(b.name)));
+}
+function callerGetVoice(){
+  const uri = state.settings.callerVoice;
+  if(uri){ const v = callerVoices.find(x=>x.voiceURI===uri); if(v) return v; }
+  const en = callerVoices.filter(v=>callerBaseLang(v)==='en');
+  return en.find(v=>v.default) || en[0] || null;
+}
+function callerUtter(text, v){
+  const u = new SpeechSynthesisUtterance(text);
+  if(v){ u.voice = v; u.lang = v.lang; } else { u.lang = 'en-GB'; }
+  u.rate = state.settings.callerRate || 1;
+  u.pitch = state.settings.callerPitch || 1;
+  return u;
+}
+// Queues the calls in order (dart, then total, then "you require") without cutting off a
+// call that is still being spoken, so three quick camera darts are each heard in full.
+function callerSay(parts){
+  const syn = callerSynth();
+  if(!syn || state.settings.callerOn===false) return;
+  try{
+    if(callerTour){ callerStopTour(); syn.cancel(); }
+    const v = callerGetVoice();
+    parts.forEach(t=>{ if(t) syn.speak(callerUtter(t, v)); });
+  }catch(e){ console.warn('Oche: caller could not speak', e); }
+}
+function callerDartCall(num, seg){
+  const style = state.settings.callerStyle || 'full';
+  if(num==='B') return seg==='bull' ? 'Bullseye' : 'Twenty-five';
+  const n = parseInt(num,10);
+  const mult = seg==='triple' ? 3 : seg==='double' ? 2 : 1;
+  if(style==='score') return callerCap(callerWords(n*mult));
+  if(mult===3) return 'Triple '+callerWords(n);
+  if(mult===2) return 'Double '+callerWords(n);
+  return style==='short' ? callerCap(callerWords(n)) : 'Single '+callerWords(n);
+}
+function callerTotalCall(t){
+  if(t===180) return 'One hundred and eighty!';
+  if(t===0) return 'No score';
+  return callerCap(callerWords(t));
+}
+// "You require 40" — only when the score left can actually be finished in three darts
+// (so bogey numbers like 169 stay quiet), and with the player's name in multi-player games.
+function callerRequireCall(s, p){
+  if(state.settings.callerRequire===false || p.finished || p.score<=0) return null;
+  if(!rankedCheckout(p.score, 3, s.outRule)) return null;
+  const who = s.participants.length>1 ? plainPlayerName(p.playerId)+', you' : 'You';
+  return who+' require '+callerWords(p.score);
+}
+function callerTurnTotal(s){ return s.currentTurnDarts.reduce((a,d)=>a+(d.value||0),0); }
+// Called right after x01ApplyDart, before the turn advances, so the player and the
+// turn's darts are still the ones that just threw.
+function callerAnnounceX01(s, num, seg, res){
+  if(state.settings.callerOn===false) return;
+  const p = x01Current(s);
+  const calls = [callerDartCall(num, seg)];
+  if(res.bust) calls.push('Bust');
+  else if(res.win) calls.push(s.participants.length>1 ? 'Game shot, '+plainPlayerName(p.playerId)+'!' : 'Game shot!');
+  else if(res.turnOver){
+    calls.push(callerTotalCall(callerTurnTotal(s)));
+    calls.push(callerRequireCall(s, p));
+  }
+  callerSay(calls);
+}
+function callerAnnounceX01Miss(s){
+  if(state.settings.callerOn===false) return;
+  const calls = ['No score'];
+  if(s.currentTurnDarts.length>=3){
+    const t = callerTurnTotal(s);
+    if(t>0) calls.push(callerTotalCall(t));
+    calls.push(callerRequireCall(s, x01Current(s)));
+  }
+  callerSay(calls);
+}
+// Every other game: just read out what landed.
+function callerAnnounceDart(num, seg){
+  if(state.settings.callerAllGames===false) return;
+  callerSay([callerDartCall(num, seg)]);
+}
+/* --- voice browser in Settings --- */
+function callerMarkSelected(){
+  const cv = callerGetVoice();
+  const lab = document.getElementById('callerCurrent');
+  if(lab) lab.textContent = cv ? cv.name : 'Browser default';
+  document.querySelectorAll('.caller-row').forEach(r=>{ r.classList.toggle('sel', r.dataset.uri===(state.settings.callerVoice||'')); });
+}
+function callerStopTour(){
+  if(!callerTour) return;
+  callerTour = null;
+  document.querySelectorAll('.caller-row.playing').forEach(r=>r.classList.remove('playing'));
+  const b = document.getElementById('callerPlayAll'); if(b) b.textContent = 'Play all';
+}
+function callerStopAll(){ callerStopTour(); const syn = callerSynth(); if(syn) syn.cancel(); }
+function callerHear(idx){
+  const v = callerShown[idx]; if(!v) return;
+  callerStopTour();
+  state.settings.callerVoice = v.voiceURI;
+  persistState();
+  callerMarkSelected();
+  const syn = callerSynth(); if(!syn) return;
+  syn.cancel();
+  syn.speak(callerUtter(CALLER_SAMPLE, v));
+}
+function callerTest(){
+  const syn = callerSynth(); if(!syn) return;
+  callerStopTour(); syn.cancel();
+  syn.speak(callerUtter(CALLER_SAMPLE, callerGetVoice()));
+}
+function callerPlayAll(){
+  const syn = callerSynth(); if(!syn || !callerShown.length) return;
+  callerStopTour(); syn.cancel();
+  const t = {i:0, list:callerShown.slice()};
+  callerTour = t;
+  const b = document.getElementById('callerPlayAll'); if(b) b.textContent = 'Playing…';
+  callerTourNext(t);
+}
+function callerTourNext(t){
+  if(callerTour!==t) return;
+  if(t.i>=t.list.length){ callerStopTour(); return; }
+  const v = t.list[t.i];
+  document.querySelectorAll('.caller-row').forEach(r=>{
+    const on = r.dataset.uri===v.voiceURI;
+    r.classList.toggle('playing', on);
+    if(on && r.scrollIntoView) r.scrollIntoView({block:'nearest'});
+  });
+  const u = callerUtter(CALLER_SAMPLE, v);
+  let done = false, to;
+  const go = ()=>{ if(done || callerTour!==t) return; done = true; clearTimeout(to); t.i++; setTimeout(()=>callerTourNext(t), 350); };
+  u.onend = go; u.onerror = go;
+  to = setTimeout(go, 9000);
+  const syn = callerSynth(); syn.cancel(); syn.speak(u);
+}
+function renderCallerSettings(){
+  const s = state.settings;
+  const syn = callerSynth();
+  const chip = (label, val)=>`<span class="chip ${(s.callerStyle||'full')===val?'selected':''}" onclick="setSetting('callerStyle','${val}')">${label}</span>`;
+  let voicesHtml;
+  if(!syn){
+    voicesHtml = `<p class="info-note">This browser has no speech synthesis, so the caller cannot talk here.</p>`;
+  } else if(!callerVoices.length){
+    voicesHtml = `<p class="info-note">This browser has not reported any voices. Voices come from the browser and the computer it runs on: Chrome, Edge and Safari list plenty, while Firefox on Linux needs the speech-dispatcher service and a voice package installed. If this stays empty on the darts PC, the caller will stay silent there.</p>`;
+  } else {
+    const codes = {};
+    callerVoices.forEach(v=>{ codes[callerBaseLang(v)] = true; });
+    const keys = Object.keys(codes).sort((a,b)=>callerLangName(a).localeCompare(callerLangName(b)));
+    if(callerLangFilter!=='all' && !codes[callerLangFilter]) callerLangFilter = codes.en ? 'en' : 'all';
+    callerShown = callerVoices.filter(v=>callerLangFilter==='all' || callerBaseLang(v)===callerLangFilter);
+    voicesHtml = `
+      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px;">
+        <select class="input" style="flex:1; min-width:140px;" aria-label="Voice language" onchange="callerLangFilter=this.value; render();">
+          <option value="all" ${callerLangFilter==='all'?'selected':''}>All languages</option>
+          ${keys.map(k=>`<option value="${callerEsc(k)}" ${callerLangFilter===k?'selected':''}>${callerEsc(callerLangName(k))}</option>`).join('')}
+        </select>
+        <button class="btn btn-primary" id="callerPlayAll" style="flex:none; padding:8px 14px;" onclick="callerPlayAll()">Play all</button>
+        <button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="callerStopAll()">Stop</button>
+      </div>
+      <div class="field-label" style="margin-top:10px;">${callerShown.length} voice${callerShown.length===1?'':'s'} &middot; calling voice: <span id="callerCurrent" style="color:var(--cream); text-transform:none; letter-spacing:0;">${callerEsc((callerGetVoice()||{name:'Browser default'}).name)}</span></div>
+      <div class="caller-list">
+        ${callerShown.map((v,i)=>`<div class="caller-row${v.voiceURI===s.callerVoice?' sel':''}" data-uri="${callerEsc(v.voiceURI)}">
+          <div class="caller-info"><b>${callerEsc(v.name)}</b><span>${callerEsc(callerLangName(v.lang))} &middot; ${v.localService?'on device':'online'}</span></div>
+          <button class="btn btn-secondary caller-hear" onclick="callerHear(${i})">Hear</button>
+        </div>`).join('')}
+      </div>`;
+  }
+  return `<div class="section-label" style="padding-left:0; margin-top:18px;">Caller</div>
+    <div class="checkbox-row">
+      <input type="checkbox" ${s.callerOn!==false?'checked':''} onchange="setSetting('callerOn', ${s.callerOn===false})">
+      Call the scores out loud
+    </div>
+    <div>
+      <span class="field-label">Call style</span>
+      <div class="chip-wrap">${chip('Triple twenty','full')}${chip('Twenty (singles plain)','short')}${chip('Sixty (points only)','score')}</div>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" ${s.callerRequire!==false?'checked':''} onchange="setSetting('callerRequire', ${s.callerRequire===false})">
+      Call &ldquo;you require&rdquo; once a finish is possible
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" ${s.callerAllGames!==false?'checked':''} onchange="setSetting('callerAllGames', ${s.callerAllGames===false})">
+      Call the hits in other games too
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px 16px; margin-top:6px;">
+      <div><span class="field-label">Speed ${(s.callerRate||1).toFixed(2).replace(/0$/,'')}</span>
+        <input type="range" min="60" max="160" value="${Math.round((s.callerRate||1)*100)}" style="width:100%;" aria-label="Caller speed" onchange="state.settings.callerRate = this.value/100; persistState(); render();"></div>
+      <div><span class="field-label">Pitch ${(s.callerPitch||1).toFixed(2).replace(/0$/,'')}</span>
+        <input type="range" min="50" max="150" value="${Math.round((s.callerPitch||1)*100)}" style="width:100%;" aria-label="Caller pitch" onchange="state.settings.callerPitch = this.value/100; persistState(); render();"></div>
+    </div>
+    <div style="margin-top:8px;"><button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="callerTest()">&#9654; Test call</button></div>
+    ${voicesHtml}
+    <p class="info-note">Tap Hear on any voice to preview it and make it the caller. The first tap anywhere in the app switches speech on, since browsers keep audio locked until you touch the page.</p>`;
+}
+(function(){
+  try{
+    const syn = callerSynth(); if(!syn) return;
+    const refresh = ()=>{ callerLoadVoices(); if(typeof state!=='undefined' && state.screen==='gameplaySettings') render(); };
+    callerLoadVoices();
+    if('onvoiceschanged' in syn) syn.onvoiceschanged = refresh;
+    setTimeout(refresh, 800);
+    setTimeout(refresh, 2500);
+  }catch(e){}
+})();
 
 /* ========================= HELPERS ========================= */
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
@@ -3594,6 +3838,7 @@ function dispatchThrowCore(num, segType){
   const thisPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
   if(thisPoint) s.turnHitPoints.push(thisPoint);
+  if(s.kind!=='x01') callerAnnounceDart(num, segType);
   if(s.kind==='x01'){
     let throwObj;
     if(num==='B' && segType==='bull') throwObj = {label:fullDartLabel('B','bull'),value:50,type:'bull',hitTarget:true};
@@ -3605,6 +3850,7 @@ function dispatchThrowCore(num, segType){
       else throwObj = {label:fullDartLabel(n,'triple'),value:n*3,type:'triple',n,hitTarget:true};
     }
     const res = x01ApplyDart(s, throwObj);
+    callerAnnounceX01(s, num, segType, res);
     if(res.turnOver){
       if(res.bust){ finalizeBustThenAdvance(s); }
       else if(res.win){
@@ -3690,10 +3936,12 @@ function recordMissCore(){
   const thisMissPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
   if(thisMissPoint) s.turnHitPoints.push(thisMissPoint);
+  if(s.kind!=='x01' && state.settings.callerAllGames!==false) callerSay(['No score']);
   if(s.kind==='x01'){
     if(s.currentTurnDarts.length===0) s.scoreBeforeTurn = x01Current(s).score;
     s.currentTurnDarts.push({label:'Miss', value:0});
     x01Current(s).stats.darts++;
+    callerAnnounceX01Miss(s);
     if(s.currentTurnDarts.length>=3){ x01EndTurn(s); if(s.complete) finishX01Game(s); }
   } else if(s.kind==='cricket'){
     s.currentTurnDarts.push({label:'Miss', num:null, marksHit:0, pointsScored:0});
@@ -6866,6 +7114,7 @@ function renderGameplaySettings(){
       </div>`;
     }).join('')}
     <p class="info-note">Every effect in the list can be used for any of the three moments. The first tap anywhere in the app switches sound on, since browsers keep audio locked until you touch the page.</p>
+    ${renderCallerSettings()}
 
     <div class="section-label" style="padding-left:0; margin-top:18px;">Live Board</div>
     <div>
