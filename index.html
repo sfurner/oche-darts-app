@@ -201,6 +201,13 @@ body{
 .ps-target-sub{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); margin-top:2px; }
 .turn-dart-row{ display:flex; align-items:center; gap:8px; background:var(--felt); border-radius:6px; padding:6px 8px; margin-bottom:5px; font-size:12px; }
 .turn-dart-row.pending{ opacity:0.4; border:1px dashed var(--felt-lighter); background:transparent; }
+/* Suggested target for an empty X01 dart row (Autodarts-style per-dart checkout guide) */
+.turn-dart-row.pending.suggest{ opacity:1; border:1px dashed var(--brass); }
+.turn-dart-row.pending.suggest .turn-dart-label{ color:var(--brass); opacity:0.72; }
+.turn-dart-row.pending.suggest .turn-dart-val{ font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--cream-dim); font-weight:600; }
+.turn-dart-row.pending.suggest.next{ border-style:solid; background:color-mix(in srgb, var(--brass) 12%, transparent); }
+.turn-dart-row.pending.suggest.next .turn-dart-label{ opacity:1; font-weight:600; }
+.turn-dart-row.pending.suggest.finish .turn-dart-val{ color:var(--green); }
 .turn-dart-row.miss{ background:color-mix(in srgb, var(--red) 38%, var(--felt)); }
 .turn-dart-row.hit-target{ background:color-mix(in srgb, var(--green) 38%, var(--felt)); }
 .turn-dart-row.miss .turn-dart-num, .turn-dart-row.hit-target .turn-dart-num{ background:rgba(255,255,255,0.14); color:var(--cream); }
@@ -871,7 +878,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v5.5-singlecam';
+const BUILD_STAMP = 'v5.6';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1372,6 +1379,79 @@ function findCheckout(remaining, dartsLeft, outRule){
   }
   return null;
 }
+/* ---------- Ranked checkout routes + per-dart plan ----------
+   Tries every combination of the darts left in the visit and ranks the finishes:
+   fewest darts, then setup darts that avoid doubles, then a double finish over
+   the bullseye, fewer trebles, preferred finishing double (D20, D16, D8, D18...),
+   and finally the bigger dart first. Recomputed after every dart, so a hit or a
+   miss re-plans whatever darts are left. Returns an array of route labels
+   ("T20", "D16", "DB"...) or null when no finish exists in the darts left.
+   (Bogey numbers like 169, 168, 166, 165, 163, 162, 159 have no 3-dart finish.) */
+const CHECKOUT_DOUBLE_PREF = [20,16,8,18,12,10,14,6,4,2,19,17,15,13,11,9,7,5,3,1];
+function checkoutRouteKey(route){
+  const last = route[route.length-1];
+  let setupDoubles = 0, trebles = 0;
+  route.forEach((t,i)=>{
+    if(t.type==='triple') trebles++;
+    if(i<route.length-1 && (t.type==='double' || t.label==='DB')) setupDoubles++;
+  });
+  let finishRank;
+  if(last.type==='double') finishRank = CHECKOUT_DOUBLE_PREF.indexOf(last.n);
+  else if(last.label==='DB') finishRank = 99;
+  else if(last.type==='triple') finishRank = 50 + (20-last.n);
+  else finishRank = 70 + (20-(last.n||0));
+  return [route.length, setupDoubles, last.label==='DB'?1:0, trebles, finishRank, -route[0].value];
+}
+function checkoutKeyLess(a,b){
+  for(let i=0;i<a.length;i++){ if(a[i]!==b[i]) return a[i]<b[i]; }
+  return false;
+}
+const _rankedCheckoutCache = {};
+function rankedCheckout(remaining, dartsLeft, outRule){
+  if(remaining<1 || dartsLeft<1 || remaining>dartsLeft*60) return null;
+  if(remaining<2 && outRule!=='straight') return null;
+  const ck = remaining+'|'+dartsLeft+'|'+outRule;
+  if(ck in _rankedCheckoutCache){ const c=_rankedCheckoutCache[ck]; return c ? c.slice() : null; }
+  const isFinish = {};
+  finishSetFor(outRule).forEach(t=>{ isFinish[t.label]=true; });
+  let best = null, bestKey = null;
+  const path = [];
+  function rec(rem){
+    if(rem===0){
+      if(!isFinish[path[path.length-1].label]) return;
+      const key = checkoutRouteKey(path);
+      if(!best || checkoutKeyLess(key,bestKey)){ best = path.slice(); bestKey = key; }
+      return;
+    }
+    if(path.length===dartsLeft || rem>(dartsLeft-path.length)*60) return;
+    for(const t of ALL_THROWS){
+      if(t.value>rem) continue;
+      path.push(t); rec(rem-t.value); path.pop();
+    }
+  }
+  rec(remaining);
+  const labels = best ? best.map(t=>t.label) : null;
+  _rankedCheckoutCache[ck] = labels;
+  return labels ? labels.slice() : null;
+}
+// What each remaining dart in the current visit should aim at.
+// mode 'finish' = a real checkout route (last dart tagged Finish, earlier ones Setup),
+// mode 'score'  = no finish available yet, stay on the treble 20 (stops once another
+//                 T20 would leave too little to finish or bust),
+// mode 'open'   = double-in game that hasn't opened yet.
+function x01Plan(s){
+  if(!s || s.kind!=='x01' || s.guidance==='none') return null;
+  const p = x01Current(s);
+  if(!p || p.finished) return null;
+  const dartsLeft = 3 - s.currentTurnDarts.length;
+  if(dartsLeft<1) return null;
+  if(s.inRule==='double' && !p.opened) return {mode:'open', darts:Array(dartsLeft).fill('D20')};
+  const route = rankedCheckout(p.score, dartsLeft, s.outRule);
+  if(route) return {mode:'finish', darts:route};
+  const darts = [];
+  for(let rem=p.score; darts.length<dartsLeft && rem-60>=2; rem-=60) darts.push('T20');
+  return {mode:'score', darts};
+}
 function beginnerSuggestion(remaining, outRule){
   if(outRule!=='double' && outRule!=='master'){
     return {big:'Aim at 20', small:'Keep chipping away — no finishing rule to worry about yet.'};
@@ -1388,7 +1468,7 @@ function beginnerSuggestion(remaining, outRule){
 function buildCheckoutTable(outRule){
   const rows = [];
   for(let score=170; score>=2; score--){
-    const route = findCheckout(score, 3, outRule);
+    const route = rankedCheckout(score, 3, outRule);
     rows.push({score, route});
   }
   return rows;
@@ -7335,11 +7415,23 @@ function collapsedSectionSummary(s,p){
   return playerBoxData(s,p).stat;
 }
 function renderActivePlayerSection(s,p,i){
-  const target = renderTargetBoxHtml(s,p);
+  // X01 with guidance on: each empty dart row shows its own suggested target
+  // (re-planned after every dart), so the separate Target box above is not needed.
+  // Bots throw on their own, so they keep the plain Target box.
+  const plan = (s.kind==='x01' && !isBotPlayerId(p.playerId)) ? x01Plan(s) : null;
+  const target = plan ? null : renderTargetBoxHtml(s,p);
   const darts = s.currentTurnDarts;
   const rows = [0,1,2].map(idx=>{
     const d = darts[idx];
-    if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
+    if(!d){
+      const ti = idx - darts.length;
+      const sug = (plan && ti>=0) ? plan.darts[ti] : null;
+      if(sug){
+        const tag = plan.mode==='finish' ? (ti===plan.darts.length-1 ? 'Finish' : 'Setup') : plan.mode==='open' ? 'Open' : 'Score';
+        return `<div class="turn-dart-row pending suggest ${tag.toLowerCase()}${ti===0?' next':''}"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${prettifyRouteLabel(sug)}</div><div class="turn-dart-val">${tag}</div></div>`;
+      }
+      return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
+    }
     const isBustLike = d.label==='Miss' || d.bust;
     const isHitTarget = d.hitTarget===true && !isBustLike;
     const isMiss = isBustLike || d.hitTarget===false;
@@ -7354,7 +7446,7 @@ function renderActivePlayerSection(s,p,i){
       <div class="ps-score">${activeSectionHeadline(s,p)}</div>
     </div>
     <div class="ps-body">
-      <div class="ps-target"><div class="ps-target-lab">Target</div><div class="ps-target-val">${target.label}</div>${target.sub?`<div class="ps-target-sub">${target.sub}</div>`:''}</div>
+      ${target ? `<div class="ps-target"><div class="ps-target-lab">Target</div><div class="ps-target-val">${target.label}</div>${target.sub?`<div class="ps-target-sub">${target.sub}</div>`:''}</div>` : ''}
       ${rows}
     </div>
   </div>`;
@@ -7541,7 +7633,7 @@ function renderTipsSection(s){
         guideBig = b.big;
         guideSmall = p.score+' remaining — '+b.small;
       } else if(s.guidance==='standard'){
-        const route = findCheckout(p.score, dartsLeft, s.outRule);
+        const route = rankedCheckout(p.score, dartsLeft, s.outRule);
         if(route){
           guideBig = route.join('  &middot;  ');
           guideSmall = p.score+' remaining — traditional checkout route.';
@@ -8235,10 +8327,8 @@ function getCurrentGameTargetHighlight(s){
 function getCurrentGameTargetHighlightRaw(s){
   if(s.kind==='x01'){
     if(s.guidance==='none') return null;
-    const p = x01Current(s);
-    const dartsLeft = 3 - s.currentTurnDarts.length;
-    const route = findCheckout(p.score, dartsLeft, s.outRule);
-    if(route && route.length) return parseThrowLabel(route[0]);
+    const plan = x01Plan(s);
+    if(plan && plan.darts.length) return parseThrowLabel(plan.darts[0]);
     return {num:20, seg:'triple'};
   }
   if(s.kind==='cricket'){
@@ -8437,7 +8527,7 @@ function renderNumberGrid(s){
     if(p.score<=40 && p.score%2===0) recommended.add(p.score/2);
     else recommended.add(20);
   } else if(s.guidance==='standard'){
-    const route = findCheckout(p.score, dartsLeft, s.outRule);
+    const route = rankedCheckout(p.score, dartsLeft, s.outRule);
     if(route){ route.forEach(lbl=>{ const m = lbl.match(/(\d+)/); if(m) recommended.add(parseInt(m[1],10)); }); }
     else recommended.add(20);
   }
