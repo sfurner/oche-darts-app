@@ -762,6 +762,11 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .caller-info b{ font-size:14px; color:var(--cream); font-weight:600; overflow-wrap:anywhere; }
 .caller-info span{ font-size:12px; color:var(--cream-dim); }
 .caller-hear{ flex:none; padding:8px 14px; }
+.caller-opt{ align-items:flex-start; }
+.caller-opt input{ margin-top:3px; flex:none; }
+.caller-opt span{ display:flex; flex-direction:column; }
+.caller-opt small{ font-size:12px; color:var(--cream-dim); }
+.caller-scope{ max-width:640px; margin-top:8px; }
 .co-row{display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--felt-light); font-family:'JetBrains Mono',monospace; font-size:13px;}
 .co-row .co-score{color:var(--brass); font-family:'Oswald',sans-serif; font-size:17px; width:44px;}
 .co-row .co-route{color:var(--cream);}
@@ -888,7 +893,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v5.7';
+const BUILD_STAMP = 'v6.0';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1291,6 +1296,8 @@ function callerCap(t){ return t.charAt(0).toUpperCase() + t.slice(1); }
 function callerSynth(){ try{ return window.speechSynthesis || null; }catch(e){ return null; } }
 let callerVoices = [];
 let callerLangFilter = 'en';
+// Heuristic for "advanced" voices: names the OS/browser use for its neural/enhanced sets, or online (cloud) voices.
+function callerIsHQ(v){ return /enhanced|premium|natural|neural|siri|wavenet|studio|journey|google|online/i.test(String(v.name)) || v.localService===false; }
 let callerShown = [];
 let callerTour = null;
 function callerEsc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1305,9 +1312,34 @@ function callerLoadVoices(){
   if(!list || !list.length) return;
   callerVoices = list.slice().sort((a,b)=> String(a.lang).localeCompare(String(b.lang)) || String(a.name).localeCompare(String(b.name)));
 }
+// Pre-recorded voice packs (voices/index.json, made by make-oche-voices.py) sit alongside the app.
+// Each pack is a folder of short audio clips; the caller stitches them like a real caller and
+// falls back to the browser's speech voices for anything a pack doesn't cover (e.g. player names).
+let callerPacks = [];
+let callerQueue = [], callerPlaying = false, callerGen = 0, callerCancel = null, callerAudio = null;
+function callerPackKey(p){ return 'pack:'+p.id; }
+function callerCurrentKey(){
+  const uri = state.settings.callerVoice;
+  if(uri){
+    if(uri.indexOf('pack:')===0 ? callerPacks.some(p=>callerPackKey(p)===uri) : callerVoices.some(v=>v.voiceURI===uri)) return uri;
+  }
+  return callerPacks.length ? callerPackKey(callerPacks[0]) : '';
+}
+function callerActivePack(){
+  const k = callerCurrentKey();
+  return k.indexOf('pack:')===0 ? (callerPacks.find(p=>callerPackKey(p)===k) || null) : null;
+}
+function callerLoadPacks(){
+  try{
+    fetch('voices/index.json', {cache:'no-cache'}).then(r=>r.ok ? r.json() : []).then(list=>{
+      callerPacks = (Array.isArray(list) ? list : []).filter(p=>p && p.id);
+      if(callerPacks.length && state.screen==='gameplaySettings') render();
+    }).catch(()=>{});
+  }catch(e){}
+}
 function callerGetVoice(){
   const uri = state.settings.callerVoice;
-  if(uri){ const v = callerVoices.find(x=>x.voiceURI===uri); if(v) return v; }
+  if(uri && uri.indexOf('pack:')!==0){ const v = callerVoices.find(x=>x.voiceURI===uri); if(v) return v; }
   const en = callerVoices.filter(v=>callerBaseLang(v)==='en');
   return en.find(v=>v.default) || en[0] || null;
 }
@@ -1318,15 +1350,61 @@ function callerUtter(text, v){
   u.pitch = state.settings.callerPitch || 1;
   return u;
 }
+// Plays the clips of a pack one after another. Calls ok() when all played, bad() if any clip fails
+// (missing file, blocked autoplay, stalled). Returns a function that cancels playback.
+function callerPlayClips(pack, keys, ok, bad){
+  let i = 0, finished = false;
+  const end = fn=>{ if(finished) return; finished = true; if(fn) fn(); };
+  const next = ()=>{
+    if(finished) return;
+    if(i>=keys.length) return end(ok);
+    let a;
+    try{ a = new Audio('voices/'+encodeURIComponent(pack.id)+'/'+keys[i]+'.mp3'); }catch(e){ return end(bad); }
+    i++; callerAudio = a;
+    try{ a.playbackRate = state.settings.callerRate || 1; }catch(e){}
+    let done = false, to;
+    const adv = good=>{
+      if(done) return; done = true; clearTimeout(to);
+      if(good) next(); else { try{ a.pause(); }catch(e){} end(bad); }
+    };
+    to = setTimeout(()=>adv(false), 6000);
+    a.onended = ()=>adv(true);
+    a.onerror = ()=>adv(false);
+    try{ const pr = a.play(); if(pr && pr.catch) pr.catch(()=>adv(false)); }catch(e){ adv(false); }
+  };
+  next();
+  return ()=>{ finished = true; try{ if(callerAudio) callerAudio.pause(); }catch(e){} };
+}
+function callerSpeakText(text, done){
+  const syn = callerSynth();
+  if(!syn || !text) return done();
+  let to; const fin = ()=>{ clearTimeout(to); done(); };
+  try{ const u = callerUtter(text, callerGetVoice()); u.onend = fin; u.onerror = fin; to = setTimeout(fin, 8000); syn.speak(u); }
+  catch(e){ fin(); }
+}
+function callerPump(){
+  if(callerPlaying) return;
+  const item = callerQueue.shift();
+  if(!item) return;
+  callerPlaying = true;
+  const gen = callerGen;
+  let once = false;
+  const done = ()=>{ if(once || gen!==callerGen) return; once = true; callerPlaying = false; callerPump(); };
+  const speak = ()=>callerSpeakText(item.t, done);
+  const pack = callerActivePack();
+  if(pack && item.c && item.c.length) callerCancel = callerPlayClips(pack, item.c, done, speak);
+  else speak();
+}
 // Queues the calls in order (dart, then total, then "you require") without cutting off a
 // call that is still being spoken, so three quick camera darts are each heard in full.
+// Each call is {t: text for the browser voice, c: [clip names for a voice pack]}.
 function callerSay(parts){
-  const syn = callerSynth();
-  if(!syn || state.settings.callerOn===false) return;
+  if(state.settings.callerOn===false) return;
+  if(!callerSynth() && !callerActivePack()) return;
   try{
-    if(callerTour){ callerStopTour(); syn.cancel(); }
-    const v = callerGetVoice();
-    parts.forEach(t=>{ if(t) syn.speak(callerUtter(t, v)); });
+    if(callerTour) callerStopAll();
+    parts.forEach(p=>{ if(p) callerQueue.push(typeof p==='string' ? {t:p} : p); });
+    callerPump();
   }catch(e){ console.warn('Oche: caller could not speak', e); }
 }
 function callerDartCall(num, seg){
@@ -1344,50 +1422,145 @@ function callerTotalCall(t){
   if(t===0) return 'No score';
   return callerCap(callerWords(t));
 }
-// "You require 40" — only when the score left can actually be finished in three darts
-// (so bogey numbers like 169 stay quiet), and with the player's name in multi-player games.
-function callerRequireCall(s, p){
-  if(state.settings.callerRequire===false || p.finished || p.score<=0) return null;
-  if(!rankedCheckout(p.score, 3, s.outRule)) return null;
-  const who = s.participants.length>1 ? plainPlayerName(p.playerId)+', you' : 'You';
-  return who+' require '+callerWords(p.score);
+function callerNumClip(n){ return (n>=0 && n<=501) ? 'n_'+n : null; }
+function callerDartClip(num, seg){
+  const style = state.settings.callerStyle || 'full';
+  if(num==='B') return seg==='bull' ? 'bull' : 'n_25';
+  const n = parseInt(num,10);
+  const mult = seg==='triple' ? 3 : seg==='double' ? 2 : 1;
+  if(style==='score') return 'n_'+(n*mult);
+  if(mult===3) return 't_'+n;
+  if(mult===2) return 'd_'+n;
+  return style==='short' ? 'n_'+n : 's_'+n;
+}
+function callerDartItem(num, seg){ return {t:callerDartCall(num, seg), c:[callerDartClip(num, seg)]}; }
+function callerTotalItem(t){ const c = t===0 ? 'noscore' : callerNumClip(t); return {t:callerTotalCall(t), c:c?[c]:null}; }
+/* --- per-game call options ---
+   Every option has a default; "All games" sets the baseline and any single game can
+   override just the options it wants to change (state.settings.callerGlobal / callerGames). */
+const CALLER_OPT_DEFAULTS = {dart:true, miss:true, endcalls:true, turn:true, req:true, reqDart:false, aimDart:false, left:false, botDart:true, botTurn:true};
+const CALLER_OPT_INFO = [
+  {k:'dart',    label:'Call every dart',                         hint:'"Triple twenty" after each dart'},
+  {k:'miss',    label:'Call misses',                             hint:'"No score" when a dart misses the board'},
+  {k:'endcalls',label:'Call Bust and Game shot',                 hint:'Still called even if darts are off', x01:true},
+  {k:'turn',    label:'Call the turn total',                     hint:'"Sixty" / "One hundred and eighty!" after the third dart', x01:true},
+  {k:'req',     label:'Call "you require" after each turn',      hint:'Once a 3-dart finish is possible (170 or less)', x01:true},
+  {k:'left',    label:'Call the score left above 170',           hint:'"341 left" at the end of a turn when no finish is possible yet', x01:true},
+  {k:'reqDart', label:'Call "you require" after every dart',     hint:'Updates mid-turn, like Autodarts', x01:true},
+  {k:'aimDart', label:'Call the suggested target for each dart', hint:'"Aim double sixteen" - only once the target stops being plain treble 20s', x01:true},
+  {k:'botDart', label:'Call the bots\' darts',                   hint:'Turn off to hear only human darts'},
+  {k:'botTurn', label:'Call the bots\' turn totals and requires',hint:'Turn off for silent bot turns'}
+];
+const CALLER_KINDS = [
+  ['x01','X01 (301, 501...)'],['cricket','Cricket'],['atc','Around the Clock'],['shanghai','Shanghai'],['baseball','Baseball'],
+  ['halveit','Half-It'],['killer','Killer'],['war','War'],['callshot','Call Your Shot'],['custom','High Score & custom games'],['personalbest','Personal Best']
+];
+let callerScope = 'all';
+function callerOpts(kind){
+  const st = state.settings;
+  const o = Object.assign({}, CALLER_OPT_DEFAULTS);
+  if(st.callerRequire===false) o.req = false;                       // older single toggle
+  if(kind!=='x01' && st.callerAllGames===false){ o.dart = false; o.miss = false; }
+  if(st.callerGlobal) Object.assign(o, st.callerGlobal);
+  if(kind && st.callerGames && st.callerGames[kind]) Object.assign(o, st.callerGames[kind]);
+  return o;
+}
+function callerSetOpt(kind, key, val){
+  const st = state.settings;
+  if(kind==='all'){ st.callerGlobal = st.callerGlobal || {}; st.callerGlobal[key] = val; }
+  else { st.callerGames = st.callerGames || {}; st.callerGames[kind] = st.callerGames[kind] || {}; st.callerGames[kind][key] = val; }
+  persistState(); render();
+}
+function callerResetScope(kind){
+  const st = state.settings;
+  if(kind==='all') st.callerGlobal = {};
+  else if(st.callerGames) delete st.callerGames[kind];
+  persistState(); render();
+}
+function callerOptionRows(kind){
+  const o = callerOpts(kind === 'all' ? null : kind);
+  const x01Only = kind!=='all' && kind!=='x01';
+  return CALLER_OPT_INFO.filter(i=>!(x01Only && i.x01)).map(i=>`<label class="checkbox-row caller-opt">
+      <input type="checkbox" ${o[i.k]?'checked':''} onchange="callerSetOpt('${kind}','${i.k}', this.checked)">
+      <span><b>${i.label}</b><small>${i.hint}</small></span>
+    </label>`).join('');
+}
+function callerIsBot(s){
+  const p = s.participants && s.participants[s.currentIdx];
+  return !!(p && isBotPlayerId(p.playerId));
+}
+// "You require 40" (a 3-dart finish exists) or, when asked, "341 left" above that. Returns spoken items or null.
+function callerRequireItems(s, p, o){
+  if(p.finished || p.score<=0) return null;
+  const lead = s.participants.length>1 ? [{t:plainPlayerName(p.playerId)+','}] : [];
+  const nc = callerNumClip(p.score), words = callerWords(p.score);
+  if(rankedCheckout(p.score, 3, s.outRule)) return o.req ? lead.concat([{t:'You require '+words, c:nc?['require',nc]:null}]) : null;
+  if(o.left) return lead.concat([{t:words+' left', c:nc?[nc,'left']:null}]);
+  return null;
 }
 function callerTurnTotal(s){ return s.currentTurnDarts.reduce((a,d)=>a+(d.value||0),0); }
-// Called right after x01ApplyDart, before the turn advances, so the player and the
-// turn's darts are still the ones that just threw.
+// Everything said after a dart in X01, per the options. Runs right after the dart is applied and
+// before the turn advances, so the player and the turn's darts are still the ones that just threw.
+function callerX01Tail(s, p, o, bot, turnOver, calls, missed){
+  if(turnOver){
+    if(o.turn && (!bot || o.botTurn)){
+      const t = callerTurnTotal(s);
+      if(t>0 || !missed) calls.push(callerTotalItem(t));
+    }
+    if(!bot || o.botTurn){ const r = callerRequireItems(s, p, {req:o.req, left:o.left}); if(r) r.forEach(x=>calls.push(x)); }
+  } else if(!bot){
+    if(o.reqDart){ const r = callerRequireItems(s, p, {req:true, left:false}); if(r) r.forEach(x=>calls.push(x)); }
+    if(o.aimDart){
+      const plan = x01Plan(s);
+      if(plan && plan.mode!=='score' && plan.darts.length){
+        const t = parseThrowLabel(plan.darts[0]);
+        calls.push({t:'Aim, '+callerDartCall(t.num, t.seg).toLowerCase(), c:['aim', callerDartClip(t.num, t.seg)]});
+      }
+    }
+  }
+}
 function callerAnnounceX01(s, num, seg, res){
   if(state.settings.callerOn===false) return;
-  const p = x01Current(s);
-  const calls = [callerDartCall(num, seg)];
-  if(res.bust) calls.push('Bust');
-  else if(res.win) calls.push(s.participants.length>1 ? 'Game shot, '+plainPlayerName(p.playerId)+'!' : 'Game shot!');
-  else if(res.turnOver){
-    calls.push(callerTotalCall(callerTurnTotal(s)));
-    calls.push(callerRequireCall(s, p));
+  const p = x01Current(s), o = callerOpts('x01'), bot = callerIsBot(s);
+  const calls = [];
+  if(o.dart && (!bot || o.botDart)) calls.push(callerDartItem(num, seg));
+  if(res.bust){ if(o.endcalls) calls.push({t:'Bust', c:['bust']}); }
+  else if(res.win){
+    if(o.endcalls){
+      calls.push({t:'Game shot!', c:['gameshot']});
+      if(s.participants.length>1) calls.push({t:plainPlayerName(p.playerId)+'!'});
+    }
   }
+  else callerX01Tail(s, p, o, bot, res.turnOver, calls, false);
   callerSay(calls);
 }
 function callerAnnounceX01Miss(s){
   if(state.settings.callerOn===false) return;
-  const calls = ['No score'];
-  if(s.currentTurnDarts.length>=3){
-    const t = callerTurnTotal(s);
-    if(t>0) calls.push(callerTotalCall(t));
-    calls.push(callerRequireCall(s, x01Current(s)));
-  }
+  const p = x01Current(s), o = callerOpts('x01'), bot = callerIsBot(s);
+  const calls = [];
+  const said = o.miss && o.dart && (!bot || o.botDart);
+  if(said) calls.push({t:'No score', c:['noscore']});
+  callerX01Tail(s, p, o, bot, s.currentTurnDarts.length>=3, calls, said);
   callerSay(calls);
 }
-// Every other game: just read out what landed.
-function callerAnnounceDart(num, seg){
-  if(state.settings.callerAllGames===false) return;
-  callerSay([callerDartCall(num, seg)]);
+// Every other game: read out what landed (or the miss), per that game's options.
+function callerAnnounceDart(s, num, seg){
+  const o = callerOpts(s.kind), bot = callerIsBot(s);
+  if(o.dart && (!bot || o.botDart)) callerSay([callerDartItem(num, seg)]);
+}
+function callerAnnounceMiss(s){
+  const o = callerOpts(s.kind), bot = callerIsBot(s);
+  if(o.miss && o.dart && (!bot || o.botDart)) callerSay([{t:'No score', c:['noscore']}]);
 }
 /* --- voice browser in Settings --- */
 function callerMarkSelected(){
-  const cv = callerGetVoice();
+  const cur = callerCurrentKey();
   const lab = document.getElementById('callerCurrent');
-  if(lab) lab.textContent = cv ? cv.name : 'Browser default';
-  document.querySelectorAll('.caller-row').forEach(r=>{ r.classList.toggle('sel', r.dataset.uri===(state.settings.callerVoice||'')); });
+  if(lab){
+    const pk = callerActivePack(), cv = callerGetVoice();
+    lab.textContent = pk ? (pk.name || pk.id) : (cv ? cv.name : 'Browser default');
+  }
+  document.querySelectorAll('.caller-row').forEach(r=>{ r.classList.toggle('sel', r.dataset.uri===cur); });
 }
 function callerStopTour(){
   if(!callerTour) return;
@@ -1395,25 +1568,36 @@ function callerStopTour(){
   document.querySelectorAll('.caller-row.playing').forEach(r=>r.classList.remove('playing'));
   const b = document.getElementById('callerPlayAll'); if(b) b.textContent = 'Play all';
 }
-function callerStopAll(){ callerStopTour(); const syn = callerSynth(); if(syn) syn.cancel(); }
-function callerHear(idx){
-  const v = callerShown[idx]; if(!v) return;
+function callerStopAll(){
   callerStopTour();
-  state.settings.callerVoice = v.voiceURI;
+  callerGen++; callerQueue = []; callerPlaying = false;
+  if(callerCancel){ callerCancel(); callerCancel = null; }
+  const syn = callerSynth(); if(syn){ try{ syn.cancel(); }catch(e){} }
+}
+// Plays the sample line in a pack voice or a browser voice; done() when it has finished.
+function callerPreview(e, done){
+  if(e.pack){ callerCancel = callerPlayClips(e.pack, ['t_20','n_180'], done, done); return; }
+  const syn = callerSynth(); if(!syn) return done();
+  let to; const fin = ()=>{ clearTimeout(to); done(); };
+  try{ const u = callerUtter(CALLER_SAMPLE, e.voice); u.onend = fin; u.onerror = fin; to = setTimeout(fin, 9000); syn.speak(u); }
+  catch(err){ fin(); }
+}
+function callerHear(idx){
+  const e = callerShown[idx]; if(!e) return;
+  callerStopAll();
+  state.settings.callerVoice = e.key;
   persistState();
   callerMarkSelected();
-  const syn = callerSynth(); if(!syn) return;
-  syn.cancel();
-  syn.speak(callerUtter(CALLER_SAMPLE, v));
+  callerPreview(e, ()=>{});
 }
 function callerTest(){
-  const syn = callerSynth(); if(!syn) return;
-  callerStopTour(); syn.cancel();
-  syn.speak(callerUtter(CALLER_SAMPLE, callerGetVoice()));
+  callerStopAll();
+  const pk = callerActivePack();
+  callerPreview(pk ? {pack:pk} : {voice:callerGetVoice()}, ()=>{});
 }
 function callerPlayAll(){
-  const syn = callerSynth(); if(!syn || !callerShown.length) return;
-  callerStopTour(); syn.cancel();
+  if(!callerShown.length) return;
+  callerStopAll();
   const t = {i:0, list:callerShown.slice()};
   callerTour = t;
   const b = document.getElementById('callerPlayAll'); if(b) b.textContent = 'Playing…';
@@ -1422,47 +1606,57 @@ function callerPlayAll(){
 function callerTourNext(t){
   if(callerTour!==t) return;
   if(t.i>=t.list.length){ callerStopTour(); return; }
-  const v = t.list[t.i];
+  const e = t.list[t.i];
   document.querySelectorAll('.caller-row').forEach(r=>{
-    const on = r.dataset.uri===v.voiceURI;
+    const on = r.dataset.uri===e.key;
     r.classList.toggle('playing', on);
     if(on && r.scrollIntoView) r.scrollIntoView({block:'nearest'});
   });
-  const u = callerUtter(CALLER_SAMPLE, v);
   let done = false, to;
   const go = ()=>{ if(done || callerTour!==t) return; done = true; clearTimeout(to); t.i++; setTimeout(()=>callerTourNext(t), 350); };
-  u.onend = go; u.onerror = go;
   to = setTimeout(go, 9000);
-  const syn = callerSynth(); syn.cancel(); syn.speak(u);
+  const syn = callerSynth(); if(syn){ try{ syn.cancel(); }catch(err){} }
+  callerPreview(e, go);
 }
 function renderCallerSettings(){
   const s = state.settings;
   const syn = callerSynth();
   const chip = (label, val)=>`<span class="chip ${(s.callerStyle||'full')===val?'selected':''}" onclick="setSetting('callerStyle','${val}')">${label}</span>`;
-  let voicesHtml;
-  if(!syn){
-    voicesHtml = `<p class="info-note">This browser has no speech synthesis, so the caller cannot talk here.</p>`;
-  } else if(!callerVoices.length){
-    voicesHtml = `<p class="info-note">This browser has not reported any voices. Voices come from the browser and the computer it runs on: Chrome, Edge and Safari list plenty, while Firefox on Linux needs the speech-dispatcher service and a voice package installed. If this stays empty on the darts PC, the caller will stay silent there.</p>`;
-  } else {
+  const entries = [];
+  callerPacks.forEach(p=>entries.push({key:callerPackKey(p), name:p.name||p.id, sub:(p.desc||'Natural voice')+' · Oche voice', pack:p}));
+  const showBrowser = !!syn && callerVoices.length > 0;
+  let filterHtml = '';
+  if(showBrowser){
     const codes = {};
     callerVoices.forEach(v=>{ codes[callerBaseLang(v)] = true; });
     const keys = Object.keys(codes).sort((a,b)=>callerLangName(a).localeCompare(callerLangName(b)));
     if(callerLangFilter!=='all' && !codes[callerLangFilter]) callerLangFilter = codes.en ? 'en' : 'all';
-    callerShown = callerVoices.filter(v=>callerLangFilter==='all' || callerBaseLang(v)===callerLangFilter);
-    voicesHtml = `
-      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px;">
-        <select class="input" style="flex:1; min-width:140px;" aria-label="Voice language" onchange="callerLangFilter=this.value; render();">
+    callerVoices.filter(v=>(callerLangFilter==='all' || callerBaseLang(v)===callerLangFilter) && (!s.callerHQOnly || callerIsHQ(v)))
+      .forEach(v=>entries.push({key:v.voiceURI, name:v.name, sub:callerLangName(v.lang)+' · '+(v.localService?'on device':'online'), voice:v}));
+    filterHtml = `<select class="input" style="flex:1; min-width:140px;" aria-label="Voice language" onchange="callerLangFilter=this.value; render();">
           <option value="all" ${callerLangFilter==='all'?'selected':''}>All languages</option>
           ${keys.map(k=>`<option value="${callerEsc(k)}" ${callerLangFilter===k?'selected':''}>${callerEsc(callerLangName(k))}</option>`).join('')}
-        </select>
+        </select>`;
+  }
+  callerShown = entries;
+  const cur = callerCurrentKey();
+  let voicesHtml;
+  if(!entries.length && !showBrowser){
+    voicesHtml = `<p class="info-note">${syn ? 'No voices found. This browser has not reported any speech voices, and no Oche voice packs are installed (see make-oche-voices.py). Voices come from the browser and the computer it runs on: Chrome, Edge and Safari list plenty, while Firefox on Linux needs the speech-dispatcher service and a voice package installed.' : 'This browser has no speech synthesis and no Oche voice packs are installed, so the caller cannot talk here.'}</p>`;
+  } else {
+    const cp = callerActivePack(), cvv = callerGetVoice();
+    voicesHtml = `
+      ${callerPacks.length ? '' : '<p class="info-note">Tip: Oche voice packs (natural recorded voices that sound the same on every device) are not installed yet. Run make-oche-voices.py once to add them.</p>'}
+      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px;">
+        ${filterHtml}
         <button class="btn btn-primary" id="callerPlayAll" style="flex:none; padding:8px 14px;" onclick="callerPlayAll()">Play all</button>
         <button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="callerStopAll()">Stop</button>
       </div>
-      <div class="field-label" style="margin-top:10px;">${callerShown.length} voice${callerShown.length===1?'':'s'} &middot; calling voice: <span id="callerCurrent" style="color:var(--cream); text-transform:none; letter-spacing:0;">${callerEsc((callerGetVoice()||{name:'Browser default'}).name)}</span></div>
+      ${showBrowser ? `<label class="checkbox-row"><input type="checkbox" ${s.callerHQOnly?'checked':''} onchange="setSetting('callerHQOnly', this.checked)"><span>Only show advanced browser voices (Enhanced, Premium, Natural, Neural, online)</span></label>` : ''}
+      <div class="field-label" style="margin-top:10px;">${entries.length} voice${entries.length===1?'':'s'} &middot; calling voice: <span id="callerCurrent" style="color:var(--cream); text-transform:none; letter-spacing:0;">${callerEsc(cp ? (cp.name||cp.id) : (cvv ? cvv.name : 'Browser default'))}</span></div>
       <div class="caller-list">
-        ${callerShown.map((v,i)=>`<div class="caller-row${v.voiceURI===s.callerVoice?' sel':''}" data-uri="${callerEsc(v.voiceURI)}">
-          <div class="caller-info"><b>${callerEsc(v.name)}</b><span>${callerEsc(callerLangName(v.lang))} &middot; ${v.localService?'on device':'online'}</span></div>
+        ${entries.map((e,i)=>`<div class="caller-row${e.key===cur?' sel':''}" data-uri="${callerEsc(e.key)}">
+          <div class="caller-info"><b>${callerEsc(e.name)}</b><span>${callerEsc(e.sub)}</span></div>
           <button class="btn btn-secondary caller-hear" onclick="callerHear(${i})">Hear</button>
         </div>`).join('')}
       </div>`;
@@ -1476,13 +1670,17 @@ function renderCallerSettings(){
       <span class="field-label">Call style</span>
       <div class="chip-wrap">${chip('Triple twenty','full')}${chip('Twenty (singles plain)','short')}${chip('Sixty (points only)','score')}</div>
     </div>
-    <div class="checkbox-row">
-      <input type="checkbox" ${s.callerRequire!==false?'checked':''} onchange="setSetting('callerRequire', ${s.callerRequire===false})">
-      Call &ldquo;you require&rdquo; once a finish is possible
-    </div>
-    <div class="checkbox-row">
-      <input type="checkbox" ${s.callerAllGames!==false?'checked':''} onchange="setSetting('callerAllGames', ${s.callerAllGames===false})">
-      Call the hits in other games too
+    <div class="caller-scope">
+      <span class="field-label">What to call, for</span>
+      <select class="input" aria-label="Caller options for" onchange="callerScope=this.value; render();">
+        <option value="all" ${callerScope==='all'?'selected':''}>All games (default)</option>
+        ${CALLER_KINDS.map(([k,n])=>`<option value="${k}" ${callerScope===k?'selected':''}>${n}${(s.callerGames&&s.callerGames[k]&&Object.keys(s.callerGames[k]).length)?' \u2022 custom':''}</option>`).join('')}
+      </select>
+      ${callerScope==='all'
+        ? '<p class="info-note">These apply to every game unless a game below has its own settings.</p>'
+        : '<p class="info-note">Only the options you change here are special for this game; the rest follow &ldquo;All games&rdquo;.</p>'}
+      ${callerOptionRows(callerScope)}
+      <button class="btn btn-secondary" style="flex:none; padding:8px 14px; margin-top:6px;" onclick="callerResetScope(callerScope)">${callerScope==='all'?'Reset to defaults':'Use the default for this game'}</button>
     </div>
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px 16px; margin-top:6px;">
       <div><span class="field-label">Speed ${(s.callerRate||1).toFixed(2).replace(/0$/,'')}</span>
@@ -1496,6 +1694,7 @@ function renderCallerSettings(){
 }
 (function(){
   try{
+    callerLoadPacks();
     const syn = callerSynth(); if(!syn) return;
     const refresh = ()=>{ callerLoadVoices(); if(typeof state!=='undefined' && state.screen==='gameplaySettings') render(); };
     callerLoadVoices();
@@ -3838,7 +4037,7 @@ function dispatchThrowCore(num, segType){
   const thisPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
   if(thisPoint) s.turnHitPoints.push(thisPoint);
-  if(s.kind!=='x01') callerAnnounceDart(num, segType);
+  if(s.kind!=='x01') callerAnnounceDart(s, num, segType);
   if(s.kind==='x01'){
     let throwObj;
     if(num==='B' && segType==='bull') throwObj = {label:fullDartLabel('B','bull'),value:50,type:'bull',hitTarget:true};
@@ -3936,7 +4135,7 @@ function recordMissCore(){
   const thisMissPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
   if(thisMissPoint) s.turnHitPoints.push(thisMissPoint);
-  if(s.kind!=='x01' && state.settings.callerAllGames!==false) callerSay(['No score']);
+  if(s.kind!=='x01') callerAnnounceMiss(s);
   if(s.kind==='x01'){
     if(s.currentTurnDarts.length===0) s.scoreBeforeTurn = x01Current(s).score;
     s.currentTurnDarts.push({label:'Miss', value:0});
@@ -8825,11 +9024,27 @@ function renderGameMenu(s){
       </div>
     </div>`;
   }
+  if(state.callerMenuOpen){
+    const ck = CALLER_KINDS.find(x=>x[0]===s.kind) ? s.kind : 'all';
+    return `<div class="modal-overlay" onclick="if(event.target===this){ state.callerMenuOpen=false; render(); }">
+      <div class="modal" style="max-height:85vh; overflow-y:auto;">
+        <h3>Caller${ck==='all'?'':' &middot; '+CALLER_KINDS.find(x=>x[0]===ck)[1]}</h3>
+        <label class="checkbox-row"><input type="checkbox" ${state.settings.callerOn!==false?'checked':''} onchange="setSetting('callerOn', this.checked)"><span><b>Caller on</b></span></label>
+        <p class="info-note" style="margin-top:0;">${ck==='all'?'These apply to every game.':'Changes here are saved for this game type only.'}</p>
+        ${callerOptionRows(ck)}
+        <div class="btn-row" style="margin-top:12px;">
+          <button class="btn btn-secondary" onclick="callerResetScope('${ck}')">Default</button>
+          <button class="btn btn-primary" onclick="state.callerMenuOpen=false; render();">Done</button>
+        </div>
+      </div>
+    </div>`;
+  }
   return `<div class="modal-overlay" onclick="if(event.target===this) closeGameMenu();">
     <div class="modal">
       <h3>Game Menu</h3>
       <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="closeGameMenu()">Resume Game</button>
       ${rulesId ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="state.gameMenuOpen=false; state.screen='rules'; state.rulesGameId='${rulesId}'; render();">View Rules</button>` : ''}
+      <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="state.callerMenuOpen=true; render();">Caller options</button>
       <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="openSettingsFromGameMenu()">Settings</button>
       ${s.kind==='custom' && s.cfg.winCondition==='manual' ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="state.gameMenuOpen=false; endCustomGameManually(state.session); finishCustomGame(state.session); render();">End Game Now &amp; Tally Score</button>` : ''}
       <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="returnToLauncherHome()">Return to Home Screen</button>
