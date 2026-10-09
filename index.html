@@ -795,6 +795,134 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-size:13px;}
 ::-webkit-scrollbar{width:6px;}
 ::-webkit-scrollbar-thumb{background:var(--felt-lighter); border-radius:3px;}
+/* ===== v6.1 shell: no sidebar, Home hub, game top bar, winner screen ===== */
+.sidenav{ display:none !important; }
+.hub{ flex:1; min-height:0; display:flex; flex-direction:column; padding:18px 28px 22px 28px; gap:16px; box-sizing:border-box; overflow:hidden; }
+.hub-head{ display:flex; align-items:center; justify-content:space-between; flex:none; }
+.hub-brand{ display:flex; align-items:center; gap:14px; font-family:'Oswald',sans-serif; font-weight:700; font-size:34px; letter-spacing:0.16em; color:var(--cream); }
+.hub-brand .dot{ width:16px; height:16px; border-radius:50%; background:var(--brass); box-shadow:0 0 0 6px color-mix(in srgb, var(--brass) 22%, transparent); }
+.hub-head-right{ display:flex; align-items:center; gap:12px; font-size:13px; color:var(--cream-dim); }
+.hub-pill{ height:44px; padding:0 16px; border-radius:22px; border:1px solid var(--felt-lighter); background:var(--felt); color:var(--cream); display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; cursor:pointer; }
+.hub-body{ flex:1; min-height:0; display:grid; grid-template-columns:minmax(300px,0.95fr) minmax(0,1.3fr); gap:20px; }
+.hub-play{ position:relative; border-radius:28px; border:1px solid var(--felt-lighter); background:linear-gradient(155deg, var(--felt) 0%, var(--felt-dark) 100%); padding:30px 32px; display:flex; flex-direction:column; overflow:hidden; box-sizing:border-box; }
+.hub-board{ position:absolute; right:-18%; top:-14%; width:62%; aspect-ratio:1/1; border-radius:50%; background:#0A0A09; padding:4%; box-sizing:border-box; box-shadow:0 30px 80px rgba(0,0,0,0.5); opacity:0.9; pointer-events:none; }
+.hub-board i{ position:absolute; border-radius:50%; }
+.hub-kicker{ position:relative; font-size:13px; font-weight:700; letter-spacing:0.22em; color:var(--brass); }
+.hub-h{ position:relative; font-family:'Oswald',sans-serif; font-weight:700; font-size:clamp(40px,8vh,84px); line-height:0.95; text-transform:uppercase; margin-top:8px; max-width:62%; color:var(--cream); }
+.hub-chips{ position:relative; display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; max-width:66%; }
+.hub-chip{ height:48px; padding:0 22px; border-radius:24px; border:1px solid var(--felt-lighter); background:var(--felt); color:var(--cream); font-size:17px; font-weight:600; display:flex; align-items:center; cursor:pointer; }
+.hub-chip.primary{ background:var(--brass); border-color:var(--brass); color:#0B1220; }
+.hub-resume{ position:relative; margin-top:18px; display:flex; align-items:center; gap:10px; }
+.hub-resume-btn{ min-height:56px; padding:8px 20px; border-radius:28px; background:var(--brass); color:#0B1220; display:flex; align-items:center; gap:12px; font-size:17px; font-weight:700; cursor:pointer; border:none; font-family:'Inter',sans-serif; text-align:left; }
+.hub-resume-btn small{ display:block; font-size:12px; font-weight:500; opacity:0.75; }
+.hub-resume-x{ width:40px; height:40px; border-radius:50%; border:1px solid var(--felt-lighter); background:var(--felt); color:var(--cream-dim); font-size:16px; cursor:pointer; }
+.hub-spacer{ flex:1; }
+.hub-lobby-slot{ position:relative; border-radius:20px; border:1px dashed var(--felt-lighter); padding:12px 18px; color:var(--cream-dim); font-size:13px; }
+.hub-tiles{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(3,minmax(0,1fr)); gap:14px; min-height:0; }
+.hub-tile{ border-radius:24px; border:1px solid var(--felt-lighter); background:var(--felt); padding:18px 22px; display:flex; flex-direction:column; justify-content:space-between; cursor:pointer; box-sizing:border-box; min-height:0; overflow:hidden; }
+.hub-tile:active, .hub-chip:active, .hub-pill:active{ transform:scale(0.985); }
+.hub-tile svg{ width:clamp(30px,5vh,46px); height:clamp(30px,5vh,46px); stroke:var(--brass); }
+.hub-tile .tn{ font-family:'Oswald',sans-serif; font-weight:700; font-size:clamp(22px,4vh,38px); letter-spacing:0.05em; text-transform:uppercase; color:var(--cream); }
+.hub-tile .tt{ font-size:clamp(12px,1.8vh,17px); color:var(--cream-dim); }
+@media (max-width:900px){
+  .hub{ overflow-y:auto; }
+  .hub-body{ grid-template-columns:1fr; }
+  .hub-play{ min-height:340px; }
+  .hub-tiles{ grid-template-rows:none; grid-auto-rows:120px; }
+}
+.page-top{ display:flex; align-items:center; justify-content:space-between; padding:16px 18px 10px 18px; gap:12px; }
+.page-top-left{ display:flex; align-items:center; gap:12px; }
+.page-top h1{ font-size:24px; color:var(--cream); }
+.gtb-sq{ width:44px; height:44px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--brass); display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; }
+.gtb-btn{ height:44px; padding:0 16px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--cream); display:flex; align-items:center; gap:8px; font-family:'Inter',sans-serif; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.gtb-btn svg{ color:var(--brass); }
+.game-header-row .gtb-left{ display:flex; align-items:center; gap:10px; }
+.game-header-row .gtb-right{ display:flex; align-items:center; gap:10px; justify-self:end; }
+.game-header-row .gtb-right .camera-help-panel{ left:auto; right:0; }
+.game-header-row .gtb-mid{ text-align:center; }
+.gtb-sub{ font-size:13px; color:var(--cream-dim); margin-top:2px; }
+.war-controls-grid .war-ctrl-btn.wide{ grid-column:span 2; }
+.modal-overlay.gx{ position:fixed; inset:0; z-index:150; }
+.tips-modal{ max-width:880px !important; width:100%; display:flex; flex-direction:column; gap:14px; }
+.tips-tabs{ display:flex; gap:6px; padding:5px; border-radius:12px; background:rgba(0,0,0,0.25); border:1px solid var(--felt-lighter); align-self:flex-start; }
+.tips-tabs button{ height:38px; padding:0 18px; border-radius:9px; border:none; background:none; color:var(--cream-dim); font-family:'Inter',sans-serif; font-size:14px; font-weight:600; cursor:pointer; }
+.tips-tabs button.on{ background:var(--brass); color:#0B1220; }
+.tips-body{ max-height:58vh; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
+.tips-card{ border:1px solid var(--felt-lighter); border-radius:14px; padding:14px 18px; background:rgba(0,0,0,0.18); }
+.tips-card h4{ color:var(--brass); font-size:14px; letter-spacing:0.06em; margin-bottom:4px; }
+.tips-card p{ margin:0; font-size:15px; line-height:1.45; color:var(--cream); }
+.tips-card .objective-banner{ margin:0; }
+.co-grid{ columns:2; column-gap:18px; }
+.co-grid .co-row{ break-inside:avoid; }
+.menu-modal{ max-width:420px !important; }
+.menu-modal .btn{ margin-bottom:8px; }
+.home-modal{ max-width:520px !important; }
+.home-modal .big-btn{ width:100%; height:64px; font-size:19px; margin-bottom:10px; }
+.home-modal .note{ font-size:13px; color:var(--cream-dim); line-height:1.5; margin-top:6px; }
+/* winner screen */
+.winx{ position:fixed; inset:0; z-index:200; overflow:hidden; background:radial-gradient(1100px 760px at 50% 40%, color-mix(in srgb, var(--brass) 35%, var(--felt)) 0%, var(--felt-dark) 72%); display:flex; align-items:center; justify-content:center; }
+.winx-spark{ position:absolute; width:10px; height:10px; margin:-5px; border-radius:50%; animation:winxBurst 3.6s ease-out infinite; }
+.winx-rocket{ position:absolute; top:100%; width:6px; height:60px; margin-left:-3px; border-radius:3px; background:linear-gradient(180deg,#fff,rgba(246,196,83,0)); animation:winxRise 3.6s ease-out infinite; }
+@keyframes winxBurst{ 0%,27%{ transform:translate(0,0) scale(0.3); opacity:0; } 29%{ opacity:1; } 80%{ opacity:1; } 100%{ transform:translate(var(--dx),var(--dy)) scale(1); opacity:0; } }
+@keyframes winxRise{ 0%{ transform:translateY(0); opacity:1; } 27%{ transform:translateY(var(--rise)); opacity:1; } 28%,100%{ transform:translateY(var(--rise)); opacity:0; } }
+@keyframes winxPop{ 0%{ transform:scale(0.6); opacity:0; } 60%{ transform:scale(1.06); opacity:1; } 100%{ transform:scale(1); } }
+.winx-card{ position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; text-align:center; animation:winxPop 0.7s ease-out both; padding:0 24px; }
+.winx-kicker{ font-family:'JetBrains Mono',monospace; font-size:clamp(14px,2.2vh,24px); letter-spacing:0.4em; color:var(--brass); }
+.winx-name{ font-family:'Inter',sans-serif; font-weight:800; font-size:clamp(64px,17vh,190px); letter-spacing:-0.03em; line-height:1; color:var(--cream); margin-top:2vh; text-shadow:0 0 60px color-mix(in srgb, var(--brass) 55%, transparent); }
+.winx-detail{ font-size:clamp(16px,2.8vh,32px); color:var(--cream-dim); margin-top:2vh; }
+.winx-btns{ display:flex; gap:14px; margin-top:6vh; flex-wrap:wrap; justify-content:center; }
+.winx-btn{ height:clamp(56px,8.5vh,92px); padding:0 clamp(24px,3vw,44px); border-radius:20px; border:1px solid var(--brass); background:var(--felt); color:var(--cream); font-size:clamp(18px,2.6vh,28px); font-weight:700; cursor:pointer; display:flex; align-items:center; gap:10px; font-family:'Inter',sans-serif; }
+.winx-btn.primary{ background:var(--brass); color:#0B1220; box-shadow:0 14px 36px rgba(0,0,0,0.35); }
+.winx-links{ margin-top:3vh; font-size:14px; color:var(--cream-dim); display:flex; gap:18px; flex-wrap:wrap; justify-content:center; }
+.winx-links a{ color:var(--brass); cursor:pointer; text-decoration:underline; }
+
+/* ---- v6.3 Games page, privacy, darts ---- */
+.gp-sub{color:var(--cream-dim); font-size:14px; margin:2px 0 0 0;}
+.gp-last{align-self:flex-start; display:inline-flex; gap:8px; align-items:center; font-size:13px; color:var(--cream-dim); background:rgba(0,0,0,0.18); border:1px solid var(--felt-lighter); border-radius:10px; padding:6px 12px; margin-top:8px;}
+.gp-last b{color:var(--brass); font-weight:600;}
+.pr-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px;}
+.pr-tile{background:var(--felt-dark); border:1px solid var(--felt-lighter); border-radius:14px; padding:14px 16px; cursor:pointer; display:flex; flex-direction:column; gap:4px; min-height:84px;}
+.pr-tile:active{filter:brightness(1.15);}
+.pr-tile h4{margin:0; font-size:16px; color:var(--cream);}
+.pr-tile p{margin:0; font-size:12.5px; color:var(--cream-dim); line-height:1.35;}
+.priv-card{background:var(--felt-dark); border:1px solid var(--felt-lighter); border-radius:14px; padding:16px 18px; margin-bottom:14px;}
+.priv-card .priv-h{font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:0.12em; color:var(--cream-dim);}
+.priv-row{display:flex; align-items:center; justify-content:space-between; gap:14px; padding:10px 0; border-top:1px solid var(--felt-lighter);}
+.priv-card .priv-h + .priv-row{border-top:none; margin-top:4px;}
+.priv-row .pl{font-size:15px; color:var(--cream);}
+.priv-card .pd{font-size:12px; color:var(--cream-dim);}
+.priv-fixed{font-size:12px; font-weight:700; letter-spacing:0.08em; color:var(--cream-dim); border:1px solid var(--felt-lighter); border-radius:8px; padding:4px 10px;}
+.sw{flex:none; width:52px; height:30px; border-radius:15px; background:var(--felt-lighter); position:relative; cursor:pointer; border:none; padding:0; transition:background .15s;}
+.sw::after{content:''; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:var(--cream); transition:left .15s;}
+.sw.on{background:var(--brass);}
+.sw.on::after{left:25px;}
+.dart-grid{grid-template-columns:repeat(auto-fill,minmax(360px,1fr)) !important;}
+.dart-card .btn-row{flex-wrap:wrap;}
+.dart-card-top{display:flex; gap:14px; align-items:center;}
+.dart-card-top img,.dart-card-top .dph{width:84px; height:84px; border-radius:12px; object-fit:cover; border:1px solid var(--felt-lighter); flex:none; display:flex; align-items:center; justify-content:center; font-size:38px; background:rgba(0,0,0,0.2);}
+.db-wrap{display:grid; grid-template-columns:260px 1fr; gap:24px; align-items:start;}
+.db-photo{position:sticky; top:8px;}
+@media (max-width:760px){ .db-wrap{grid-template-columns:1fr;} .db-photo{position:static;} }
+
+/* ---- v6.4 Settings hub ---- */
+.sh-wrap{display:grid; grid-template-columns:300px 1fr; gap:24px; align-items:start; padding:0 18px 24px 18px;}
+.sh-nav{display:flex; flex-direction:column; gap:8px; position:sticky; top:8px;}
+.sh-item{display:flex; flex-direction:column; gap:2px; padding:14px 16px; border-radius:14px; background:var(--felt-dark); border:1px solid var(--felt-lighter); cursor:pointer;}
+.sh-item b{font-size:16px; color:var(--cream); font-weight:600;}
+.sh-item span{font-size:12px; color:var(--cream-dim);}
+.sh-item.on{border-color:var(--brass); background:var(--felt-light);}
+.sh-item.on b{color:var(--brass);}
+.sh-body{display:flex; flex-direction:column; gap:16px; min-width:0; max-width:900px;}
+.sh-body h2{margin:0; font-size:24px; color:var(--cream);}
+.sh-card{background:var(--felt-dark); border:1px solid var(--felt-lighter); border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:12px;}
+@media (max-width:820px){ .sh-wrap{grid-template-columns:1fr;} .sh-nav{position:static; flex-direction:row; flex-wrap:wrap;} .sh-item{flex:1 1 140px;} }
+.tb-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:12px;}
+.tb-pick{display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--cream-dim);}
+.tb-pick input[type=color]{width:100%; height:48px; border:1px solid var(--felt-lighter); border-radius:10px; background:var(--felt); padding:3px; cursor:pointer;}
+.tb-prev{border-radius:14px; padding:16px; background:var(--felt); border:1px solid var(--felt-lighter); display:flex; align-items:center; gap:14px;}
+.tb-prev .pv-btn{background:var(--brass); color:var(--felt-dark); padding:10px 18px; border-radius:10px; font-weight:700; font-size:14px;}
+.tb-prev .pv-t{color:var(--cream); font-size:16px; font-weight:600;}
+.tb-prev .pv-s{color:var(--cream-dim); font-size:12px;}
 </style>
 </head>
 <body>
@@ -863,7 +991,7 @@ const GAMES = [
   {id:'war', name:'War', desc:'No targets, no assignments — claim territory wherever you land.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
     goal:'Every wedge on the board (plus Inner and Outer Bull) starts unclaimed. Wherever your darts land, that section becomes yours — even if someone else already claimed it.',
     score:'There\'s no score to track, just territory. Landing on any section, claimed or not, flips it to your color.',
-    win:'The instant every section on the board has been claimed by someone, the game ends immediately. Whoever holds the most sections wins — ties are possible.'},
+    win:'The instant every section on the board has been claimed by someone, the game ends immediately. Whoever holds the most sections wins — ties are possible. Options: Whole Wedges (20 sections), Inside & Outside (40) or Master Mode (80: inner single, triple, outer single and double are each a section). With Steal-Back Lock on, a section you lose and win back locks to you for good.'},
 ];
 
 const PRACTICES = [
@@ -893,7 +1021,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v6.0';
+const BUILD_STAMP = 'v6.4';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -924,8 +1052,32 @@ const THEMES = [
       '--cream':'#14171B', '--cream-dim':'#565C64', '--brass':'#AD6A12', '--brass-dark':'#8A5610',
       '--red':'#E5383B', '--green':'#158F63', '--ink':'#D7DBDF', '--bodybg1':'#e9ebee', '--bodybg2':'#d7dbe0' } },
 ];
+function _hx(h){ h=(h||'#000000').replace('#',''); if(h.length===3) h=h.split('').map(c=>c+c).join(''); return [parseInt(h.slice(0,2),16)||0,parseInt(h.slice(2,4),16)||0,parseInt(h.slice(4,6),16)||0]; }
+function _toHx(a){ return '#'+a.map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join(''); }
+function _mix(a,b,t){ const x=_hx(a), y=_hx(b); return _toHx(x.map((v,i)=>v+(y[i]-v)*t)); }
+function customThemeDefaults(){
+  const base = THEMES.find(x=>x.id===state.settings.theme && x.id!=='custom') || THEMES[1];
+  return { bg:base.vars['--felt'], accent:base.vars['--brass'], text:base.vars['--cream'] };
+}
+function buildCustomTheme(){
+  const c = Object.assign(customThemeDefaults(), state.settings.customTheme||{});
+  const lum = _hx(c.bg).reduce((s,v,i)=>s+v*[0.3,0.59,0.11][i],0)/255;
+  const light = lum>0.55;
+  const dk = light ? '#000000' : '#000000', lt = '#FFFFFF';
+  return { id:'custom', name:'Custom', swatch:c.bg, vars:{
+    '--felt':c.bg,
+    '--felt-dark': light ? _mix(c.bg,dk,0.1) : _mix(c.bg,dk,0.4),
+    '--felt-light': light ? _mix(c.bg,lt,0.5) : _mix(c.bg,lt,0.1),
+    '--felt-lighter': light ? _mix(c.bg,dk,0.2) : _mix(c.bg,lt,0.2),
+    '--cream':c.text, '--cream-dim':_mix(c.text,c.bg,0.35),
+    '--brass':c.accent, '--brass-dark':_mix(c.accent,'#000000',0.2),
+    '--red':'#E05A5A', '--green':'#4CAF70',
+    '--ink': light ? _mix(c.bg,dk,0.15) : _mix(c.bg,dk,0.7),
+    '--bodybg1': light ? _mix(c.bg,dk,0.03) : _mix(c.bg,dk,0.5),
+    '--bodybg2': light ? _mix(c.bg,dk,0.12) : _mix(c.bg,dk,0.65) } };
+}
 function applyTheme(){
-  const t = THEMES.find(x=>x.id===state.settings.theme) || THEMES[0];
+  const t = state.settings.theme==='custom' ? buildCustomTheme() : (THEMES.find(x=>x.id===state.settings.theme) || THEMES[0]);
   const root = document.documentElement.style;
   Object.entries(t.vars).forEach(([k,v])=>{
     if(k==='--bodybg1'||k==='--bodybg2') return;
@@ -1084,7 +1236,7 @@ function sfxOptionsHtml(group, selected){
 /* ========================= STATE ========================= */
 let state = {
   screen: 'home',
-  navTab: 'play',
+  navTab: 'hub',
   players: [], // {id,name,color}
   selectedPlayerIds: [],
   playerOrderMode: 'inorder',
@@ -1181,6 +1333,7 @@ let state = {
   pendingSelection: null, // {number,label} awaiting multiplier choice, x01/cricket grid
   pendingBoard: null, // {label,value,segType} awaiting confirm on dartboard
   gameMenuOpen: false,
+  pausedGame: null, tipsOpen: false, tipsTab: 'tips', confirmHome: false, confirmRestart: false,
   customBuilder: null,
   customGameBuilder: null,
   pendingCustomGame: null,
@@ -1240,7 +1393,7 @@ const PERSISTENT_STATE_KEYS = [
   'players', 'dartSetups', 'playerDartSelections', 'playerDartPerformance', 'playerAttributePerformance', 'playerAccuracy',
   'savedGames', 'customPractices', 'customGames', 'history',
   'sectionSessions', 'precisionSessions', 'settings', 'playerSettings',
-  'dartFieldOptions', 'rememberedGameOptions', 'ladderBestAvg', 'ladderHistory', 'ladderProHistory',
+  'pausedGame', 'dartFieldOptions', 'rememberedGameOptions', 'ladderBestAvg', 'ladderHistory', 'ladderProHistory',
 ];
 function persistState(){
   try{
@@ -1266,6 +1419,7 @@ function hydrateState(){
       }
     });
     if(typeof payload.uid==='number' && payload.uid>uid) uid = payload.uid;
+    pruneExpiredPaused();
     // One-time migration: we used to talk to Darts-Caller (port 8079); now we
     // talk to Board Manager directly (port 3180) on the same darts PC. Carry
     // the already-saved IP over so it doesn't need retyping.
@@ -2122,7 +2276,8 @@ function warColorFor(s, idx){
 }
 function startWarSession(playerIds, opts){
   const bullMode = (opts && opts.bullMode) || 'separate';
-  const ringMode = (opts && opts.ringMode)==='split' ? 'split' : 'combined';
+  const ringMode = (opts && opts.ringMode)==='split' ? 'split' : ((opts && opts.ringMode)==='all' ? 'all' : 'combined');
+  const lockMode = (opts && opts.lockMode)==='stealback' ? 'stealback' : 'off';
   const customColors = (opts && opts.warPlayerColors) || {};
   const sections = {};
   // 'split' gives every number two sections: the inner wedge (bull out to the
@@ -2131,13 +2286,14 @@ function startWarSession(playerIds, opts){
   // keyed '14o'. 'combined' is the original one-section-per-number layout.
   for(let n=1;n<=20;n++){
     if(ringMode==='split'){ sections[n+'i'] = null; sections[n+'o'] = null; }
+    else if(ringMode==='all'){ sections[n+'is'] = null; sections[n+'t'] = null; sections[n+'os'] = null; sections[n+'d'] = null; } // master mode: 4 sections per number
     else sections[String(n)] = null;
   }
   if(bullMode==='separate'){ sections['IB'] = null; sections['OB'] = null; }
   else if(bullMode==='together'){ sections['B'] = null; }
   // bullMode 'none' — Bull simply isn't part of the sections map at all.
   return {
-    kind:'war', bullMode, ringMode,
+    kind:'war', bullMode, ringMode, lockMode, locks:{}, held:{},
     participants: playerIds.map(pid=>({playerId:pid, color: customColors[pid]||null})),
     sections, currentIdx:0, round:1,
     currentTurnDarts:[], turnHistory:[],
@@ -2157,6 +2313,11 @@ function warRingFromLastPoint(s){
 function warSectionKey(s, num, segType, ring){
   if(num!=='B'){
     if(s.ringMode==='split') return String(num) + (ring==='outer' ? 'o' : 'i');
+    if(s.ringMode==='all'){
+      if(segType==='triple') return num+'t';
+      if(segType==='double') return num+'d';
+      return num + (ring==='outer' ? 'os' : 'is');
+    }
     return String(num);
   }
   if(s.bullMode==='none') return null;
@@ -2173,23 +2334,53 @@ function warCheckWin(s){
   if(winners.length===1){ s.winnerId = winners[0].playerId; s.tied = null; }
   else { s.winnerId = null; s.tied = winners.map(p=>p.playerId); }
 }
+function warDartLabel(s, num, segType, ring){
+  if(num==='B') return s.bullMode==='together' ? 'Bull' : (segType==='bull'?'Inner Bull':'Outer Bull');
+  if(s.ringMode==='split') return (ring==='outer' ? 'Outer ' : 'Inner ') + num;
+  if(s.ringMode==='all' && segType!=='triple' && segType!=='double') return (ring==='outer' ? 'Outer single ' : 'Inner single ') + num;
+  return fullDartLabel(num, segType);
+}
+// Undo helper: put a section back exactly as it was, including any lock that dart caused.
+function warRevertDart(s, d){
+  if(!d || !d.key) return;
+  s.sections[d.key] = d.prevOwner;
+  if(d.lockedNow && s.locks) delete s.locks[d.key];
+  if(d.heldAdded!==null && d.heldAdded!==undefined && s.held && s.held[d.key]){
+    s.held[d.key] = s.held[d.key].filter(x=>x!==d.heldAdded);
+  }
+}
 function warApplyDart(s, num, segType){
-  const ring = state.pendingHitRing || (s.ringMode==='split' ? warRingFromLastPoint(s) : null);
+  const ring = state.pendingHitRing || (s.ringMode!=='combined' ? warRingFromLastPoint(s) : null);
   state.pendingHitRing = null;
   const key = warSectionKey(s, num, segType, ring);
   // Bull excluded entirely (bullMode 'none') — a hit there is just a wasted
-  // dart, same treatment Cricket gives an off-number hit. Shows the real
-  // segment rather than a generic label, colored red since it didn't count.
+  // dart, same treatment Cricket gives an off-number hit.
   if(key===null){
     const excludedLabel = num==='B' ? (segType==='bull'?'Inner Bull':'Outer Bull') : fullDartLabel(num, segType);
     s.currentTurnDarts.push({label:excludedLabel, hitTarget:false, key:null, prevOwner:null});
     return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
   }
+  const label = warDartLabel(s, num, segType, ring);
+  // Locked section: nobody can take it any more, so the dart is wasted.
+  if(s.locks && s.locks[key]!==undefined){
+    s.currentTurnDarts.push({label:label+' (locked)', hitTarget:false, key:null, prevOwner:null, wasLocked:true});
+    return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
+  }
   const prevOwner = s.sections[key];
-  s.sections[key] = s.currentIdx;
-  const label = num==='B' ? (s.bullMode==='together' ? 'Bull' : (segType==='bull'?'Inner Bull':'Outer Bull'))
-    : (s.ringMode==='split' ? (ring==='outer' ? 'Outer ' : 'Inner ') + num : fullDartLabel(num, segType));
-  s.currentTurnDarts.push({label, key, prevOwner, hitTarget:true});
+  const rec = {label, key, prevOwner, hitTarget:true, heldAdded:null, lockedNow:false};
+  if(prevOwner!==s.currentIdx){
+    s.sections[key] = s.currentIdx;
+    // Steal-back lock: take a section from someone, and if you held it before and lost it,
+    // it locks to you for the rest of the game.
+    if(s.lockMode==='stealback' && prevOwner!==null && prevOwner!==undefined){
+      if(!s.held) s.held = {};
+      if(!s.locks) s.locks = {};
+      const h = s.held[key] || (s.held[key] = []);
+      if(!h.includes(prevOwner)){ h.push(prevOwner); rec.heldAdded = prevOwner; }
+      if(h.includes(s.currentIdx)){ s.locks[key] = s.currentIdx; rec.lockedNow = true; }
+    }
+  }
+  s.currentTurnDarts.push(rec);
   warCheckWin(s);
   return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
 }
@@ -2205,7 +2396,7 @@ function warEndTurn(s){
 function warUndo(s){
   if(s.currentTurnDarts.length>0){
     const d = s.currentTurnDarts.pop();
-    if(d.key) s.sections[d.key] = d.prevOwner;
+    warRevertDart(s, d);
     s.complete=false; s.winnerId=null; s.tied=null; s.finalCounts=null;
     return;
   }
@@ -2215,7 +2406,7 @@ function warUndo(s){
   if(s.currentIdx===s.participants.length-1) s.round--;
   s.currentTurnDarts = lastTurn.darts.slice(0,-1);
   const undone = lastTurn.darts[lastTurn.darts.length-1];
-  if(undone.key) s.sections[undone.key] = undone.prevOwner;
+  warRevertDart(s, undone);
   s.complete=false; s.winnerId=null; s.tied=null; s.finalCounts=null;
 }
 function finishWarGame(s){
@@ -3672,15 +3863,8 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
     if(ownerLabels && ownerLabels.length){
       const owner = ownerLabels.find(o=>String(o.num)===String(num));
       if(owner){
-        const midAngle = (aStart+aEnd)/2;
-        const lineInner = polar(cx,cy,rDoubleOut+3,midAngle);
-        const lineOuter = polar(cx,cy,rBezel+40,midAngle);
-        const textPos = polar(cx,cy,rBezel+50,midAngle);
-        const dx = textPos[0]-cx;
-        const anchor = Math.abs(dx)<15 ? 'middle' : (dx<0 ? 'end' : 'start');
-        ownerOverlay += `<line x1="${lineInner[0]}" y1="${lineInner[1]}" x2="${lineOuter[0]}" y2="${lineOuter[1]}" stroke="${owner.color}" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.8" style="pointer-events:none;"/>`;
-        ownerOverlay += `<circle cx="${lineInner[0]}" cy="${lineInner[1]}" r="2.5" fill="${owner.color}" style="pointer-events:none;"/>`;
-        ownerOverlay += `<text x="${textPos[0]}" y="${textPos[1]}" fill="${owner.color}" font-family="'JetBrains Mono',monospace" font-size="16.5" font-weight="700" text-anchor="${anchor}" dominant-baseline="middle" style="pointer-events:none;">${owner.text}</text>`;
+        const lpR = polar(cx,cy,rLabel,(aStart+aEnd)/2);
+        ownerOverlay += `<circle cx="${lpR[0]}" cy="${lpR[1]}" r="22" fill="none" stroke="${owner.color}" stroke-width="${owner.current?7:5}" style="pointer-events:none;"/>`;
       }
     }
   }
@@ -3703,7 +3887,7 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
       : `<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/>`;
     return outerCircle + `<circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`;
   }).join('');
-  const needsWideMargin = ownerLabels && ownerLabels.length;
+  const needsWideMargin = false; // Killer rings sit on the number labels, so the board keeps its standard size
   const missOuterEdge = rBezel + 22;
   // The old fixed -95 margin left far more empty space than the labels
   // actually need (their text anchor sits at rBezel+50, plus maybe 45-55px
@@ -4289,8 +4473,13 @@ function botChooseX01Target(s){
 // open ones in War, since stealing is core to the game. No smart weighting
 // toward open sections, just genuinely random for maximum unpredictability.
 function botChooseWarTarget(s){
-  const keys = Object.keys(s.sections);
+  let keys = Object.keys(s.sections);
+  const open = keys.filter(k=>!(s.locks && s.locks[k]!==undefined));
+  if(open.length) keys = open;
   const key = keys[Math.floor(Math.random()*keys.length)];
+  if(/^\d+t$/.test(key)) return {num:parseInt(key,10), seg:'triple'};
+  if(/^\d+d$/.test(key)) return {num:parseInt(key,10), seg:'double'};
+  if(/^\d+(is|os)$/.test(key)) return {num:parseInt(key,10), seg:'single'};
   // Split-ring sections: '14i' aims at the triple (inner wedge), '14o' at the double (outer wedge)
   if(/^\d+[io]$/.test(key)) return {num:parseInt(key,10), seg: key.endsWith('i') ? 'triple' : 'double'};
   if(key==='IB') return {num:'B', seg:'bull'};
@@ -4877,13 +5066,13 @@ function saveGameResults(){
   state.pendingGameReview = null;
   state.session=null; state.practiceSession=null; state.checkoutPractice=null; state.sectionSession=null; state.precisionSession=null; state.blackoutSession=null;
   state.screen = 'home';
-  state.navTab = (r.kind==='practice'||r.kind==='checkoutPractice'||r.kind==='section'||r.kind==='precisionNew'||r.kind==='blackout') ? 'practice' : 'play';
+  state.navTab = (r.kind==='practice'||r.kind==='checkoutPractice'||r.kind==='section'||r.kind==='precisionNew'||r.kind==='blackout') ? 'practice' : 'hub';
   render();
 }
 function discardGameResults(){
   state.pendingGameReview = null;
   state.session=null; state.practiceSession=null; state.checkoutPractice=null; state.sectionSession=null; state.precisionSession=null; state.blackoutSession=null;
-  state.screen = 'home'; state.navTab='play';
+  state.screen = 'home'; state.navTab='hub'; _turnSnap=null;
   render();
 }
 function participantThrowCounts(s){
@@ -4931,9 +5120,8 @@ function buildAndShowReview(opts){
     render();
     return;
   }
-  state.celebration = { winnerName: opts.winnerName };
-  if(state.celebrationTimer) clearTimeout(state.celebrationTimer);
-  state.celebrationTimer = setTimeout(()=>{ advanceFromCelebration(); }, 14000);
+  state.celebration = { winnerName: opts.winnerName, detail: opts.detail || '' };
+  if(state.celebrationTimer){ clearTimeout(state.celebrationTimer); state.celebrationTimer = null; }
 }
 function advanceFromCelebration(){
   if(state.celebrationTimer){ clearTimeout(state.celebrationTimer); state.celebrationTimer = null; }
@@ -4966,22 +5154,32 @@ function renderPBFlashOverlay(){
 function renderCelebrationOverlay(){
   const c = state.celebration;
   if(!c) return '';
-  const confettiColors = ['#FFD23F','#5B9BF5','#4a9e5c','#e8a488','#c9584a','#9b6bc9'];
-  const pieces = Array.from({length:36},(_,i)=>{
-    const left = Math.round(Math.random()*100);
-    const delay = (Math.random()*0.6).toFixed(2);
-    const duration = (2.2+Math.random()*1.4).toFixed(2);
-    const color = confettiColors[i%confettiColors.length];
-    const size = 6+Math.round(Math.random()*6);
-    const rotate = Math.round(Math.random()*360);
-    return `<div class="confetti-piece" style="left:${left}%; background:${color}; width:${size}px; height:${size*0.4}px; animation-delay:${delay}s; animation-duration:${duration}s; transform:rotate(${rotate}deg);"></div>`;
-  }).join('');
-  return `<div class="celebration-overlay">
-    <div class="confetti-field">${pieces}</div>
-    <div class="celebration-card">
-      <div class="celebration-trophy">&#127942;</div>
-      <div class="celebration-winner">${c.winnerName} wins!</div>
-      <button class="btn btn-primary" style="margin-top:18px;" onclick="advanceFromCelebration()">Continue</button>
+  const cols = ['#3B82F6','#22C55E','#F6C453','#F0877A','#FFFFFF','#8B5CF6'];
+  const rockets = [[16,30,0],[84,27,0.7],[52,18,1.4],[30,58,2.1],[74,60,2.8],[8,66,1.0],[92,68,3.1]];
+  let fx = '';
+  rockets.forEach(([x,y,d],b)=>{
+    fx += `<div class="winx-rocket" style="left:${x}vw; --rise:-${100-y}vh; animation-delay:${d}s;"></div>`;
+    for(let k=0;k<22;k++){
+      const ang = k*(360/22)*Math.PI/180, dist = (k%2 ? 130 : 200);
+      const col = cols[(b + (k%3)) % cols.length];
+      fx += `<div class="winx-spark" style="left:${x}vw; top:${y}vh; background:${col}; box-shadow:0 0 14px ${col}; --dx:${Math.round(Math.sin(ang)*dist)}px; --dy:${Math.round(-Math.cos(ang)*dist)}px; animation-delay:${d}s;"></div>`;
+    }
+  });
+  const r = state.pendingGameReview;
+  const isX01 = r && /^(301|501)$/.test(String(r.gameType||''));
+  const kicker = isX01 ? 'GAME SHOT' : 'WINNER';
+  return `<div class="winx">
+    ${fx}
+    <div class="winx-card">
+      <div class="winx-kicker">${kicker}</div>
+      <div class="winx-name">${c.winnerName}</div>
+      ${c.detail ? `<div class="winx-detail">${c.detail}</div>` : ''}
+      <div class="winx-btns">
+        ${winCanRematch() ? `<div class="winx-btn primary" onclick="winRematch()">Rematch</div>` : ''}
+        <div class="winx-btn ${winCanRematch()?'':'primary'}" onclick="winNewGame()">New game</div>
+        <div class="winx-btn" onclick="winHome()">${HOME_ICON_SVG}Home</div>
+      </div>
+      <div class="winx-links"><span>Results are saved automatically.</span><a onclick="winDetails()">Darts used and details</a><a onclick="winDontCount()">Don't count this game</a></div>
     </div>
   </div>`;
 }
@@ -5171,10 +5369,297 @@ function renderUnifiedBottomControls(s){
   return `<div class="war-controls-grid">
     <div class="war-ctrl-btn${canReturn?'':' disabled'}" ${canReturn?'onclick="returnToPreviousPlayer()"':''}>Previous</div>
     <div class="war-ctrl-btn primary" onclick="${nextFn}">Next</div>
-    <div class="war-ctrl-btn danger" onclick="${restartFn}">Restart</div>
-    <div class="war-ctrl-btn leave" onclick="openGameMenu()">Leave</div>
+    <div class="war-ctrl-btn danger wide" onclick="${restartFn}">Restart turn</div>
   </div>`;
 }
+
+/* ========================= v6.1 SHELL: HUB, GAME TOP BAR, MENU, TIPS, SAVE/RESUME ========================= */
+const HOME_ICON_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/><path d="M10 20v-6h4v6"/></svg>';
+const MENU_ICON_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+const BOOK_ICON_SVG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h6a2 2 0 012 2v13a2 2 0 00-2-2H4zM20 5h-6a2 2 0 00-2 2v13a2 2 0 012-2h6z"/></svg>';
+const PAUSED_TTL_MS = 24*60*60*1000;
+let _turnSnap = null; // last end-of-turn snapshot of the live session (in memory only)
+
+function pruneExpiredPaused(){
+  const g = state.pausedGame;
+  if(g && (!g.savedAt || (Date.now() - g.savedAt) > PAUSED_TTL_MS)) state.pausedGame = null;
+}
+function pausedHoursLeft(){
+  const g = state.pausedGame; if(!g) return 0;
+  return Math.max(0, Math.ceil((PAUSED_TTL_MS - (Date.now()-g.savedAt)) / 3600000));
+}
+// Called after every render while a game is on screen. Whenever nobody has darts
+// in hand (the boundary between turns) we remember the session exactly as it is.
+// That is the only thing "Save and go Home" ever stores, so a half-thrown turn
+// can never end up in a saved game.
+function trackTurnSnapshot(){
+  const s = state.session;
+  if(!s || s.complete || !Array.isArray(s.currentTurnDarts)) return;
+  if(s.currentTurnDarts.length===0){
+    try{ _turnSnap = { json: JSON.stringify(s), turns: (s.turnHistory||[]).length }; }
+    catch(e){ _turnSnap = null; }
+  }
+}
+function savableSnapshot(){ return (_turnSnap && _turnSnap.turns>0) ? _turnSnap : null; }
+function gameNameFor(s){
+  const GN = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer', personalbest:'Personal Best', war:'War', callshot:'Call Your Shot'};
+  if(s.kind==='x01') return s.startScore+'';
+  if(s.kind==='custom') return s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':(s.cfg&&s.cfg.name)||'Custom';
+  return GN[s.kind] || s.kind;
+}
+function sessionPlayerNames(s){
+  return (s.participants||[]).map(p=>plainPlayerName(p.playerId));
+}
+
+function renderGameTopBar(s, title){
+  const {label, total} = roundInfoData(s);
+  const sub = total ? `<div class="gtb-sub">${label} ${s.round} of ${total}</div>` : '';
+  return `<div class="game-header-row">
+    <div class="gtb-left">
+      <button class="gtb-sq" title="Home" aria-label="Home" onclick="requestHome()">${HOME_ICON_SVG}</button>
+      <button class="gtb-btn" onclick="openGameMenu()">${MENU_ICON_SVG}Menu</button>
+    </div>
+    <div class="gtb-mid"><div class="game-title-center">${title}</div>${sub}</div>
+    <div class="gtb-right">
+      <button class="gtb-btn" onclick="openTips()">${BOOK_ICON_SVG}Tips and rules</button>
+      ${renderCameraHelpTrigger()}
+    </div>
+  </div>`;
+}
+function gameOverlays(s){
+  return (state.gameMenuOpen || state.confirmHome || state.tipsOpen || state.confirmRestart) ? renderGameMenu(s) : '';
+}
+
+/* ---- Home / leave / save / resume ---- */
+function goHubHome(){
+  state.confirmHome=false; state.gameMenuOpen=false; state.tipsOpen=false; state.confirmQuitGame=false; state.confirmRestart=false;
+  state.callerMenuOpen=false;
+  state.session=null; state.pendingBoard=null; state.pendingSelection=null; _turnSnap=null;
+  state.screen='home'; state.navTab='hub';
+  render();
+}
+function requestHome(){
+  const s = state.session;
+  if(!s || s.complete){ goHubHome(); return; }
+  state.confirmHome=true; state.gameMenuOpen=false; state.tipsOpen=false; render();
+}
+function cancelHomeConfirm(){ state.confirmHome=false; render(); }
+function saveAndGoHome(){
+  const s = state.session, snap = savableSnapshot();
+  if(!s || !snap){ goHubHome(); return; }
+  state.pausedGame = { json:snap.json, gameId:(s._launch && s._launch.gameId) || s.kind, name:gameNameFor(s), players:sessionPlayerNames(s), savedAt:Date.now(), turns:snap.turns };
+  goHubHome();
+}
+function resumePausedGame(){
+  pruneExpiredPaused();
+  const g = state.pausedGame;
+  if(!g){ render(); return; }
+  let sess = null;
+  try{ sess = JSON.parse(g.json); }catch(e){ sess = null; }
+  state.pausedGame = null;
+  if(!sess){ render(); return; }
+  state.session = sess;
+  state.showAllNumbers=false; state.pendingSelection=null; state.pendingBoard=null;
+  state.gameMenuOpen=false; state.confirmHome=false; state.tipsOpen=false;
+  _turnSnap = null;
+  state.screen='active';
+  render();
+}
+function forgetPausedGame(){ state.pausedGame=null; render(); }
+
+function renderHomeConfirmModal(s){
+  const snap = savableSnapshot();
+  const names = sessionPlayerNames(s).join(' vs ');
+  const inTurn = s.currentTurnDarts && s.currentTurnDarts.length>0;
+  const replaces = state.pausedGame ? `<p class="note">This replaces your other saved game (${state.pausedGame.name}, ${state.pausedGame.players.join(' vs ')}).</p>` : '';
+  if(!snap){
+    return `<div class="modal-overlay gx" onclick="if(event.target===this) cancelHomeConfirm();">
+      <div class="modal home-modal">
+        <h3>Leave this game?</h3>
+        <p style="color:var(--cream);">${gameNameFor(s)} &middot; ${names}</p>
+        <p class="note" style="margin-bottom:14px;">Nobody has finished a turn yet, so there is nothing to save. Leaving closes the game.</p>
+        <button class="btn btn-danger big-btn" onclick="goHubHome()">Leave game</button>
+        <button class="btn btn-secondary big-btn" onclick="cancelHomeConfirm()">Keep playing</button>
+      </div>
+    </div>`;
+  }
+  return `<div class="modal-overlay gx" onclick="if(event.target===this) cancelHomeConfirm();">
+    <div class="modal home-modal">
+      <h3>Go back to Home?</h3>
+      <p style="color:var(--cream);">${gameNameFor(s)} &middot; ${names}</p>
+      <div style="margin-top:12px;">
+        <button class="btn btn-primary big-btn" onclick="saveAndGoHome()">Save and go Home</button>
+        <button class="btn btn-danger big-btn" onclick="goHubHome()" style="height:54px;">Discard game</button>
+        <button class="btn btn-secondary big-btn" onclick="cancelHomeConfirm()" style="height:54px;">Keep playing</button>
+      </div>
+      <p class="note">A save keeps the game as it stood at the end of the last finished turn.${inTurn?' Darts in the turn you are in the middle of are not saved, so that turn starts over when you resume.':''} Saved games are kept for 24 hours and never count in your stats until they are finished.</p>
+      ${replaces}
+    </div>
+  </div>`;
+}
+
+/* ---- Restart game ---- */
+function openRestartConfirm(){ state.confirmRestart=true; state.gameMenuOpen=false; render(); }
+function restartGameNow(){
+  const s = state.session, L = s && s._launch;
+  state.confirmRestart=false; state.gameMenuOpen=false;
+  if(!L){ render(); return; }
+  relaunchFrom(L);
+}
+function relaunchFrom(L){
+  const savedMode = state.playerOrderMode;
+  state.playerOrderMode = 'inorder';
+  state.selectedPlayerIds = L.playerIds.slice();
+  if(L.custom){ state.pendingCustomGame = JSON.parse(JSON.stringify(L.cfg)); launchCustomGame(); }
+  else { state.pendingGameId = L.gameId; state.gameOptions = JSON.parse(JSON.stringify(L.opts||{})); launchGame(); }
+  state.playerOrderMode = savedMode;
+  _turnSnap = null;
+}
+function renderRestartConfirm(s){
+  return `<div class="modal-overlay gx" onclick="if(event.target===this){ state.confirmRestart=false; render(); }">
+    <div class="modal home-modal">
+      <h3>Restart this game?</h3>
+      <p class="note" style="margin-bottom:14px;">Everything thrown so far is cleared and the game starts again with the same players and options.</p>
+      <button class="btn btn-danger big-btn" onclick="restartGameNow()">Restart game</button>
+      <button class="btn btn-secondary big-btn" onclick="state.confirmRestart=false; render();">Keep playing</button>
+    </div>
+  </div>`;
+}
+
+/* ---- Tips and rules ---- */
+function openTips(){ state.tipsOpen=true; state.tipsTab='tips'; state.gameMenuOpen=false; render(); }
+function closeTips(){ state.tipsOpen=false; render(); }
+function rulesIdForSession(s){
+  const MAP = {cricket:'cricket', atc:'atc', shanghai:'shanghai', baseball:'baseball', halveit:'halveit', killer:'killer', callshot:'callshot', war:'war', personalbest:'personalbest'};
+  if(s.kind==='x01') return s.startScore===301?'301':'501';
+  if(s.kind==='custom') return s.builtinId || null;
+  return MAP[s.kind] || null;
+}
+function renderTipsModal(s){
+  const tab = state.tipsTab || 'tips';
+  const isX01 = s.kind==='x01';
+  const tabs = [['tips','Tips'],['rules','Rules']].concat(isX01 ? [['checkout','Checkout table']] : []);
+  let body = '';
+  if(tab==='tips'){
+    let tipsHtml = '';
+    try{ tipsHtml = renderTipsSection(s) || ''; }catch(e){ tipsHtml=''; }
+    let hint = '';
+    try{ hint = renderTurnHint(s) || ''; }catch(e){ hint=''; }
+    body = `${tipsHtml ? `<div class="tips-card"><h4>RIGHT NOW</h4>${tipsHtml}</div>` : ''}
+      ${hint ? `<div class="tips-card"><h4>THIS TURN</h4><p>${hint}</p></div>` : ''}
+      ${(!tipsHtml && !hint) ? `<div class="tips-card"><p>No tips for this game right now. Check the Rules tab for how it works.</p></div>` : ''}`;
+  } else if(tab==='rules'){
+    const g = GAMES.find(x=>x.id===rulesIdForSession(s));
+    if(g){
+      body = `<div class="tips-card"><h4>GOAL</h4><p>${g.goal}</p></div>
+        <div class="tips-card"><h4>HOW TO SCORE</h4><p>${g.score}</p></div>
+        <div class="tips-card"><h4>HOW TO WIN</h4><p>${g.win}</p></div>`;
+      if(isX01) body += `<div class="tips-card"><h4>THIS GAME</h4><p>${s.outRule==='master'?'Master out':s.outRule==='straight'?'Straight out':'Double out'}. Going below zero, or leaving 1 on a double out, is a bust and the turn is void.</p></div>`;
+    } else {
+      const c = s.cfg || {};
+      body = `<div class="tips-card"><h4>${c.name||'Custom game'}</h4><p>${c.desc||'This is a custom game, so there is no built-in rules page for it.'}</p></div>`;
+    }
+  } else if(tab==='checkout' && isX01){
+    const rows = buildCheckoutTable(s.outRule || 'double');
+    const cur = x01Current(s).score;
+    body = `<div class="tips-card" style="padding:6px 14px;"><div class="co-grid">${rows.map(r=>`<div class="co-row ${r.score===cur?'highlight':''}"><span class="co-score">${r.score}</span><span class="${r.route?'co-route':'co-none'}">${r.route ? r.route.join('  &middot;  ') : 'no 3-dart finish'}</span></div>`).join('')}</div></div>`;
+  }
+  return `<div class="modal-overlay gx" onclick="if(event.target===this) closeTips();">
+    <div class="modal tips-modal">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <h3 style="margin:0;">${gameNameFor(s)}</h3>
+          <div class="tips-tabs">${tabs.map(t=>`<button class="${tab===t[0]?'on':''}" onclick="state.tipsTab='${t[0]}'; render();">${t[1]}</button>`).join('')}</div>
+        </div>
+        <button class="gtb-btn" onclick="closeTips()">Close</button>
+      </div>
+      <div class="tips-body">${body}</div>
+    </div>
+  </div>`;
+}
+
+/* ---- Home hub ---- */
+const HUB_TILES = [
+  {id:'practice', name:'Practice', note:'Drills and routines', d:'M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8z', go:"goTab('practice')"},
+  {id:'custom',   name:'Custom',   note:'Your own games',      d:'M12 5v14M5 12h14', go:"goTab('custom')"},
+  {id:'players',  name:'Players',  note:'',                    d:'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M17.5 11.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM18 14c2.4.2 3.8 2 3.8 4.5', go:"goTab('players')"},
+  {id:'darts',    name:'Darts',    note:'',                    d:'M3.5 20.5L13 11M13 11l4.5-6.5 2 2L13 11z', go:"goTab('darts')"},
+  {id:'stats',    name:'Stats',    note:'Averages and history', d:'M5 20V11M12 20V4M19 20v-6', go:"goTab('stats')"},
+  {id:'settings', name:'Settings', note:'Look, sound, board',  d:'M12 15a3 3 0 100-6 3 3 0 000 6zM12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8', go:"openContextualSettings()"},
+];
+function renderHub(){
+  pruneExpiredPaused();
+  const g = state.pausedGame;
+  const hubNote = (id)=>{
+    if(id==='players') return state.players.length+' player'+(state.players.length===1?'':'s');
+    if(id==='darts') return (state.dartSetups||[]).length+' setup'+((state.dartSetups||[]).length===1?'':'s');
+    return null;
+  };
+  const board = `<div class="hub-board">
+    <i style="inset:0; background:repeating-conic-gradient(from -9deg, #B8322D 0deg 18deg, #2E7D52 18deg 36deg)"></i>
+    <i style="inset:7.5%; background:repeating-conic-gradient(from -9deg, #17130F 0deg 18deg, #E7DFC8 18deg 36deg)"></i>
+    <i style="inset:22%; background:repeating-conic-gradient(from -9deg, #B8322D 0deg 18deg, #2E7D52 18deg 36deg)"></i>
+    <i style="inset:29.5%; background:repeating-conic-gradient(from -9deg, #17130F 0deg 18deg, #E7DFC8 18deg 36deg)"></i>
+    <i style="inset:44%; background:#2E7D52"></i><i style="inset:47.5%; background:#B8322D"></i></div>`;
+  return `<div class="hub">
+    <div class="hub-head">
+      <div class="hub-brand"><span class="dot"></span>OCHE</div>
+      <div class="hub-head-right"><span>${BUILD_STAMP}</span>
+        <div class="hub-pill" onclick="toggleFullscreen()" title="Full screen">&#9974; ${state.isFullscreen?'Exit full screen':'Full screen'}</div>
+      </div>
+    </div>
+    <div class="hub-body">
+      <div class="hub-play">
+        ${board}
+        <div class="hub-kicker">PLAY</div>
+        <div class="hub-h">Pick a game</div>
+        <div class="hub-chips">
+          <div class="hub-chip primary" onclick="startGameFlow('501')">501</div>
+          <div class="hub-chip" onclick="startGameFlow('301')">301</div>
+          <div class="hub-chip" onclick="startGameFlow('cricket')">Cricket</div>
+          <div class="hub-chip" onclick="goTab('play')">All games</div>
+        </div>
+        ${g ? `<div class="hub-resume">
+          <button class="hub-resume-btn" onclick="resumePausedGame()"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg><span>Resume ${g.name}<small>${g.players.join(' vs ')} &middot; ${pausedHoursLeft()}h left</small></span></button>
+          <button class="hub-resume-x" title="Forget this saved game" onclick="forgetPausedGame()">&#10005;</button>
+        </div>` : ''}
+        <div class="hub-spacer"></div>
+        <div class="hub-lobby-slot">Lobby: friends and match requests will live here.</div>
+      </div>
+      <div class="hub-tiles">
+        ${HUB_TILES.map(t=>`<div class="hub-tile" onclick="${t.go}">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${t.d}"/></svg>
+          <div><div class="tn">${t.name}</div><div class="tt">${hubNote(t.id) || t.note}</div></div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+function tabTitle(){
+  return {play:'Games', practice:'Practice', custom:'Custom', players:'Players', darts:'Darts', stats:'Stats'}[state.navTab] || 'Oche';
+}
+
+/* ---- Winner screen ---- */
+function winCanRematch(){ const r=state.pendingGameReview; return !!(r && r.rawSession && r.rawSession._launch); }
+function winSaveQuiet(){
+  const r = state.pendingGameReview;
+  if(state.celebrationTimer){ clearTimeout(state.celebrationTimer); state.celebrationTimer=null; }
+  state.celebration = null;
+  if(r) saveGameResults();
+}
+function winRematch(){
+  const r = state.pendingGameReview;
+  const L = r && r.rawSession && r.rawSession._launch;
+  winSaveQuiet();
+  if(L) relaunchFrom(L); else goHubHome();
+}
+function winNewGame(){ winSaveQuiet(); state.navTab='play'; state.screen='home'; render(); }
+function winHome(){ winSaveQuiet(); goHubHome(); }
+function winDontCount(){
+  if(state.celebrationTimer){ clearTimeout(state.celebrationTimer); state.celebrationTimer=null; }
+  state.celebration = null; discardGameResults(); state.navTab='hub'; render();
+}
+function winDetails(){ advanceFromCelebration(); }
 
 /* ========================= NAVIGATION HANDLERS ========================= */
 function goTab(tab){ state.navTab = tab; state.screen = 'home'; render(); }
@@ -5478,7 +5963,7 @@ function ensureGameOptionsInitialized(){
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
-    bullMode:'separate', ringMode:'combined',
+    bullMode:'separate', ringMode:'combined', lockMode:'off',
     ...remembered,
     _forGameId: state.pendingGameId,
   };
@@ -5486,11 +5971,24 @@ function ensureGameOptionsInitialized(){
 function launchCustomGame(){
   const playerIds = state.playerOrderMode==='random' ? shuffleArray(state.selectedPlayerIds) : state.selectedPlayerIds;
   state.session = startCustomGameSession(playerIds, state.pendingCustomGame);
+  if(state.session && typeof state.session==='object'){
+    state.session._launch = { custom:true, cfg:JSON.parse(JSON.stringify(state.pendingCustomGame)), playerIds:playerIds.slice() };
+  }
+  _turnSnap = null;
   state.showAllNumbers = false;
   state.pendingSelection = null;
   state.pendingBoard = null;
   state.screen = 'active';
   render();
+}
+// Tiny board diagrams for the War setup screen.
+function warMiniBoard(mode){
+  const pt = (r,a)=>(r*Math.sin(a*Math.PI/180)).toFixed(1)+' '+(-r*Math.cos(a*Math.PI/180)).toFixed(1);
+  const seg = (i,r1,r2)=>{ const a0=i*18-9+0.7, a1=i*18+9-0.7; return 'M'+pt(r2,a0)+'A'+r2+' '+r2+' 0 0 1 '+pt(r2,a1)+'L'+pt(r1,a1)+'A'+r1+' '+r1+' 0 0 0 '+pt(r1,a0)+'Z'; };
+  const bands = mode==='all' ? [[11,52],[52,66],[66,86],[86,100]] : mode==='split' ? [[11,62],[62,100]] : [[11,100]];
+  let d = '';
+  for(let i=0;i<20;i++) bands.forEach(b=>{ d += seg(i,b[0],b[1]); });
+  return `<svg width="64" height="64" viewBox="-102 -102 204 204" style="flex:none;"><circle r="101" fill="#0A1424"/><path d="${d}" fill="#2A4470" stroke="#0A1424" stroke-width="1.2"/><circle r="8" fill="#2A4470"/></svg>`;
 }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
 function setWarPlayerColor(playerId, color){
@@ -5891,6 +6389,10 @@ function launchGame(){
   } else {
     state.session = startX01Session(playerIds, state.gameOptions);
   }
+  if(state.session && typeof state.session==='object'){
+    state.session._launch = { gameId:id, playerIds:playerIds.slice(), opts:JSON.parse(JSON.stringify(state.gameOptions||{})) };
+  }
+  _turnSnap = null;
   state.showAllNumbers = false;
   state.pendingSelection = null;
   state.pendingBoard = null;
@@ -5930,7 +6432,7 @@ function quitToHome(){
   }
   forceQuitToHome();
 }
-function forceQuitToHome(){ state.confirmQuitGame=false; state.gameMenuOpen=false; state.session=null; state.screen='home'; state.navTab='play'; render(); }
+function forceQuitToHome(){ goHubHome(); }
 // Deliberately does NOT touch state.session at all — the whole point is
 // that the game stays completely intact in this window while the kiosk
 // launcher's window comes to the front. Switching back to Oche later (via
@@ -5941,7 +6443,7 @@ function returnToLauncherHome(){
   render();
   fetch(`http://${window.location.hostname}:9090/api/home`, { method: 'POST' }).catch(()=>{});
 }
-function goHomeFromWin(){ state.session=null; state.screen='home'; render(); }
+function goHomeFromWin(){ goHubHome(); }
 
 /* Practice handlers */
 function startPracticeFlow(practId){
@@ -6337,6 +6839,20 @@ function describeCustomGame(cfg){
 
 /* Settings */
 function setSetting(key, val){ state.settings[key]=val; render(); }
+function privacyPrefs(){ const p = (state.settings && state.settings.privacy) || {}; return {avg:!!p.avg, wins:!!p.wins, darts:!!p.darts}; }
+function togglePrivacy(k){ const p = privacyPrefs(); p[k] = !p[k]; state.settings.privacy = p; persistState(); render(); }
+function renderPrivacyCard(){
+  const p = privacyPrefs();
+  const row=(k,l,d)=>`<div class="priv-row"><div><div class="pl">${l}</div><div class="pd">${d}</div></div><button class="sw ${p[k]?'on':''}" aria-label="${l}" onclick="togglePrivacy('${k}')"></button></div>`;
+  return `<div class="priv-card">
+    <div class="priv-h">WHAT REMOTE FRIENDS CAN SEE</div>
+    <div class="priv-row"><div><div class="pl">Name and status</div><div class="pd">Always shown so friends know you are around</div></div><span class="priv-fixed">ALWAYS</span></div>
+    ${row('avg','My average','Your three-dart average')}
+    ${row('wins','Wins and losses','Your record against friends')}
+    ${row('darts','My darts','The dart setups you throw with')}
+    <div class="pd" style="margin-top:8px;">Your own stats stay private: only you see them on this device. Nothing is shared until online play arrives.</div>
+  </div>`;
+}
 function toggleSidenavCollapsed(){ state.settings.sidenavCollapsed = !state.settings.sidenavCollapsed; render(); }
 function startResizeDrag(evt, settingsKey, cssVarName, minScale, maxScale){
   evt.preventDefault();
@@ -6508,10 +7024,8 @@ function render(){
     case 'sectionProgress': html = renderSectionProgress(); break;
     case 'customBuilder': html = renderCustomBuilder(); break;
     case 'customGameBuilder': html = renderCustomGameBuilder(); break;
-    case 'themeSettings': html = renderThemeSettings(); break;
+    case 'themeSettings': case 'gameplaySettings': case 'playerSettings': case 'settingsHub': html = renderSettingsHub(); break;
     case 'dartSettings': html = renderDartSettingsScreen(); break;
-    case 'playerSettings': html = renderPlayerSettingsScreen(); break;
-    case 'gameplaySettings': html = renderGameplaySettings(); break;
     case 'checkoutTable': html = renderCheckoutTable(); break;
     default: html = renderHomeShell();
   }
@@ -6521,6 +7035,7 @@ function render(){
   const footerSplit = html.split(FOOTER_MARKER);
   app.innerHTML = footerSplit[0];
   if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
+  if(state.screen==='active') trackTurnSnapshot();
   persistState();
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
@@ -6625,15 +7140,17 @@ function bottomNav(){
   </div>`;
 }
 function openContextualSettings(){
-  const map = {play:'themeSettings', darts:'dartSettings', players:'playerSettings'};
+  const pageMap = {play:'defaults', practice:'defaults', custom:'defaults', players:'lobby', stats:'about', hub:'look'};
   state.settingsReturnTo = {screen:'home', navTab: state.navTab};
-  state.screen = map[state.navTab] || 'gameplaySettings';
+  if(state.navTab==='darts'){ state.screen='dartSettings'; }
+  else { state.settingsPage = pageMap[state.navTab] || 'look'; state.screen='settingsHub'; }
   render();
 }
 function openSettingsFromGameMenu(){
   state.settingsReturnTo = {screen: state.screen};
   state.gameMenuOpen = false;
-  state.screen = 'gameplaySettings';
+  state.settingsPage = 'sound';
+  state.screen = 'settingsHub';
   render();
 }
 function settingsBack(){
@@ -6644,8 +7161,8 @@ function settingsBack(){
   render();
 }
 function topbar(title){
-  return `<div class="topbar">
-    <div class="brand"><span class="dot"></span><h1>${title}</h1></div>
+  return `<div class="page-top">
+    <div class="page-top-left"><button class="gtb-sq" title="Home" aria-label="Home" onclick="goHubHome()">${HOME_ICON_SVG}</button><h1>${title}</h1></div>
     <div class="iconbtn" onclick="openContextualSettings()">&#9881;</div>
   </div>`;
 }
@@ -6653,17 +7170,42 @@ function topbar(title){
 /* ========================= RENDER: HOME ========================= */
 function renderHomeShell(){
   let body='';
+  if(state.navTab==='hub') return renderHub();
   if(state.navTab==='play') body = renderPlayTab();
   else if(state.navTab==='practice') body = renderPracticeTab();
   else if(state.navTab==='custom') body = renderCustomTab();
   else if(state.navTab==='players') body = renderPlayerManager();
   else if(state.navTab==='darts') body = renderDartManager();
   else body = renderStatsHub();
-  return `${topbar('Oche')}<div class="subtitle">Your guided darts companion</div>
+  return `${topbar(tabTitle())}
     <div class="screen" style="flex:1; overflow-y:auto;">${body}</div>`;
 }
+function lastPlayedNote(){
+  const h = state.history && state.history[0];
+  if(!h) return '';
+  const when = h.date || h.savedAt || h.ts;
+  let ago = '';
+  if(when){
+    const d = Math.floor((Date.now()-new Date(when).getTime())/86400000);
+    ago = isNaN(d) ? '' : (d<=0 ? 'today' : d===1 ? 'yesterday' : d+' days ago');
+  }
+  return `<div class="gp-last">Last played <b>${h.name||'a game'}</b>${ago?' · '+ago:''}</div>`;
+}
+const PRACTICE_TILES = [
+  ['Progress Tracker Pro','Long-term laps, tied to a player',"state.screen='ladderProPlayerPicker'; render();"],
+  ['Progress Tracker','Work round the board, five rounds',"state.screen='theLadderSetup'; render();"],
+  ['Closeout Trainer','Three hits of one segment type',"state.screen='closeoutTrainerSetup'; render();"],
+  ['Pro Routine','Six-phase session, about 130 darts','startProRoutine()'],
+  ['Throw Analyzer','Throw at a dot, get one suggestion',"state.screen='throwAnalyzerSetup'; render();"],
+  ['Pinpoint','Pick a spot, build a heat map','startPinpoint()'],
+  ['Section Trainer','Drill one section of the board','openSectionSetup()'],
+  ['Blackout','Throw without seeing the score','openBlackoutSetup()'],
+];
 function renderPlayTab(){
-  return `<div class="content" style="padding-bottom:0;">${sectionHeader('Choose a game')}</div>
+  return `<div class="content" style="padding-bottom:0;">
+    <p class="gp-sub">Pick a game, or head down to Practice for drills on your own.</p>${lastPlayedNote()}
+  </div>
+  <div class="content" style="padding-bottom:0;">${sectionHeader('Games')}<p class="gp-sub" style="margin:-14px 0 4px 0;">Play against other people or bots</p></div>
   <div class="content content-grid">
     ${GAMES.map(g=>`
       <div class="card">
@@ -6680,6 +7222,13 @@ function renderPlayTab(){
         </div>
       </div>
     `).join('')}
+  </div>
+  <div class="content" style="padding-bottom:0;">${sectionHeader('Practice')}<p class="gp-sub" style="margin:-14px 0 4px 0;">Drills on your own, no opponent needed</p></div>
+  <div class="content">
+    <div class="pr-grid">
+      ${PRACTICE_TILES.map(t=>`<div class="pr-tile" onclick="${t[2]}"><h4>${t[0]}</h4><p>${t[1]}</p></div>`).join('')}
+      <div class="pr-tile" style="border-style:dashed;" onclick="state.navTab='practice'; render();"><h4>All practice &rarr;</h4><p>Build your own, saved routines, guided routines</p></div>
+    </div>
   </div>`;
 }
 function renderPracticeTab(){
@@ -7038,10 +7587,19 @@ function renderGameOptionsBody(){
     body += `
     <div>
       <span class="field-label">Board Sections</span>
-      <div class="gchip-wrap">${chip('Whole Wedges','ringMode','combined')}${chip('Split Inner & Outer','ringMode','split')}</div>
+      <div class="gchip-wrap">${chip('Whole Wedges','ringMode','combined')}${chip('Inside &amp; Outside','ringMode','split')}${chip('Master Mode','ringMode','all')}</div>
       <div class="option-legend">
-        <div class="leg-item ${o.ringMode!=='split'?'active-leg':''}"><b>Whole Wedges</b> — each number is one section. Any single, double or triple of it claims the whole wedge.</div>
-        <div class="leg-item ${o.ringMode==='split'?'active-leg':''}"><b>Split Inner &amp; Outer</b> — every number becomes two sections, twice as many to play for. The inner section is the wedge between the bull and the treble, and triples count as inner. The outer section is the wedge between the treble and the double, and doubles count as outer.</div>
+        <div class="leg-item ${o.ringMode!=='split'&&o.ringMode!=='all'?'active-leg':''}" style="display:flex; gap:12px; align-items:center;">${warMiniBoard('combined')}<span><b>Whole Wedges</b> &mdash; each number is one section (20 sections). Any single, double or triple of it claims the whole wedge.</span></div>
+        <div class="leg-item ${o.ringMode==='split'?'active-leg':''}" style="display:flex; gap:12px; align-items:center;">${warMiniBoard('split')}<span><b>Inside &amp; Outside</b> &mdash; every number becomes two sections (40 sections). Inside is the wedge between the bull and the treble, and triples count as inside. Outside is the wedge between the treble and the double, and doubles count as outside.</span></div>
+        <div class="leg-item ${o.ringMode==='all'?'active-leg':''}" style="display:flex; gap:12px; align-items:center;">${warMiniBoard('all')}<span><b>Master Mode</b> &mdash; very hard. Inner single, triple, outer single and double are each their own section (80 sections). You have to hit exactly the part of the board you want.</span></div>
+      </div>
+    </div>
+    <div>
+      <span class="field-label">Locked Sections</span>
+      <div class="gchip-wrap">${chip('Off','lockMode','off')}${chip('Steal-Back Lock','lockMode','stealback')}</div>
+      <div class="option-legend">
+        <div class="leg-item ${o.lockMode!=='stealback'?'active-leg':''}"><b>Off</b> &mdash; any section can always be taken again (the classic game).</div>
+        <div class="leg-item ${o.lockMode==='stealback'?'active-leg':''}"><b>Steal-Back Lock</b> &mdash; if you lose a section and then win it back, it locks to you. A locked section is greyed out with a cross-hatch, nobody can take it again, and darts that land on it score nothing.</div>
       </div>
     </div>
     <div>
@@ -7193,48 +7751,9 @@ function renderGameOptionsBody(){
 /* ========================= RENDER: SETTINGS ========================= */
 function settingsTopbar(title){
   return `<div class="topbar">
-    <div class="iconbtn" onclick="settingsBack()">&#8592;</div>
+    <div class="iconbtn" onclick="${state.screen==='dartSettings' ? "state.screen='settingsHub'; state.settingsPage='defaults'; render();" : 'settingsBack()'}">&#8592;</div>
     <h1 style="color:var(--brass); font-size:19px;">${title}</h1>
     <div style="width:38px;"></div>
-  </div>
-  ${settingsSubNav()}`;
-}
-function settingsSubNav(){
-  const tabs = [
-    {id:'themeSettings', label:'Theme'},
-    {id:'gameplaySettings', label:'Gameplay'},
-    {id:'dartSettings', label:'Darts'},
-    {id:'playerSettings', label:'Players'},
-  ];
-  return `<div class="chip-wrap" style="padding:0 18px 12px 18px;">
-    ${tabs.map(t=>`<span class="chip ${state.screen===t.id?'selected':''}" onclick="state.screen='${t.id}'; render();">${t.label}</span>`).join('')}
-  </div>`;
-}
-function renderThemeSettings(){
-  const s = state.settings;
-  return `${settingsTopbar('Board Color')}
-  <div class="content">
-    <div>
-      <span class="field-label">Background Theme</span>
-      <div class="theme-row">
-        ${THEMES.map(t=>`<div class="theme-swatch ${s.theme===t.id?'selected':''}" onclick="setSetting('theme','${t.id}')">
-          <div class="circle" style="background:${t.swatch};"></div>
-          <div class="tlabel">${t.name}</div>
-        </div>`).join('')}
-      </div>
-      <p class="info-note">This is the only setting on the Games tab — everything else lives with the section it affects (Darts, Players, and so on).</p>
-    </div>
-  </div>`;
-}
-function renderPlayerSettingsScreen(){
-  const ps = state.playerSettings;
-  return `${settingsTopbar('Player Settings')}
-  <div class="content">
-    <div>
-      <span class="field-label">Guest History Retention</span>
-      <div class="chip-wrap">${[1,6,12,24,48].map(h=>`<span class="chip ${ps.guestRetentionHours===h?'selected':''}" onclick="state.playerSettings.guestRetentionHours=${h}; render();">${h}h</span>`).join('')}</div>
-      <p class="info-note">How long a guest player's games stay in history before clearing automatically. Permanent players' history is never cleared. Switching a guest to permanent any time before this window closes keeps their history for good.</p>
-    </div>
   </div>`;
 }
 function renderDartSettingsScreen(){
@@ -7262,37 +7781,67 @@ function renderDartSettingsScreen(){
     `).join('')}
   </div>`;
 }
-function renderGameplaySettings(){
+const SETTINGS_PAGES = [
+  {id:'look',     name:'Look',              note:'Theme and layout'},
+  {id:'sound',    name:'Sound and caller',  note:'Effects, volume, caller voice'},
+  {id:'board',    name:'Board',             note:'Entry method and camera link'},
+  {id:'defaults', name:'Game defaults',     note:'Guidance, turns, dart lists'},
+  {id:'lobby',    name:'Lobby and status',  note:'Privacy and your status'},
+  {id:'about',    name:'About and data',    note:'Version, backup, saved game'},
+];
+function setSettingsPage(id){ state.settingsPage = id; render(); }
+function renderSettingsHub(){
+  const pg = state.settingsPage || 'look';
+  const fn = {look:settingsPageLook, sound:settingsPageSound, board:settingsPageBoard, defaults:settingsPageDefaults, lobby:settingsPageLobby, about:settingsPageAbout}[pg] || settingsPageLook;
+  const meta = SETTINGS_PAGES.find(p=>p.id===pg) || SETTINGS_PAGES[0];
+  return `${settingsTopbar('Settings')}
+  <div class="sh-wrap">
+    <div class="sh-nav">${SETTINGS_PAGES.map(p=>`<div class="sh-item ${p.id===pg?'on':''}" onclick="setSettingsPage('${p.id}')"><b>${p.name}</b><span>${p.note}</span></div>`).join('')}</div>
+    <div class="sh-body"><h2>${meta.name}</h2>${fn()}</div>
+  </div>`;
+}
+/* ---- Look + theme builder ---- */
+function setCustomTheme(key, val, live){
+  const cur = state.settings.theme==='custom' ? Object.assign(customThemeDefaults(), state.settings.customTheme||{}) : customThemeDefaults();
+  state.settings.customTheme = Object.assign({}, cur, {[key]:val});
+  state.settings.theme = 'custom';
+  applyTheme();
+  if(!live){ persistState(); render(); }
+}
+function pickTheme(id){
+  if(id==='custom' && !state.settings.customTheme) state.settings.customTheme = customThemeDefaults();
+  state.settings.theme = id; render();
+}
+function resetCustomTheme(){ state.settings.customTheme = null; state.settings.theme = 'cobalt'; persistState(); render(); }
+function settingsPageLook(){
   const s = state.settings;
-  function chip(label, key, val){
-    return `<span class="chip ${s[key]===val?'selected':''}" onclick="setSetting('${key}','${val}')">${label}</span>`;
-  }
-  return `${settingsTopbar('Gameplay Settings')}
-  <div class="content">
-    <div>
-      <span class="field-label">Board Color</span>
+  const c = Object.assign(customThemeDefaults(), s.customTheme||{});
+  const picker=(k,l)=>`<label class="tb-pick">${l}<input type="color" value="${c[k]}" oninput="setCustomTheme('${k}', this.value, true)" onchange="setCustomTheme('${k}', this.value, false)"></label>`;
+  return `<div class="sh-card">
+      <span class="field-label">Theme</span>
       <div class="theme-row">
-        ${THEMES.map(t=>`<div class="theme-swatch ${s.theme===t.id?'selected':''}" onclick="setSetting('theme','${t.id}')">
-          <div class="circle" style="background:${t.swatch};"></div>
-          <div class="tlabel">${t.name}</div>
-        </div>`).join('')}
+        ${THEMES.map(t=>`<div class="theme-swatch ${s.theme===t.id?'selected':''}" onclick="pickTheme('${t.id}')"><div class="circle" style="background:${t.swatch};"></div><div class="tlabel">${t.name}</div></div>`).join('')}
+        <div class="theme-swatch ${s.theme==='custom'?'selected':''}" onclick="pickTheme('custom')"><div class="circle" style="background:conic-gradient(${c.bg},${c.accent},${c.text},${c.bg});"></div><div class="tlabel">Custom</div></div>
       </div>
     </div>
-    <div>
-      <span class="field-label">Entry Method</span>
-      <div class="chip-wrap">${chip('Number Grid','entryMethod','grid')}${chip('Interactive Dartboard','entryMethod','board')}</div>
+    <div class="sh-card">
+      <span class="field-label">Theme builder</span>
+      <div class="tb-grid">${picker('bg','Background')}${picker('accent','Accent')}${picker('text','Text')}</div>
+      <div class="tb-prev"><div class="pv-btn">Play</div><div><div class="pv-t">Sam &middot; 501</div><div class="pv-s">Your turn, round 3</div></div></div>
+      <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="resetCustomTheme()">Reset to Harbor Blue</button></div>
+      <p class="info-note">Changing a colour switches to Custom. Colours start from the theme you were using. The dartboard itself keeps its normal colours.</p>
     </div>
-    <div>
-      <span class="field-label">Default 501 Guidance</span>
-      <div class="chip-wrap">${chip('None','guidanceLevel','none')}${chip('Basic','guidanceLevel','basic')}${chip('Beginner','guidanceLevel','beginner')}${chip('Standard','guidanceLevel','standard')}</div>
-    </div>
-    <div class="checkbox-row">
-      <input type="checkbox" ${s.autoEndTurn?'checked':''} onchange="setSetting('autoEndTurn', ${!s.autoEndTurn})">
-      Automatically end turn after three darts
-    </div>
-    <p class="info-note">These general play preferences apply everywhere darts get thrown — games, practice, and custom games alike.</p>
-
-    <div class="section-label" style="padding-left:0; margin-top:18px;">Sound Effects</div>
+    <div class="sh-card">
+      <span class="field-label">Score panel width</span>
+      <input type="range" min="200" max="480" value="${s.panelWidth||230}" style="width:100%;" aria-label="Score panel width"
+        oninput="state.settings.panelWidth=+this.value; document.documentElement.style.setProperty('--panel-width', this.value+'px'); document.documentElement.style.setProperty('--panel-scale', this.value/230);" onchange="persistState(); render();">
+      <p class="info-note">Wider gives bigger score cards in games. You can also drag the edge of the panel in a game.</p>
+    </div>`;
+}
+/* ---- Sound and caller ---- */
+function settingsPageSound(){
+  const s = state.settings;
+  return `<div class="sh-card">
     <div class="checkbox-row">
       <input type="checkbox" ${s.soundOn!==false?'checked':''} onchange="setSetting('soundOn', ${s.soundOn===false})">
       Play sound effects
@@ -7313,9 +7862,18 @@ function renderGameplaySettings(){
       </div>`;
     }).join('')}
     <p class="info-note">Every effect in the list can be used for any of the three moments. The first tap anywhere in the app switches sound on, since browsers keep audio locked until you touch the page.</p>
-    ${renderCallerSettings()}
-
-    <div class="section-label" style="padding-left:0; margin-top:18px;">Live Board</div>
+  </div>
+  ${renderCallerSettings()}`;
+}
+/* ---- Board ---- */
+function settingsPageBoard(){
+  const s = state.settings;
+  function chip(label, key, val){ return `<span class="chip ${s[key]===val?'selected':''}" onclick="setSetting('${key}','${val}')">${label}</span>`; }
+  return `<div class="sh-card">
+      <span class="field-label">Entry method</span>
+      <div class="chip-wrap">${chip('Number Grid','entryMethod','grid')}${chip('Interactive Dartboard','entryMethod','board')}</div>
+    </div>
+    <div class="sh-card">
     <div>
       <span class="field-label">Detection source</span>
       <div class="chip-wrap">
@@ -7351,8 +7909,79 @@ function renderGameplaySettings(){
     </div>
     ${usingSingleCam() ? `<p class="info-note">Single camera mode listens to the single-camera program on your laptop instead of the Autodarts board. One camera is less accurate than three (a dart hidden behind another can be missed, and darts close to a wire can be miscalled), so keep an eye on the score and use Oche's undo or edit to fix a dart. Switch back to "Autodarts board" at home — that setup is untouched.</p>` : ''}
     <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered. Oche also auto-resets Board Manager on its own if throws stop registering for more than a few seconds. If you need to reset it by hand, there's a button for that directly on the gameplay screen itself — no need to come here mid-game.</p>
-    <div style="font-size:8px; color:var(--cream-dim); opacity:0.4; text-align:center; padding-top:16px; font-family:'JetBrains Mono',monospace; letter-spacing:0.02em;">${BUILD_STAMP}</div>
-  </div>`;
+    <p class="info-note">Camera tools (live view, setup guide, troubleshooting) are coming in the next stage.</p>
+    </div>`;
+}
+/* ---- Game defaults ---- */
+function settingsPageDefaults(){
+  const s = state.settings, ps = state.playerSettings;
+  function chip(label, key, val){ return `<span class="chip ${s[key]===val?'selected':''}" onclick="setSetting('${key}','${val}')">${label}</span>`; }
+  return `<div class="sh-card">
+      <span class="field-label">Default 501 guidance</span>
+      <div class="chip-wrap">${chip('None','guidanceLevel','none')}${chip('Basic','guidanceLevel','basic')}${chip('Beginner','guidanceLevel','beginner')}${chip('Standard','guidanceLevel','standard')}</div>
+      <div class="checkbox-row"><input type="checkbox" ${s.autoEndTurn?'checked':''} onchange="setSetting('autoEndTurn', ${!s.autoEndTurn})"> Automatically end turn after three darts</div>
+      <p class="info-note">These apply everywhere darts get thrown: games, practice and custom games.</p>
+    </div>
+    <div class="sh-card">
+      <span class="field-label">Guest history retention</span>
+      <div class="chip-wrap">${[1,6,12,24,48].map(h=>`<span class="chip ${ps.guestRetentionHours===h?'selected':''}" onclick="state.playerSettings.guestRetentionHours=${h}; persistState(); render();">${h}h</span>`).join('')}</div>
+      <p class="info-note">How long a guest's games stay in history before clearing. Permanent players are never cleared.</p>
+    </div>
+    <div class="sh-card">
+      <span class="field-label">Dart option lists</span>
+      <p class="info-note" style="margin:0;">Edit the brands, weights, shafts and other choices offered when you build a dart setup.</p>
+      <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="state.screen='dartSettings'; render();">Edit dart lists</button></div>
+    </div>`;
+}
+/* ---- Lobby and status ---- */
+function settingsPageLobby(){
+  return `${renderPrivacyCard()}
+    <div class="sh-card">
+      <span class="field-label">Lobby and status</span>
+      <p class="info-note" style="margin:0;">Online play is coming in a later stage. When it arrives you will set your status here, such as "Back at 7:30", shown to friends in their own time zone, and choose whether the lobby block shows on the home screen.</p>
+    </div>`;
+}
+/* ---- About and data ---- */
+function exportOcheData(){
+  try{
+    const blob = new Blob([localStorage.getItem(STORAGE_KEY)||'{}'], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'oche-backup-'+new Date().toISOString().slice(0,10)+'.json'; document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){ alert('Could not export: '+e.message); }
+}
+function importOcheData(input){
+  const f = input.files && input.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{ try{ JSON.parse(r.result); localStorage.setItem(STORAGE_KEY, r.result); location.reload(); }catch(e){ alert('That file is not a valid Oche backup.'); } };
+  r.readAsText(f);
+}
+function confirmResetAll(){
+  if(confirm('Erase ALL Oche data on this device (players, history, settings)? This cannot be undone.')){ try{ localStorage.removeItem(STORAGE_KEY); }catch(e){} location.reload(); }
+}
+function settingsPageAbout(){
+  const p = state.pausedGame;
+  return `<div class="sh-card">
+      <span class="field-label">Version</span>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:20px; color:var(--brass);">${BUILD_STAMP}</div>
+    </div>
+    <div class="sh-card">
+      <span class="field-label">Backup</span>
+      <div class="btn-row">
+        <button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="exportOcheData()">Export backup</button>
+        <label class="btn btn-secondary" style="flex:none; padding:8px 16px; cursor:pointer;">Import backup<input type="file" accept="application/json,.json" style="display:none;" onchange="importOcheData(this)"></label>
+      </div>
+      <p class="info-note" style="margin:0;">Everything lives on this device. Export a copy before clearing browser data or changing machines.</p>
+    </div>
+    <div class="sh-card">
+      <span class="field-label">Saved game</span>
+      ${p ? `<p class="info-note" style="margin:0;">${p.name} with ${(p.players||[]).join(', ')} is saved and expires 24 hours after you left.</p>
+        <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="forgetPausedGame(); render();">Forget saved game</button></div>`
+      : `<p class="info-note" style="margin:0;">No saved game.</p>`}
+    </div>
+    <div class="sh-card">
+      <span class="field-label">Danger zone</span>
+      <div class="btn-row"><button class="btn btn-danger" style="flex:none; padding:8px 16px;" onclick="confirmResetAll()">Erase all data</button></div>
+    </div>`;
 }
 
 /* ========================= BOARD MANAGER LIVE INTEGRATION =========================
@@ -7889,7 +8518,7 @@ function renderActivePlayerSection(s,p,i){
   }).join('');
   return `<div class="player-section active">
     <div class="ps-header">
-      <div class="ps-avatar">${playerEmojiOrInitials(p.playerId)}</div>
+      <div class="ps-avatar"${s.kind==='killer'?` style="background:${KILLER_COLORS[i%KILLER_COLORS.length]}; color:#fff;"`:''}>${playerEmojiOrInitials(p.playerId)}</div>
       <div class="ps-name">${plainPlayerName(p.playerId)}</div>
       <div class="ps-score">${activeSectionHeadline(s,p)}</div>
     </div>
@@ -7966,7 +8595,7 @@ function renderEditTurnRow(s){
 function renderCollapsedPlayerSection(s,p,i){
   return `<div class="player-section collapsed">
     <div class="ps-header">
-      <div class="ps-avatar small">${playerEmojiOrInitials(p.playerId)}</div>
+      <div class="ps-avatar small"${s.kind==='killer'?` style="background:${KILLER_COLORS[i%KILLER_COLORS.length]}; color:#fff;"`:''}>${playerEmojiOrInitials(p.playerId)}</div>
       <div class="ps-name">${plainPlayerName(p.playerId)}</div>
       <div class="ps-summary">${collapsedSectionSummary(s,p)}</div>
     </div>
@@ -8033,6 +8662,7 @@ function renderPriorityOrTips(s){
 // for open-ended games (301, Cricket, ATC, Killer, War, Call Your Shot),
 // prepended above the routine tip text for the ones that have a real total.
 function renderBoardCornerNote(s){
+  return '';
   const {label, total} = roundInfoData(s);
   const roundLine = total ? `<div style="font-size:11px; color:var(--brass); opacity:0.8; margin-bottom:2px;">${label} ${s.round} of ${total}</div>` : '';
   const tips = renderTipsSection(s);
@@ -8188,33 +8818,34 @@ const WAR_NEUTRAL = '#3a4560';
 function renderWarBoard(s){
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
   const gapDeg = 1.2;
-  let fills = '', labels = '';
+  let fills = '', labels = '', hatch = '';
+  const m = s.ringMode;
+  const sfx = (inner, ring)=> m==='all' ? ({0:'is',1:'t',2:'os',3:'d'}[inner]) : (m==='split' ? (ring==='outer'?'o':'i') : '');
+  const bands = [
+    {r1:R_BULL_OUTER, r2:R_TRIPLE_IN, seg:'single', ring:'inner', rg:false, k:sfx(0,'inner')},
+    {r1:R_TRIPLE_IN, r2:R_TRIPLE_OUT, seg:m==='all'?'triple':'single', ring:'inner', rg:true, k:sfx(1,'inner')},
+    {r1:R_TRIPLE_OUT, r2:R_DOUBLE_IN, seg:'single', ring:'outer', rg:false, k:sfx(2,'outer')},
+    {r1:R_DOUBLE_IN, r2:R_DOUBLE_OUT, seg:m==='all'?'double':'single', ring:'outer', rg:true, k:sfx(3,'outer')},
+  ];
   for(let i=0;i<20;i++){
     const num = BOARD_ORDER[i];
     const aFull1 = -9+i*18+WEDGE_ROTATION, aFull2 = aFull1+18;
     const aStart = aFull1 + gapDeg, aEnd = aFull2 - gapDeg;
-    // One owner for the whole wedge, or (split mode) one for the inner part
-    // (inner single + treble ring) and one for the outer part (outer single + double ring).
-    const split = s.ringMode==='split';
-    const ownerIn = split ? s.sections[num+'i'] : s.sections[String(num)];
-    const ownerOut = split ? s.sections[num+'o'] : ownerIn;
-    const claimedIn = ownerIn!==null && ownerIn!==undefined;
-    const claimedOut = ownerOut!==null && ownerOut!==undefined;
-    const strokeIn = claimedIn ? warColorFor(s,ownerIn) : WAR_NEUTRAL;
-    const strokeOut = claimedOut ? warColorFor(s,ownerOut) : WAR_NEUTRAL;
-    const swIn = claimedIn ? 2 : 1, swOut = claimedOut ? 2 : 1;
-    const fillIn = claimedIn ? warColorFor(s,ownerIn) : '#151c30';
-    const fillOut = claimedOut ? warColorFor(s,ownerOut) : '#151c30';
     const dtFill = '#1c2438';
-    const segIn = `class="board-seg" data-num="${num}" data-seg="single" data-ring="inner" style="cursor:pointer;"`;
-    const segOut = `class="board-seg" data-num="${num}" data-seg="single" data-ring="outer" style="cursor:pointer;"`;
-    fills += `<path d="${wedgePath(cx,cy,R_BULL_OUTER,R_TRIPLE_IN,aStart,aEnd)}" fill="${fillIn}" stroke="${strokeIn}" stroke-width="${swIn}" ${segIn}/>`;
-    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_IN,R_TRIPLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="${strokeIn}" stroke-width="${swIn}" ${segIn}/>`;
-    fills += `<path d="${wedgePath(cx,cy,R_TRIPLE_OUT,R_DOUBLE_IN,aStart,aEnd)}" fill="${fillOut}" stroke="${strokeOut}" stroke-width="${swOut}" ${segOut}/>`;
-    fills += `<path d="${wedgePath(cx,cy,R_DOUBLE_IN,R_DOUBLE_OUT,aStart,aEnd)}" fill="${dtFill}" stroke="${strokeOut}" stroke-width="${swOut}" ${segOut}/>`;
+    bands.forEach(bd=>{
+      const key = String(num) + bd.k;
+      const owner = s.sections[key];
+      const claimed = owner!==null && owner!==undefined;
+      const col = claimed ? warColorFor(s,owner) : WAR_NEUTRAL;
+      const fill = claimed ? ((bd.rg && m!=='all') ? dtFill : warColorFor(s,owner)) : (bd.rg ? dtFill : '#151c30');
+      const d = wedgePath(cx,cy,bd.r1,bd.r2,aStart,aEnd);
+      fills += `<path d="${d}" fill="${fill}" stroke="${col}" stroke-width="${claimed?2:1}" class="board-seg" data-num="${num}" data-seg="${bd.seg}" data-ring="${bd.ring}" style="cursor:pointer;"/>`;
+      if(s.locks && s.locks[key]!==undefined) hatch += `<path d="${d}" fill="url(#warHatch)" style="pointer-events:none;"/><path d="${d}" fill="url(#warHatch2)" style="pointer-events:none;"/>`;
+    });
     const lp = polar(cx,cy,R_NUMBER_LABEL,(aFull1+aFull2)/2);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
   }
+  const warDefs = `<defs><pattern id="warHatch" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="9" height="9" fill="rgba(10,20,36,0.62)"/><line x1="0" y1="0" x2="0" y2="9" stroke="rgba(255,255,255,0.7)" stroke-width="2.4"/></pattern><pattern id="warHatch2" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><line x1="0" y1="0" x2="0" y2="9" stroke="rgba(255,255,255,0.7)" stroke-width="2.4"/></pattern></defs>`;
   let bullMarkup;
   if(s.bullMode==='together'){
     const owner = s.sections['B'];
@@ -8236,7 +8867,25 @@ function renderWarBoard(s){
     bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerFill}" stroke="${outerStroke}" stroke-width="${outerClaimed?3:2}" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
       <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerFill}" stroke="${innerStroke}" stroke-width="${innerClaimed?3:2}" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
   }
-  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="handleBoardClick(event)">${fills}${bullMarkup}${labels}</svg>`;
+  const missOuterEdge = R_BEZEL + 22;
+  const cropMargin = (canvas - missOuterEdge*2)/2 - 10;
+  const viewSize = canvas - cropMargin*2;
+  const missLabelPos = polar(cx, cy, missOuterEdge-8, 180);
+  const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
+  return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
+    <circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, 'recordMiss()')"/>
+    ${warDefs}${fills}${bullMarkup}${warBullHatch(s)}${hatch}${labels}${missLabel}
+  </svg>`;
+}
+function warBullHatch(s){
+  if(!s.locks) return '';
+  let out = '';
+  const ring = annulusPath(BOARD_CX,BOARD_CY,R_BULL_INNER,R_BULL_OUTER);
+  const dot = (r)=>`<circle cx="${BOARD_CX}" cy="${BOARD_CY}" r="${r}" fill="url(#warHatch)" style="pointer-events:none;"/><circle cx="${BOARD_CX}" cy="${BOARD_CY}" r="${r}" fill="url(#warHatch2)" style="pointer-events:none;"/>`;
+  if(s.locks['B']!==undefined) out += dot(R_BULL_OUTER);
+  if(s.locks['IB']!==undefined) out += dot(R_BULL_INNER);
+  if(s.locks['OB']!==undefined) out += `<path d="${ring}" fill="url(#warHatch)" style="pointer-events:none;"/><path d="${ring}" fill="url(#warHatch2)" style="pointer-events:none;"/>`;
+  return out;
 }
 function renderWarPlayerBoxes(s){
   const total = Object.keys(s.sections).length;
@@ -8255,7 +8904,7 @@ function renderWarPlayerBoxes(s){
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
       <div class="ps-header">
         <div class="ps-avatar" style="background:${warColorFor(s,i)}; color:#1c1c1c;">${playerEmojiOrInitials(p.playerId)}</div>
-        <div class="ps-name">${plainPlayerName(p.playerId)}</div>
+        <div class="ps-name">${plainPlayerName(p.playerId)}${(s.lockMode==='stealback' && s.locks && Object.values(s.locks).filter(v=>v===i).length) ? ` <span style="font-size:11px; color:var(--cream-dim); font-weight:500;">&middot; ${Object.values(s.locks).filter(v=>v===i).length} locked</span>` : ''}</div>
         <div class="ps-score" style="color:${warColorFor(s,i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${count}/${total}</div>
       </div>
       ${isCurrent ? `<div class="ps-body">${rows}</div>` : ''}
@@ -8270,18 +8919,14 @@ function renderWarPlayerBoxes(s){
   </div>`;
 }
 function renderWarActiveShell(s){
-  return `<div class="game-header-row">
-    <div style="width:80px;">${renderCameraHelpTrigger()}</div>
-    <div class="game-title-center">War</div>
-    <div style="width:80px;"></div>
-  </div>
+  return `${renderGameTopBar(s,'War')}
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderWarBoard(s)}</div></div>
-  ${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
+  ${gameOverlays(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
   ${renderWarPlayerBoxes(s)}
   ${renderPriorityOrTips(s)}
   ${renderUnifiedBottomControls(s)}
-  ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
+  `;
 }
 function renderActiveShell(){
   const s = state.session;
@@ -8290,17 +8935,13 @@ function renderActiveShell(){
   if(s.kind==='war') return renderWarActiveShell(s);
   const GNAMES = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer', personalbest:'Personal Best'};
   const gname = s.kind==='x01' ? (s.startScore+'') : s.kind==='custom' ? (s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':s.cfg.name) : (GNAMES[s.kind]||s.kind);
-  return `<div class="game-header-row">
-    <div style="width:80px;">${renderCameraHelpTrigger()}</div>
-    <div class="game-title-center">${gname}</div>
-    <div style="width:80px;"></div>
-  </div>
-  ${renderEntryArea(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
+  return `${renderGameTopBar(s,gname)}
+  ${renderEntryArea(s)}${gameOverlays(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
   ${renderPlayerBoxes(s)}
   ${renderPriorityOrTips(s)}
   ${renderUnifiedBottomControls(s)}
-  ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
+  `;
 }
 function renderCallShotActiveSection(s, p, i){
   const word = s.word;
@@ -8373,16 +9014,12 @@ function renderCallShotActiveShell(s){
       i===s.currentIdx ? renderCallShotActiveSection(s,p,i) : renderCallShotCollapsedSection(s,p)
     ).join('')}</div>
   </div>`;
-  return `<div class="game-header-row">
-    <div style="width:80px;">${renderCameraHelpTrigger()}</div>
-    <div class="game-title-center">Call Your Shot</div>
-    <div style="width:80px;"></div>
-  </div>
-  ${board}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
+  return `${renderGameTopBar(s,'Call Your Shot')}
+  ${board}${gameOverlays(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
   ${playerBoxes}
   ${renderUnifiedBottomControls(s)}
-  ${state.gameMenuOpen ? renderGameMenu(s) : ''}`;
+  `;
 }
 function cricketMarkSVG(n, color){
   if(n<=0) return '<span class="mark-empty">&middot;</span>';
@@ -8836,8 +9473,8 @@ function killerOwnerLabels(s){
     const pl = state.players.find(x=>x.id===p.playerId);
     let text = pl ? pl.name : '???';
     if(text.length > 11) text = text.slice(0,10)+'…';
-    const color = p.eliminated ? 'rgba(242,236,220,0.35)' : (p===me ? '#CC9A3D' : KILLER_COLORS[idx % KILLER_COLORS.length]);
-    return { num: p.number, text, color };
+    const color = p.eliminated ? 'rgba(242,236,220,0.35)' : KILLER_COLORS[idx % KILLER_COLORS.length];
+    return { num: p.number, text, color, current: p===me };
   });
 }
 function renderEntryArea(s){
@@ -8853,7 +9490,7 @@ function renderEntryArea(s){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
     const cornerNote = renderBoardCornerNote(s);
-    const checkoutCorner = s.kind==='x01' ? `<div class="checkout-table-corner"><a class="linklike" onclick="openCheckoutTable('active','${s.outRule}')">Checkout Table &#9656;</a></div>` : '';
+    const checkoutCorner = '';
     entryHtml = `<div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderDartboardSVG(state.pendingBoard, getCurrentGameTargetHighlight(s), (state.pendingBoard && state.pendingBoard.point) ? [...(s.turnHitPoints||[]), state.pendingBoard.point] : s.turnHitPoints, s.kind==='killer'?killerOwnerLabels(s):null)}</div>${cornerNote}${checkoutCorner}</div>`;
   }
   const toggle = isCricket
@@ -9006,27 +9643,22 @@ function renderBottomControls(s){
   </div>`;
 }
 function renderGameMenu(s){
-  const KIND_TO_RULES_ID = {cricket:'cricket', atc:'atc', shanghai:'shanghai', baseball:'baseball', halveit:'halveit', killer:'killer', callshot:'callshot', war:'war', personalbest:'personalbest'};
-  let rulesId = null;
-  if(s.kind==='x01') rulesId = s.startScore===301?'301':'501';
-  else if(s.kind==='custom' && s.builtinId) rulesId = s.builtinId;
-  else if(s.kind==='custom') rulesId = null;
-  else rulesId = KIND_TO_RULES_ID[s.kind] || null;
+  if(state.confirmHome) return renderHomeConfirmModal(s);
+  if(state.tipsOpen) return renderTipsModal(s);
+  if(state.confirmRestart) return renderRestartConfirm(s);
   if(state.confirmQuitGame){
-    return `<div class="modal-overlay" onclick="if(event.target===this) state.confirmQuitGame=false; render();">
-      <div class="modal">
-        <h3>Quit This Game?</h3>
-        <p style="color:var(--cream);">This game is still in progress. Quitting now deletes it for good — nothing gets saved.</p>
-        <div class="btn-row" style="margin-top:12px;">
-          <button class="btn btn-secondary" onclick="state.confirmQuitGame=false; render();">Keep Playing</button>
-          <button class="btn btn-danger" onclick="forceQuitToHome()">Delete Game</button>
-        </div>
+    return `<div class="modal-overlay gx" onclick="if(event.target===this){ state.confirmQuitGame=false; render(); }">
+      <div class="modal home-modal">
+        <h3>Leave this game?</h3>
+        <p class="note" style="margin-bottom:14px;">This game is still in progress. Leaving deletes it for good, nothing gets saved. To keep it for later, use the Home button instead.</p>
+        <button class="btn btn-danger big-btn" onclick="forceQuitToHome()">Delete game</button>
+        <button class="btn btn-secondary big-btn" onclick="state.confirmQuitGame=false; render();">Keep playing</button>
       </div>
     </div>`;
   }
   if(state.callerMenuOpen){
     const ck = CALLER_KINDS.find(x=>x[0]===s.kind) ? s.kind : 'all';
-    return `<div class="modal-overlay" onclick="if(event.target===this){ state.callerMenuOpen=false; render(); }">
+    return `<div class="modal-overlay gx" onclick="if(event.target===this){ state.callerMenuOpen=false; render(); }">
       <div class="modal" style="max-height:85vh; overflow-y:auto;">
         <h3>Caller${ck==='all'?'':' &middot; '+CALLER_KINDS.find(x=>x[0]===ck)[1]}</h3>
         <label class="checkbox-row"><input type="checkbox" ${state.settings.callerOn!==false?'checked':''} onchange="setSetting('callerOn', this.checked)"><span><b>Caller on</b></span></label>
@@ -9039,16 +9671,20 @@ function renderGameMenu(s){
       </div>
     </div>`;
   }
-  return `<div class="modal-overlay" onclick="if(event.target===this) closeGameMenu();">
-    <div class="modal">
-      <h3>Game Menu</h3>
-      <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="closeGameMenu()">Resume Game</button>
-      ${rulesId ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="state.gameMenuOpen=false; state.screen='rules'; state.rulesGameId='${rulesId}'; render();">View Rules</button>` : ''}
-      <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="state.callerMenuOpen=true; render();">Caller options</button>
-      <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="openSettingsFromGameMenu()">Settings</button>
-      ${s.kind==='custom' && s.cfg.winCondition==='manual' ? `<button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="state.gameMenuOpen=false; endCustomGameManually(state.session); finishCustomGame(state.session); render();">End Game Now &amp; Tally Score</button>` : ''}
-      <button class="btn btn-secondary btn-full" style="margin-bottom:8px;" onclick="returnToLauncherHome()">Return to Home Screen</button>
-      <button class="btn btn-danger btn-full" onclick="quitToHome()">Quit to Home</button>
+  const canRestart = !!s._launch;
+  return `<div class="modal-overlay gx" onclick="if(event.target===this) closeGameMenu();">
+    <div class="modal menu-modal">
+      <h3>Menu</h3>
+      <button class="btn btn-primary btn-full" onclick="closeGameMenu()">Back to game</button>
+      <button class="btn btn-secondary btn-full" onclick="openTips()">Tips and rules</button>
+      <button class="btn btn-secondary btn-full" onclick="state.callerMenuOpen=true; render();">Caller options</button>
+      <button class="btn btn-secondary btn-full" onclick="openSettingsFromGameMenu()">All settings</button>
+      ${s.kind==='custom' && s.cfg.winCondition==='manual' ? `<button class="btn btn-secondary btn-full" onclick="state.gameMenuOpen=false; endCustomGameManually(state.session); finishCustomGame(state.session); render();">End game now and tally score</button>` : ''}
+      <button class="btn btn-secondary btn-full" onclick="returnToLauncherHome()">Back to launcher</button>
+      <div style="border-top:1px solid var(--felt-lighter); margin:6px 0 12px 0;"></div>
+      ${canRestart ? `<button class="btn btn-danger btn-full" onclick="openRestartConfirm()">Restart game</button>` : ''}
+      <button class="btn btn-danger btn-full" onclick="quitToHome()">Leave game</button>
+      <p class="info-note" style="margin:2px 0 0 0;">Both ask you to confirm first.</p>
     </div>
   </div>`;
 }
@@ -10893,14 +11529,17 @@ function renderDartManager(){
   </div>
   <div class="content" style="padding-bottom:0;">${sectionHeader('Your dart setups', active.length)}</div>
   ${active.length===0 ? '<div class="content" style="padding-top:0;"><div class="empty-state"><div class="glyph">&#127919;</div><h3>No dart setups yet</h3><p>Add your first setup to start tracking performance by dart.</p></div></div>' : `
-  <div class="content content-grid wide-cards">
+  <div class="content content-grid wide-cards dart-grid">
     ${active.map(d=>`
-      <div class="card">
-        <div class="card-row" style="align-items:center; gap:10px;">
-          ${dartAvatarHtml(d, 40)}
-          <h3 style="font-size:16px; cursor:pointer; flex:1;" onclick="openDartDetail('${d.id}')">${dartSetupDisplayName(d)}${d.favorite?' &#9733;':''}</h3>
+      <div class="card dart-card">
+        <div class="dart-card-top">
+          ${d.photo ? `<img src="${d.photo}" alt="">` : `<div class="dph">&#127919;</div>`}
+          <div style="flex:1; min-width:0;">
+            <h3 style="font-size:17px; cursor:pointer;" onclick="openDartDetail('${d.id}')">${dartSetupDisplayName(d)}${d.favorite?' &#9733;':''}</h3>
+            <p class="desc" style="margin:4px 0 0 0;">${[d.brand,d.model,d.barrelWeight].filter(Boolean).join(' \u00b7 ')}</p>
+          </div>
         </div>
-        <p class="desc">${dartSetupSubtitle(d) || [d.brand,d.model].filter(Boolean).join(' ')}</p>
+        <p class="desc">${dartSetupSubtitle(d)}</p>
         <div class="btn-row">
           <button class="btn btn-secondary" onclick="openDartDetail('${d.id}')">View Stats</button>
           <button class="btn btn-primary" onclick="openDartBuilder('${d.id}')">Edit</button>
@@ -10953,11 +11592,11 @@ function renderDartTextField(key, label, placeholder){
 function renderDartBuilder(){
   const b = state.dartBuilder;
   return `<div class="topbar"><div class="iconbtn" onclick="cancelDartBuilder()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${b.editingId?'Edit Dart Setup':'Add Dart Setup'}</h1><div style="width:38px;"></div></div>
-  <div class="content">
+  <div class="content"><div class="db-wrap"><div class="db-photo">
     <div style="text-align:center;">
       <span class="field-label" style="display:block;">Photo</span>
       ${b.photo ? `
-        <img src="${b.photo}" style="width:140px; height:140px; object-fit:cover; border-radius:14px; border:2px solid var(--brass); margin:6px 0;">
+        <img src="${b.photo}" style="width:220px; max-width:100%; height:220px; object-fit:cover; border-radius:14px; border:2px solid var(--brass); margin:6px 0;">
         <div class="btn-row">
           <label class="btn btn-secondary" style="cursor:pointer;">Retake / Choose New<input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleDartPhotoUpload(event)"></label>
           <button class="btn btn-danger" onclick="removeDartPhoto()">Remove</button>
@@ -10966,8 +11605,8 @@ function renderDartBuilder(){
         <div style="width:140px; height:140px; border-radius:14px; border:2px dashed var(--felt-lighter); display:flex; align-items:center; justify-content:center; margin:6px auto; font-size:36px;">&#127919;</div>
         <label class="btn btn-primary btn-full" style="cursor:pointer;">Add a Photo<input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleDartPhotoUpload(event)"></label>
       `}
-      <p class="info-note">A photo makes this setup easy to spot at a glance in your lists — and gives you something to check against while you fill in the details below.</p>
-    </div>
+      <p class="info-note">A photo makes this setup easy to spot at a glance in your lists — and gives you something to check against while you fill in the details.</p>
+    </div></div><div style="display:flex; flex-direction:column; gap:14px; min-width:0;">
     <div>
       <span class="field-label">Nickname (optional)</span>
       <input class="input" id="dbNickname" placeholder="e.g. My Tournament Set" value="${b.nickname}" oninput="dbSetText('nickname', this.value)">
@@ -10984,7 +11623,7 @@ function renderDartBuilder(){
     <p class="info-note">Selecting "Unknown" just leaves it blank rather than guessing. Want to add your own preset values to any list? Use "+ Add New…" right in the dropdown, or from the Darts tab's settings.</p>
     <button class="btn btn-primary btn-full" onclick="saveDartBuilder()">Save Setup</button>
     <button class="btn btn-secondary btn-full" onclick="cancelDartBuilder()">Cancel</button>
-  </div>`;
+  </div></div></div>`;
 }
 function renderDartDetail(){
   const d = state.dartSetups.find(x=>x.id===state.dartDetailId);
@@ -11025,6 +11664,7 @@ function renderDartDetail(){
 const BOT_RATING_LABELS = {1:'Total Newbie',2:'Beginner',3:'Casual',4:'Club Regular',5:'Solid Player',6:'Above Average',7:'Strong',8:'Very Strong',9:'Elite',10:'Professional'};
 function renderPlayerManager(){
   return `<div class="content">
+    ${renderPrivacyCard()}
     <div class="unified-list-header">
       <h1 class="ulh-title">Players</h1>
       <div class="ulh-plus" onclick="state.addingPlayer=!state.addingPlayer; render();">+</div>
