@@ -4,36 +4,47 @@
   "name": "Alan",
   "desc": "British, male, warm",
   "lang": "en",
-  "rq": true
+  "rq": true,
+  "war": true
  },
  {
   "id": "northern",
   "name": "Northern",
   "desc": "British, male, northern accent",
-  "lang": "en"
+  "lang": "en",
+  "rq": true,
+  "war": true
  },
  {
   "id": "alba",
   "name": "Alba",
   "desc": "Scottish, female",
-  "lang": "en"
+  "lang": "en",
+  "rq": true,
+  "war": true
  },
  {
   "id": "jenny",
   "name": "Jenny",
   "desc": "British, female",
-  "lang": "en"
+  "lang": "en",
+  "rq": true,
+  "war": true
  },
  {
   "id": "ryan",
   "name": "Ryan",
   "desc": "American, male, high quality",
-  "lang": "en"
+  "lang": "en",
+  "rq": true,
+  "war": true
  },
  {
   "id": "lessac",
   "name": "Lessac",
   "desc": "American, female, high quality",
-  "lang": "en"
+  "lang": "en",
+  "rq": true,
+  "war": true
  }
 ]
