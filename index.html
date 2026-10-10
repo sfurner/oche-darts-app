@@ -701,6 +701,18 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .chalkboard-standalone{ padding-top:2px; }
 .cb-miss{ position:absolute; top:8px; left:8px; z-index:5; height:36px; padding:0 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.28); background:rgba(0,0,0,0.38); color:#f2f2ee; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer; }
 .cb-miss:active{ transform:scale(0.95); background:rgba(255,255,255,0.18); }
+/* v7.0: size the app from the real visible height (window.innerHeight) instead of vh/dvh, which some browsers
+   (Firefox full screen / kiosk) report differently. Falls back to dvh until the script has run. */
+.app-shell{ height:var(--app-h,100dvh); max-height:var(--app-h,100dvh); }
+@media (min-width:1024px){
+  .device{ height:calc(var(--app-h,100dvh) - 48px); max-height:calc(var(--app-h,100dvh) - 48px); }
+  .app-shell.fullscreen-mode .device{ height:var(--app-h,100dvh); max-height:var(--app-h,100dvh); }
+}
+/* Home: give the Play tile a definite height so the board picture can never collapse to nothing */
+.hub-body{ grid-template-rows:minmax(0,1fr); }
+.hub-art{ min-height:90px; }
+/* Cricket chalkboard: shrinks itself to fit the space it has (see fitChalkboard) */
+.chalkboard-panel{ transform:scale(calc(var(--chalkboard-scale, 1) * var(--cb-fit, 1))); }
 .dartboard-svg{ width:min(90vw, 320px, 48vh); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
 @media (min-width:641px){ .dartboard-svg{ width:min(85vw, 440px, 48vh); } }
 .precision-zoom-svg{ width:100%; max-width:320px; height:auto; touch-action:none; cursor:crosshair; background:var(--ink); border-radius:12px; }
@@ -1071,7 +1083,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v6.9';
+const BUILD_STAMP = 'v7.0';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1281,10 +1293,29 @@ const SFX_EVENTS = {
   win: {setting:'sfxWin', label:'Game is won', def:'trumpets', group:'win'},
   takeout:{setting:'sfxTakeout', label:'Darts removed (camera sees the takeout)', def:'chime', group:'takeout'},
 };
+function masterVol(){ const v = state.settings.masterVolume; return v===undefined ? 1 : Math.max(0, Math.min(1, v)); }
+function setMasterVolumeLive(pct){
+  state.settings.masterVolume = Math.max(0, Math.min(100, +pct))/100;
+  try{ if(callerAudio) callerAudio.volume = masterVol(); }catch(e){}
+  document.querySelectorAll('.mvol-val').forEach(e=>{ e.textContent = Math.round(masterVol()*100)+'%'; });
+  document.querySelectorAll('.mvol-range').forEach(e=>{ if(+e.value!==Math.round(masterVol()*100)) e.value = Math.round(masterVol()*100); });
+}
+function setMasterVolumeDone(){ persistState(); try{ previewSfx(state.settings.sfxHit||'thud'); }catch(e){} }
+function masterVolumeRow(){
+  const pct = Math.round(masterVol()*100);
+  return `<div class="mvol-row">
+    <span class="field-label">Volume <b class="mvol-val">${pct}%</b></span>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <input class="mvol-range" type="range" min="0" max="100" step="5" value="${pct}" style="flex:1;" aria-label="Volume for sound effects and the caller"
+        oninput="setMasterVolumeLive(this.value)" onchange="setMasterVolumeDone()">
+      <button class="btn btn-secondary" style="flex:none; padding:8px 12px;" onclick="callerSay([{t:'One hundred and eighty!', c:['n_180']}])">Test caller</button>
+    </div>
+  </div>`;
+}
 function playSfxById(id){
   const c = sfxEnsureContext(); const fx = SFX_LIBRARY[id];
   if(!c || !fx || id==='none') return;
-  const vol = Math.max(0, Math.min(1, state.settings.soundVolume===undefined ? 0.7 : state.settings.soundVolume));
+  const vol = Math.max(0, Math.min(1, state.settings.soundVolume===undefined ? 0.7 : state.settings.soundVolume)) * masterVol();
   _sfxMaster.gain.cancelScheduledValues(c.currentTime);
   _sfxMaster.gain.setValueAtTime(vol, c.currentTime);
   try{ fx.play(c); } catch(e){}
@@ -1578,6 +1609,7 @@ function callerUtter(text, v){
   const u = new SpeechSynthesisUtterance(text);
   if(v){ u.voice = v; u.lang = v.lang; } else { u.lang = 'en-GB'; }
   u.rate = state.settings.callerRate || 1;
+  try{ u.volume = masterVol(); }catch(e){}
   u.pitch = state.settings.callerPitch || 1;
   return u;
 }
@@ -1595,6 +1627,7 @@ function callerPlayClips(pack, keys, ok, bad){
     try{ a = new Audio('voices/'+encodeURIComponent(pack.id)+'/'+keys[i]+'.mp3'); }catch(e){ return end(bad); }
     i++; callerAudio = a;
     try{ a.playbackRate = state.settings.callerRate || 1; }catch(e){}
+    try{ a.volume = masterVol(); }catch(e){}
     let done = false, to;
     const adv = good=>{
       if(done) return; done = true; clearTimeout(to);
@@ -1678,8 +1711,8 @@ const CALLER_OPT_INFO = [
   {k:'miss',    label:'Call misses',                             hint:'"No score" when a dart misses the board'},
   {k:'endcalls',label:'Call Bust and Game shot',                 hint:'Still called even if darts are off', x01:true},
   {k:'turn',    label:'Call the turn total',                     hint:'"Sixty" / "One hundred and eighty!" after the third dart', x01:true},
-  {k:'req',     label:'Call "you require" after each turn',      hint:'Once a 3-dart finish is possible (170 or less)', x01:true},
-  {k:'left',    label:'Call the score left above 170',           hint:'"341 left" at the end of a turn when no finish is possible yet', x01:true},
+  {k:'req',     label:'Call "you require" at the start of each turn', hint:'Said for the player whose turn is starting, once a 3-dart finish is possible (170 or less)', x01:true},
+  {k:'left',    label:'Call the score left above 170',           hint:'"341 left" at the start of a turn when no finish is possible yet', x01:true},
   {k:'reqDart', label:'Call "you require" after every dart',     hint:'Updates mid-turn, like Autodarts', x01:true},
   {k:'aimDart', label:'Call the suggested target for each dart', hint:'"Aim double sixteen" - only once the target stops being plain treble 20s', x01:true},
   {k:'botDart', label:'Call the bots\' darts',                   hint:'Turn off to hear only human darts'},
@@ -1737,6 +1770,18 @@ function callerRequireItems(s, p, o){
   if(o.left) return lead.concat([{t:words+' left', c:nc?[nc,'left']:null}]);
   return null;
 }
+function x01NextIdx(s){
+  let tries = 0, idx = s.currentIdx;
+  do{ idx = (idx+1) % s.participants.length; tries++; } while(s.participants[idx].finished && tries<=s.participants.length);
+  return idx;
+}
+function callerNextRequire(s, out, o){
+  const np = s.participants[x01NextIdx(s)];
+  if(!np || np.finished) return;
+  if(isBotPlayerId(np.playerId) && !o.botTurn) return;
+  const r = callerRequireItems(s, np, {req:o.req, left:o.left});
+  if(r) r.forEach(x=>out.push(x));
+}
 function callerTurnTotal(s){ return s.currentTurnDarts.reduce((a,d)=>a+(d.value||0),0); }
 // Everything said after a dart in X01, per the options. Runs right after the dart is applied and
 // before the turn advances, so the player and the turn's darts are still the ones that just threw.
@@ -1747,7 +1792,7 @@ function callerX01Tail(s, p, o, bot, turnOver, calls, missed, held){
       const t = callerTurnTotal(s);
       if(t>0 || !missed) out.push(callerTotalItem(t));
     }
-    if(!bot || o.botTurn){ const r = callerRequireItems(s, p, {req:o.req, left:o.left}); if(r) r.forEach(x=>out.push(x)); }
+    callerNextRequire(s, out, o);   // v7.0: the NEXT player hears what they require as their turn starts
   } else if(!bot){
     if(o.reqDart){ const r = callerRequireItems(s, p, {req:true, left:false}); if(r) r.forEach(x=>calls.push(x)); }
     if(o.aimDart){
@@ -1781,7 +1826,16 @@ function callerAnnounceX01(s, num, seg, res){
   const p = x01Current(s), o = callerOpts('x01'), bot = callerIsBot(s);
   const calls = [];
   if(o.dart && (!bot || o.botDart)) calls.push(callerDartItem(num, seg));
-  if(res.bust){ if(o.endcalls) calls.push({t:'Bust', c:['bust']}); }
+  if(res.bust){
+    if(o.endcalls) calls.push({t:'Bust', c:['bust']});
+    if(res.turnOver){
+      const heldB = callerHoldActive() ? [] : null;
+      callerNextRequire(s, heldB || calls, o);
+      callerSay(calls);
+      if(heldB && heldB.length) callerHoldItems(heldB);
+      return;
+    }
+  }
   else if(res.win){
     if(o.endcalls){
       calls.push({t:'Game shot!', c:['gameshot']});
@@ -4527,7 +4581,9 @@ function finalizeBustThenAdvance(s){
    tightens as rating goes up, then feeds the result through the same
    dispatchThrow()/recordMiss() pipeline a human throw uses — no separate scoring path. */
 const BOT_RATING_STDDEV_MM = { min:6, max:65 }; // rating 10 -> 6mm groups (pro), rating 1 -> 65mm (newbie, often off-target entirely)
-function randomDelayMs(minSec, maxSec){ return (minSec + Math.random()*(maxSec-minSec)) * 1000; }
+const BOT_SPEEDS = {normal:1, fast:0.6, faster:0.35, turbo:0.15};
+function botSpeedFactor(){ return BOT_SPEEDS[state.settings.botSpeed] || 1; }
+function randomDelayMs(minSec, maxSec){ return (minSec + Math.random()*(maxSec-minSec)) * 1000 * botSpeedFactor(); }
 // Bot pacing, tuned to feel like watching a real opponent rather than an instant score update.
 const BOT_TIMING = {
   lineUp: [4, 6],      // pause before the first dart of a turn/attempt, as if lining up the shot
@@ -5812,7 +5868,7 @@ function renderHub(){
   return `<div class="hub">
     <div class="hub-head">
       <div class="hub-brand"><span class="dot"></span>OCHE</div>
-      <div class="hub-head-right"><span>${BUILD_STAMP}</span>
+      <div class="hub-head-right"><span>${BUILD_STAMP}</span><span id="diagStamp" style="opacity:.5; font-size:11px;"></span>
         <div class="hub-pill" onclick="toggleFullscreen()" title="Full screen">&#9974; ${state.isFullscreen?'Exit full screen':'Full screen'}</div>
       </div>
     </div>
@@ -5933,6 +5989,39 @@ function detectKioskFullscreen(){
 }
 window.addEventListener('load', detectKioskFullscreen);
 window.addEventListener('resize', detectKioskFullscreen);
+function setAppHeight(){ try{ document.documentElement.style.setProperty('--app-h', window.innerHeight+'px'); }catch(e){} }
+setAppHeight();
+// Cricket chalkboard: if the board does not fit the space it has, shrink it (never below 55%) so there is no scrolling.
+function fitChalkboard(){
+  const w = document.getElementById('chalkboardWrap');
+  if(!w) return;
+  w.style.setProperty('--cb-fit','1'); w.style.marginBottom='';
+  if(getComputedStyle(w).position==='absolute') return;   // the player dragged it free; leave it alone
+  let sc = w.parentElement;
+  while(sc && sc!==document.body && sc!==document.documentElement){
+    const cs = getComputedStyle(sc);
+    if(/(auto|scroll)/.test(cs.overflowY) && sc.scrollHeight>sc.clientHeight+2) break;
+    sc = sc.parentElement;
+  }
+  if(!sc || sc===document.body || sc===document.documentElement) return;
+  const us = state.settings.chalkboardScale||1, h = w.offsetHeight;
+  let fit = 1;
+  for(let k=0;k<3;k++){
+    const over = sc.scrollHeight - sc.clientHeight;
+    if(over<=2) break;
+    const cur = h*us*fit;
+    fit = Math.max(0.55/us, fit * Math.max(0.3,(cur-over-6)/cur));
+    w.style.setProperty('--cb-fit', String(fit));
+    w.style.marginBottom = ((us*fit-1)*h)+'px';
+  }
+}
+function updateDiag(){
+  const e = document.getElementById('diagStamp'); if(!e) return;
+  const d = document.querySelector('.device'), t = d ? Math.round(d.getBoundingClientRect().top) : '-';
+  e.textContent = window.innerWidth+'x'+window.innerHeight+' | screen '+screen.width+'x'+screen.height+' | top '+t;
+}
+window.addEventListener('resize', ()=>{ setAppHeight(); try{ fitChalkboard(); updateDiag(); }catch(e){} });
+(function(){ const r0 = render; render = function(){ r0.apply(this, arguments); try{ fitChalkboard(); updateDiag(); }catch(e){} }; })();
 function openRules(gameId){ state.rulesGameId = gameId; state.screen='rules'; render(); }
 function backFromRules(){ state.screen='home'; render(); }
 function defaultSelectedPlayerIds(){
@@ -8094,14 +8183,18 @@ function settingsPageLook(){
 function settingsPageSound(){
   const s = state.settings;
   return `<div class="sh-card">
+    ${masterVolumeRow()}
+    <p class="info-note" style="margin:0;">One volume for the effects and the caller. You can also change it in a game: Menu at the top, then Volume.</p>
+  </div>
+  <div class="sh-card">
     <div class="checkbox-row"><input type="checkbox" ${s.callerAfterTakeout!==false?'checked':''} onchange="setSetting('callerAfterTakeout', this.checked)"> With the camera on, say the turn total after the darts are pulled (takeout sound first)</div>
     <div class="checkbox-row">
       <input type="checkbox" ${s.soundOn!==false?'checked':''} onchange="setSetting('soundOn', ${s.soundOn===false})">
       Play sound effects
     </div>
     <div>
-      <span class="field-label">Volume</span>
-      <input type="range" min="0" max="100" value="${Math.round((s.soundVolume===undefined?0.7:s.soundVolume)*100)}" style="width:100%;" aria-label="Sound effects volume"
+      <span class="field-label">Sound effects level (on top of the volume above)</span>
+      <input type="range" min="0" max="100" value="${Math.round((s.soundVolume===undefined?0.7:s.soundVolume)*100)}" style="width:100%;" aria-label="Sound effects level"
         onchange="state.settings.soundVolume = this.value/100; persistState(); previewSfx(state.settings.sfxHit||'thud');">
     </div>
     ${Object.entries(SFX_EVENTS).map(([key,ev])=>{
@@ -8169,7 +8262,13 @@ function settingsPageBoard(){
 function settingsPageDefaults(){
   const s = state.settings, ps = state.playerSettings;
   function chip(label, key, val){ return `<span class="chip ${s[key]===val?'selected':''}" onclick="setSetting('${key}','${val}')">${label}</span>`; }
+  const bs = s.botSpeed || 'normal';
   return `<div class="sh-card">
+      <span class="field-label">Bot speed</span>
+      <div class="chip-wrap">${[['normal','Normal'],['fast','Fast'],['faster','Faster'],['turbo','Turbo']].map(([v,l])=>`<span class="chip ${bs===v?'selected':''}" onclick="setSetting('botSpeed','${v}')">${l}</span>`).join('')}</div>
+      <p class="info-note">How quickly bots line up, throw and hand over. Normal pauses about 4 to 6 seconds before a turn; Fast cuts every bot pause by 40%, Faster by about two thirds, Turbo by about 85%.</p>
+    </div>
+    <div class="sh-card">
       <span class="field-label">Default 501 guidance</span>
       <div class="chip-wrap">${chip('None','guidanceLevel','none')}${chip('Basic','guidanceLevel','basic')}${chip('Beginner','guidanceLevel','beginner')}${chip('Standard','guidanceLevel','standard')}</div>
       <div class="checkbox-row"><input type="checkbox" ${s.autoEndTurn?'checked':''} onchange="setSetting('autoEndTurn', ${!s.autoEndTurn})"> Automatically end turn after three darts</div>
@@ -10331,6 +10430,7 @@ function renderGameMenu(s){
     <div class="modal menu-modal">
       <h3>Menu</h3>
       <button class="btn btn-primary btn-full" onclick="closeGameMenu()">Back to game</button>
+      <div style="padding:2px 2px 6px 2px;">${masterVolumeRow()}</div>
       <button class="btn btn-secondary btn-full" onclick="openTips()">Tips and rules</button>
       ${(s._launch && !s._launch.custom && s._launch.gameId) ? `<button class="btn btn-secondary btn-full" onclick="openLiveOptions()">Game options</button>` : ''}
       <button class="btn btn-secondary btn-full" onclick="state.callerMenuOpen=true; render();">Caller options</button>
