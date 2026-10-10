@@ -3,7 +3,8 @@
   "id": "alan",
   "name": "Alan",
   "desc": "British, male, warm",
-  "lang": "en"
+  "lang": "en",
+  "rq": true
  },
  {
   "id": "northern",
