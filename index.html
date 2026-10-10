@@ -697,6 +697,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
   font-weight:700; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer;
 }
 .board-miss-btn:active{ transform:scale(0.95); }
+.live-opts .remembered-pill{ display:none; }
+.chalkboard-standalone{ padding-top:2px; }
+.cb-miss{ position:absolute; top:8px; left:8px; z-index:5; height:36px; padding:0 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.28); background:rgba(0,0,0,0.38); color:#f2f2ee; font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; cursor:pointer; }
+.cb-miss:active{ transform:scale(0.95); background:rgba(255,255,255,0.18); }
 .dartboard-svg{ width:min(90vw, 320px, 48vh); aspect-ratio:1/1; height:auto; display:block; margin:0 auto; }
 @media (min-width:641px){ .dartboard-svg{ width:min(85vw, 440px, 48vh); } }
 .precision-zoom-svg{ width:100%; max-width:320px; height:auto; touch-action:none; cursor:crosshair; background:var(--ink); border-radius:12px; }
@@ -804,20 +808,23 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 .hub-head-right{ display:flex; align-items:center; gap:12px; font-size:13px; color:var(--cream-dim); }
 .hub-pill{ height:44px; padding:0 16px; border-radius:22px; border:1px solid var(--felt-lighter); background:var(--felt); color:var(--cream); display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; cursor:pointer; }
 .hub-body{ flex:1; min-height:0; display:grid; grid-template-columns:minmax(300px,0.95fr) minmax(0,1.3fr); gap:20px; }
-.hub-play{ position:relative; border-radius:28px; border:1px solid var(--felt-lighter); background:linear-gradient(155deg, var(--felt) 0%, var(--felt-dark) 100%); padding:30px 32px; display:flex; flex-direction:column; overflow:hidden; box-sizing:border-box; }
+.hub-play{ position:relative; border-radius:28px; border:1px solid var(--felt-lighter); background:linear-gradient(155deg, var(--felt) 0%, var(--felt-dark) 100%); padding:26px 30px 22px 30px; display:flex; flex-direction:column; overflow:hidden; box-sizing:border-box; min-height:0; }
 .hub-board{ position:absolute; right:-18%; top:-14%; width:62%; aspect-ratio:1/1; border-radius:50%; background:#0A0A09; padding:4%; box-sizing:border-box; box-shadow:0 30px 80px rgba(0,0,0,0.5); opacity:0.9; pointer-events:none; }
 .hub-board i{ position:absolute; border-radius:50%; }
 .hub-kicker{ position:relative; font-size:13px; font-weight:700; letter-spacing:0.22em; color:var(--brass); }
-.hub-h{ position:relative; font-family:'Oswald',sans-serif; font-weight:700; font-size:clamp(40px,8vh,84px); line-height:0.95; text-transform:uppercase; margin-top:8px; max-width:62%; color:var(--cream); }
-.hub-chips{ position:relative; display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; max-width:66%; }
-.hub-chip{ height:48px; padding:0 22px; border-radius:24px; border:1px solid var(--felt-lighter); background:var(--felt); color:var(--cream); font-size:17px; font-weight:600; display:flex; align-items:center; cursor:pointer; }
+.hub-h{ position:relative; font-family:'Oswald',sans-serif; font-weight:700; font-size:clamp(26px,4.4vh,44px); line-height:1; letter-spacing:0.04em; text-transform:uppercase; margin-top:8px; color:var(--cream); }
+.hub-chips{ position:relative; display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+.hub-chip{ height:44px; padding:0 20px; border-radius:24px; border:1px solid var(--felt-lighter); background:var(--felt); color:var(--cream); font-size:17px; font-weight:600; display:flex; align-items:center; cursor:pointer; }
 .hub-chip.primary{ background:var(--brass); border-color:var(--brass); color:#0B1220; }
 .hub-resume{ position:relative; margin-top:18px; display:flex; align-items:center; gap:10px; }
 .hub-resume-btn{ min-height:56px; padding:8px 20px; border-radius:28px; background:var(--brass); color:#0B1220; display:flex; align-items:center; gap:12px; font-size:17px; font-weight:700; cursor:pointer; border:none; font-family:'Inter',sans-serif; text-align:left; }
 .hub-resume-btn small{ display:block; font-size:12px; font-weight:500; opacity:0.75; }
 .hub-resume-x{ width:40px; height:40px; border-radius:50%; border:1px solid var(--felt-lighter); background:var(--felt); color:var(--cream-dim); font-size:16px; cursor:pointer; }
 .hub-spacer{ flex:1; }
-.hub-lobby-slot{ position:relative; border-radius:20px; border:1px dashed var(--felt-lighter); padding:12px 18px; color:var(--cream-dim); font-size:13px; }
+.hub-art{ position:relative; flex:1; min-height:0; margin:8px 0 14px 0; pointer-events:none; }
+.hub-art svg{ position:absolute; inset:0; width:100%; height:100%; }
+.hub-lobby-wrap{ flex:none; position:relative; }
+.hub-lobby-slot{ position:relative; flex:none; border-radius:20px; border:1px dashed var(--felt-lighter); padding:12px 18px; color:var(--cream-dim); font-size:13px; }
 .hub-tiles{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(4,minmax(0,1fr)); gap:14px; min-height:0; }
 .hub-tile{ border-radius:24px; border:1px solid var(--felt-lighter); background:var(--felt); padding:18px 22px; display:flex; flex-direction:column; justify-content:space-between; cursor:pointer; box-sizing:border-box; min-height:0; overflow:hidden; }
 .hub-tile:active, .hub-chip:active, .hub-pill:active{ transform:scale(0.985); }
@@ -1064,7 +1071,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v6.8';
+const BUILD_STAMP = 'v6.9';
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1119,7 +1126,27 @@ function buildCustomTheme(){
     '--bodybg1': light ? _mix(c.bg,dk,0.03) : _mix(c.bg,dk,0.5),
     '--bodybg2': light ? _mix(c.bg,dk,0.12) : _mix(c.bg,dk,0.65) } };
 }
+/* Board colours: four colours drive every dartboard picture in the app (CSS variables --bd-*). */
+const BOARD_PRESETS = [
+  {id:'standard', name:'Oche standard', c:{s1:'#E8E1D0', s2:'#232D28', d1:'#4A8A66', d2:'#A84545', bo:'#4A8A66', bi:'#A84545'}},
+  {id:'classic',  name:'Classic black and cream', c:{s1:'#1C1A17', s2:'#E7DFC8', d1:'#B8322D', d2:'#2E7D52', bo:'#2E7D52', bi:'#B8322D'}},
+  {id:'blue',     name:'Blue and white', c:{s1:'#EDEDED', s2:'#14233F', d1:'#D83B3B', d2:'#2F6FD0', bo:'#2F6FD0', bi:'#D83B3B'}},
+  {id:'mono',     name:'Black and white', c:{s1:'#F2F2F2', s2:'#141414', d1:'#8A8A8A', d2:'#4A4A4A', bo:'#8A8A8A', bi:'#E0E0E0'}},
+];
+function boardColors(){
+  const saved = state.settings.boardColors || {};
+  return Object.assign({}, BOARD_PRESETS[0].c, saved);
+}
+function applyBoardColors(){
+  const c = boardColors(), r = document.documentElement.style;
+  r.setProperty('--bd-s1', c.s1); r.setProperty('--bd-s2', c.s2); r.setProperty('--bd-d1', c.d1); r.setProperty('--bd-d2', c.d2); r.setProperty('--bd-bo', c.bo); r.setProperty('--bd-bi', c.bi);
+}
+function setBoardColor(k, v){ state.settings.boardColors = Object.assign({}, boardColors(), {[k]:v}); applyBoardColors(); persistState(); }
+function setBoardColorLive(k, v){ state.settings.boardColors = Object.assign({}, boardColors(), {[k]:v}); applyBoardColors(); const sw=document.getElementById('bc_'+k); if(sw) sw.value = v; }
+function pickBoardPreset(id){ const p = BOARD_PRESETS.find(x=>x.id===id); if(!p) return; state.settings.boardColors = Object.assign({}, p.c); persistState(); render(); }
+function resetBoardColors(){ state.settings.boardColors = null; persistState(); render(); }
 function applyTheme(){
+  applyBoardColors();
   const t = state.settings.theme==='custom' ? buildCustomTheme() : (THEMES.find(x=>x.id===state.settings.theme) || THEMES[0]);
   const root = document.documentElement.style;
   Object.entries(t.vars).forEach(([k,v])=>{
@@ -1288,7 +1315,7 @@ let state = {
   navTab: 'hub',
   players: [], // {id,name,color}
   selectedPlayerIds: [],
-  playerOrderMode: 'inorder',
+  playerOrderMode: 'random',
   rulesGameId: null,
   pendingGameId: null,
   gameOptions: null,
@@ -1596,8 +1623,8 @@ function callerPump(){
   const gen = callerGen;
   let once = false;
   const done = ()=>{ if(once || gen!==callerGen) return; once = true; callerPlaying = false; setTimeout(callerPump, CALLER_ITEM_GAP_MS); };
-  const speak = ()=>callerSpeakText(item.t, done);
   const pack = callerActivePack();
+  const speak = ()=>{ if(pack) done(); else callerSpeakText(item.t, done); };   // recorded voice selected: a missing clip is silent, never a robot voice
   if(pack && item.c && item.c.length) callerCancel = callerPlayClips(pack, item.c, done, speak);
   else if(pack) done();   // recorded voice selected, nothing recorded for this line: stay silent rather than switch voices
   else speak();
@@ -1786,6 +1813,37 @@ function callerAnnounceX01Miss(s){
 function callerAnnounceDart(s, num, seg){
   const o = callerOpts(s.kind), bot = callerIsBot(s);
   if(o.dart && (!bot || o.botDart)) callerSay([callerDartItem(num, seg)]);
+}
+// War: Whole Wedges just says the number. Inside and Outside say "Inner twelve" / "Outer twelve".
+// Master Mode says "Inner single twelve", "Triple twelve" and so on. A dart that locks a section says
+// "Locked ..."; a dart on a section somebody has already locked says "No score". Needs the clips
+// inner / outer / locked (voice pack flagged "war": true); older packs just say the number.
+function callerAnnounceWar(s, ann){
+  const o = callerOpts('war'), bot = callerIsBot(s);
+  if(!ann || !o.dart || (bot && !o.botDart)) return;
+  if(ann.type==='none' || ann.type==='lockedhit'){ callerSay([{t:'No score', c:['noscore']}]); return; }
+  const pk = callerActivePack(), rich = !pk || !!pk.war;
+  const num = ann.num, key = String(ann.key||'');
+  if(num==='B'){
+    const it = callerDartItem('B', ann.segType);
+    callerSay([ann.lockedNow && rich ? {t:'Locked '+it.t.toLowerCase(), c:['locked'].concat(it.c)} : it]); return;
+  }
+  const n = parseInt(num,10), w = callerWords(n), nc = 'n_'+n;
+  let t = callerCap(w), c = [nc];
+  if(rich){
+    if(s.ringMode==='split'){
+      const side = /o$/.test(key) ? 'outer' : 'inner';
+      t = callerCap(side)+' '+w; c = [side, nc];
+    } else if(s.ringMode==='all'){
+      if(ann.segType==='triple'){ t = 'Triple '+w; c = ['t_'+n]; }
+      else if(ann.segType==='double'){ t = 'Double '+w; c = ['d_'+n]; }
+      else { const side = /os$/.test(key) ? 'outer' : 'inner'; t = callerCap(side)+' single '+w; c = [side, 's_'+n]; }
+    }
+    if(ann.lockedNow){ t = 'Locked '+t.charAt(0).toLowerCase()+t.slice(1); c = ['locked'].concat(c); }
+  } else {
+    const it = callerDartItem(num, ann.segType); t = it.t; c = it.c;
+  }
+  callerSay([{t, c}]);
 }
 function callerAnnounceMiss(s){
   const o = callerOpts(s.kind), bot = callerIsBot(s);
@@ -2445,13 +2503,13 @@ function warApplyDart(s, num, segType){
   if(key===null){
     const excludedLabel = num==='B' ? (segType==='bull'?'Inner Bull':'Outer Bull') : fullDartLabel(num, segType);
     s.currentTurnDarts.push({label:excludedLabel, hitTarget:false, key:null, prevOwner:null});
-    return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
+    return {turnOver: s.currentTurnDarts.length>=3 || s.complete, ann:{type:'none'}};
   }
   const label = warDartLabel(s, num, segType, ring);
   // Locked section: nobody can take it any more, so the dart is wasted.
   if(s.locks && s.locks[key]!==undefined){
     s.currentTurnDarts.push({label:label+' (locked)', hitTarget:false, key:null, prevOwner:null, wasLocked:true});
-    return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
+    return {turnOver: s.currentTurnDarts.length>=3 || s.complete, ann:{type:'lockedhit'}};
   }
   const prevOwner = s.sections[key];
   const rec = {label, key, prevOwner, hitTarget:true, heldAdded:null, lockedNow:false};
@@ -2469,7 +2527,7 @@ function warApplyDart(s, num, segType){
   }
   s.currentTurnDarts.push(rec);
   warCheckWin(s);
-  return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
+  return {turnOver: s.currentTurnDarts.length>=3 || s.complete, ann:{type:'hit', key, num, segType, lockedNow:rec.lockedNow}};
 }
 function warEndTurn(s){
   s.participants[s.currentIdx].lastTurnDarts = s.currentTurnDarts.map(d=>d.label);
@@ -3863,8 +3921,8 @@ function renderBlackoutBoard(s, hitPoint){
     const key = String(num);
     const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
     const even = i%2===0;
-    const dtFill = even? '#4A8A66' : '#A84545';
-    const singleFill = even? '#E8E1D0' : '#232D28';
+    const dtFill = even? 'var(--bd-d1,#4A8A66)' : 'var(--bd-d2,#A84545)';
+    const singleFill = even? 'var(--bd-s1,#E8E1D0)' : 'var(--bd-s2,#232D28)';
     const z = s.zones[key];
     const inPlay = !!z;
     let innerSingleDone=false, tripleDone=false, outerSingleDone=false, doubleDone=false;
@@ -3891,8 +3949,8 @@ function renderBlackoutBoard(s, hitPoint){
   }
   const bullAttrs = bullInPlay ? `class="board-seg" data-num="B"` : '';
   const bullCursor = bullInPlay ? 'cursor:pointer;' : '';
-  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerBullDone?closedColor:'#4A8A66'}" stroke="var(--ink)" ${bullAttrs} data-seg="single" style="${bullCursor}"/>`;
-  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerBullDone?closedColor:'#A84545'}" stroke="var(--ink)" ${bullAttrs} data-seg="bull" style="${bullCursor}"/>`;
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerBullDone?closedColor:'var(--bd-bo,#4A8A66)'}" stroke="var(--ink)" ${bullAttrs} data-seg="single" style="${bullCursor}"/>`;
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerBullDone?closedColor:'var(--bd-bi,#A84545)'}" stroke="var(--ink)" ${bullAttrs} data-seg="bull" style="${bullCursor}"/>`;
   const hitPointsArr = hitPoint ? (Array.isArray(hitPoint) ? hitPoint : [hitPoint]) : [];
   const hitMarker = hitPointsArr.map(pt=>`<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`).join('');
   const missOuterEdge = R_BEZEL + 22;
@@ -3930,8 +3988,8 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
     const num = BOARD_ORDER[i];
     const aStart = -9 + i*18 + WEDGE_ROTATION, aEnd = aStart+18;
     const even = i%2===0;
-    const singleFill = even? '#E8E1D0' : '#232D28';
-    const dtFill = even? '#4A8A66' : '#A84545';
+    const singleFill = even? 'var(--bd-s1,#E8E1D0)' : 'var(--bd-s2,#232D28)';
+    const dtFill = even? 'var(--bd-d1,#4A8A66)' : 'var(--bd-d2,#A84545)';
     const isSel = (seg)=> pending && String(pending.num)===String(num) && pending.seg===seg;
     wedges += `<path d="${wedgePath(cx,cy,rTripleOut,rDoubleIn,aStart,aEnd)}" fill="${singleFill}" stroke="var(--ink)" stroke-width="1" class="board-seg" data-num="${num}" data-seg="single" style="cursor:pointer;${isSel('single')?'filter:brightness(1.4);':''}"/>`;
     wedges += `<path d="${wedgePath(cx,cy,rDoubleIn,rDoubleOut,aStart,aEnd)}" fill="${dtFill}" stroke="var(--ink)" stroke-width="1" class="board-seg" data-num="${num}" data-seg="double" style="cursor:pointer;${isSel('double')?'filter:brightness(1.5);':''}"/>`;
@@ -3957,8 +4015,8 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   }
   const bullOuterSel = pending && pending.seg==='bullouter';
   const bullInnerSel = pending && pending.seg==='bullinner';
-  wedges += `<circle cx="${cx}" cy="${cy}" r="${rBullOuter}" fill="#4A8A66" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;${bullOuterSel?'filter:brightness(1.4);':''}"/>`;
-  wedges += `<circle cx="${cx}" cy="${cy}" r="${rBullInner}" fill="#A84545" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;${bullInnerSel?'filter:brightness(1.4);':''}"/>`;
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${rBullOuter}" fill="var(--bd-bo,#4A8A66)" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;${bullOuterSel?'filter:brightness(1.4);':''}"/>`;
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${rBullInner}" fill="var(--bd-bi,#A84545)" stroke="var(--ink)" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;${bullInnerSel?'filter:brightness(1.4);':''}"/>`;
   highlights.forEach(th=>{
     if(th.num==='B'){
       const seg = th.seg;
@@ -4308,7 +4366,7 @@ function dispatchThrowCore(num, segType){
   const thisPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
   if(thisPoint) s.turnHitPoints.push(thisPoint);
-  if(s.kind!=='x01') callerAnnounceDart(s, num, segType);
+  if(s.kind!=='x01' && s.kind!=='war') callerAnnounceDart(s, num, segType);
   if(s.kind==='x01'){
     let throwObj;
     if(num==='B' && segType==='bull') throwObj = {label:fullDartLabel('B','bull'),value:50,type:'bull',hitTarget:true};
@@ -4376,6 +4434,7 @@ function dispatchThrowCore(num, segType){
     if(res.turnOver){ personalBestEndTurn(s); if(s.complete) finishPersonalBestGame(s); }
   } else if(s.kind==='war'){
     const res = warApplyDart(s, num, segType);
+    callerAnnounceWar(s, res.ann);
     if(res.turnOver){ warEndTurn(s); if(s.complete) finishWarGame(s); }
   }
   if(s.currentTurnDarts.length>0){
@@ -5514,13 +5573,13 @@ function renderGameTopBar(s, title){
   </div>`;
 }
 function gameOverlays(s){
-  return (state.gameMenuOpen || state.confirmHome || state.tipsOpen || state.confirmRestart) ? renderGameMenu(s) : '';
+  return (state.gameMenuOpen || state.confirmHome || state.tipsOpen || state.confirmRestart || state.liveOptsOpen) ? renderGameMenu(s) : '';
 }
 
 /* ---- Home / leave / save / resume ---- */
 function goHubHome(){
   state.confirmHome=false; state.gameMenuOpen=false; state.tipsOpen=false; state.confirmQuitGame=false; state.confirmRestart=false;
-  state.callerMenuOpen=false;
+  state.callerMenuOpen=false; liveOptsRestore();
   state.session=null; state.pendingBoard=null; state.pendingSelection=null; _turnSnap=null;
   state.screen='home'; state.navTab='hub';
   render();
@@ -5586,6 +5645,71 @@ function renderHomeConfirmModal(s){
 }
 
 /* ---- Restart game ---- */
+/* ---- Game options from inside a game ----
+   Opens the same options screen the game was set up with. Changes to rules that can safely change
+   mid-game (finishing rule, checkout hints, War steal-back lock) apply right away and scores are kept.
+   Anything else (start score, players' target setup, ring mode ...) needs a restart, which is offered. */
+const LIVE_OPT_KEYS = ['outRule','guidance','lockMode'];
+function liveOptsRestore(){
+  const sv = state.liveOptsSaved;
+  if(sv){ state.pendingGameId = sv.pendingGameId; state.gameOptions = sv.gameOptions; state.pendingCustomGame = sv.pendingCustomGame; }
+  state.liveOptsSaved = null; state.liveOptsOpen = false;
+}
+function openLiveOptions(){
+  const s = state.session, L = s && s._launch;
+  if(!L || L.custom || !L.gameId) return;
+  if(!state.liveOptsSaved) state.liveOptsSaved = {pendingGameId:state.pendingGameId, gameOptions:state.gameOptions, pendingCustomGame:state.pendingCustomGame};
+  state.pendingGameId = L.gameId; state.pendingCustomGame = null;
+  state.gameOptions = Object.assign(JSON.parse(JSON.stringify(L.opts||{})), {_forGameId:L.gameId});
+  state.liveOptsOpen = true; state.gameMenuOpen = true; render();
+}
+function closeLiveOptions(){ liveOptsRestore(); state.gameMenuOpen = false; render(); }
+function liveOptsChanges(){
+  const s = state.session, L = s && s._launch, live = [], restart = [];
+  if(!L) return {live, restart};
+  const now = state.gameOptions || {}, was = L.opts || {};
+  Object.keys(Object.assign({}, now, was)).forEach(k=>{
+    if(k==='_forGameId') return;
+    if(JSON.stringify(now[k])===JSON.stringify(was[k])) return;
+    (LIVE_OPT_KEYS.includes(k) && (k in s) ? live : restart).push(k);
+  });
+  return {live, restart};
+}
+const LIVE_OPT_NAMES = {outRule:'Finishing rule', guidance:'Checkout hints', lockMode:'Locked sections', startScore:'Start score', inRule:'Entering in', bullMode:'Bull', ringMode:'Sections', rounds:'Rounds', variant:'Variant'};
+function applyLiveOptions(){
+  const s = state.session, L = s && s._launch;
+  if(!L) return closeLiveOptions();
+  const ch = liveOptsChanges();
+  ch.live.forEach(k=>{ s[k] = state.gameOptions[k]; L.opts[k] = JSON.parse(JSON.stringify(state.gameOptions[k])); });
+  liveOptsRestore(); state.gameMenuOpen = false; persistState(); render();
+}
+function restartWithLiveOptions(){
+  const s = state.session, L = s && s._launch;
+  if(!L) return closeLiveOptions();
+  const opts = JSON.parse(JSON.stringify(state.gameOptions)); delete opts._forGameId;
+  L.opts = opts;
+  liveOptsRestore(); state.gameMenuOpen = false;
+  relaunchFrom(L);
+}
+function renderLiveOptionsModal(s){
+  const ch = liveOptsChanges();
+  const names = ks=>ks.map(k=>LIVE_OPT_NAMES[k]||k).join(', ');
+  const note = !ch.live.length && !ch.restart.length ? `<p class="info-note" style="margin:0;">Change anything below. Finishing rule, checkout hints and War locks apply to this game right away and your scores stay. Other changes need a restart, which clears the scores.</p>`
+    : `${ch.live.length ? `<p class="info-note" style="margin:0 0 6px 0;"><b>Applies now, scores kept:</b> ${names(ch.live)}</p>` : ''}${ch.restart.length ? `<p class="info-note" style="margin:0;"><b>Needs a restart (scores cleared):</b> ${names(ch.restart)}</p>` : ''}`;
+  return `<div class="modal-overlay gx" onclick="if(event.target===this) closeLiveOptions();">
+    <div class="modal" style="max-width:min(820px,94vw); max-height:90vh; display:flex; flex-direction:column;">
+      <h3 style="flex:none;">Game options</h3>
+      <div class="live-opts" style="flex:1; min-height:0; overflow-y:auto; padding-right:4px; display:flex; flex-direction:column; gap:18px;">${renderGameOptionsBody()}</div>
+      <div style="flex:none; margin-top:12px;">${note}
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn btn-secondary" onclick="closeLiveOptions()">Cancel</button>
+          ${ch.restart.length ? `<button class="btn btn-danger" onclick="restartWithLiveOptions()">Restart with these</button>` : ''}
+          <button class="btn btn-primary" ${ch.live.length?'':'disabled'} onclick="applyLiveOptions()">Apply now</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
 function openRestartConfirm(){ state.confirmRestart=true; state.gameMenuOpen=false; render(); }
 function restartGameNow(){
   const s = state.session, L = s && s._launch;
@@ -5684,12 +5808,7 @@ function renderHub(){
     if(id==='camera') return camSummary().text;
     return null;
   };
-  const board = `<div class="hub-board">
-    <i style="inset:0; background:repeating-conic-gradient(from -9deg, #B8322D 0deg 18deg, #2E7D52 18deg 36deg)"></i>
-    <i style="inset:7.5%; background:repeating-conic-gradient(from -9deg, #17130F 0deg 18deg, #E7DFC8 18deg 36deg)"></i>
-    <i style="inset:22%; background:repeating-conic-gradient(from -9deg, #B8322D 0deg 18deg, #2E7D52 18deg 36deg)"></i>
-    <i style="inset:29.5%; background:repeating-conic-gradient(from -9deg, #17130F 0deg 18deg, #E7DFC8 18deg 36deg)"></i>
-    <i style="inset:44%; background:#2E7D52"></i><i style="inset:47.5%; background:#B8322D"></i></div>`;
+  const board = '';
   return `<div class="hub">
     <div class="hub-head">
       <div class="hub-brand"><span class="dot"></span>OCHE</div>
@@ -5712,8 +5831,8 @@ function renderHub(){
           <button class="hub-resume-btn" onclick="resumePausedGame()"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg><span>Resume ${g.name}<small>${g.players.join(' vs ')} &middot; ${pausedHoursLeft()}h left</small></span></button>
           <button class="hub-resume-x" title="Forget this saved game" onclick="forgetPausedGame()">&#10005;</button>
         </div>` : ''}
-        <div class="hub-spacer"></div>
-        ${renderLobbyBlock()}
+        <div class="hub-art">${realBoardSvg('hub')}</div>
+        <div class="hub-lobby-wrap">${renderLobbyBlock()}</div>
       </div>
       <div class="hub-tiles">
         ${HUB_TILES.map(t=>`<div class="hub-tile${t.id==='settings'?' span2':''}" onclick="${t.go}">
@@ -5723,6 +5842,26 @@ function renderHub(){
       </div>
     </div>
   </div>`;
+}
+// A proper dartboard (steel wires, number ring, soft shadow) drawn from the board colours, which
+// are CSS variables so the colour chooser can change every board picture at once.
+function realBoardSvg(uid){
+  const cx=200, cy=200, R=158, ORD=[20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5];
+  const P=(r,a)=>{const t=(a-90)*Math.PI/180;return[cx+r*Math.cos(t),cy+r*Math.sin(t)]};
+  const W=(r1,r2,a1,a2)=>{const[a,b]=P(r2,a1),[c,d]=P(r2,a2),[e,f]=P(r1,a2),[g,h]=P(r1,a1);return 'M'+a+' '+b+'A'+r2+' '+r2+' 0 0 1 '+c+' '+d+'L'+e+' '+f+'A'+r1+' '+r1+' 0 0 0 '+g+' '+h+'Z';};
+  let s = `<circle cx="${cx}" cy="${cy}" r="${R*1.22}" style="fill:var(--bd-ring,#0a0a09)"/>`;
+  for(let i=0;i<20;i++){
+    const a1=-9+i*18, a2=a1+18, even=i%2===0;
+    const base = even ? 'var(--bd-s1,#E8E1D0)' : 'var(--bd-s2,#232D28)';
+    const col = even ? 'var(--bd-d1,#4A8A66)' : 'var(--bd-d2,#A84545)';
+    [[.094,.582,base],[.582,.629,col],[.629,.953,base],[.953,1,col]].forEach(([r1,r2,f])=>{
+      s += `<path d="${W(R*r1,R*r2,a1,a2)}" style="fill:${f};stroke:var(--bd-wire,#aeb4bd);stroke-width:.7"/>`;
+    });
+    const[x,y]=P(R*1.115,a1+9);
+    s += `<text x="${x}" y="${y}" style="fill:var(--bd-num,#efe9d7)" font-family="Oswald,sans-serif" font-weight="700" font-size="17" text-anchor="middle" dominant-baseline="middle">${ORD[i]}</text>`;
+  }
+  s += `<circle cx="${cx}" cy="${cy}" r="${R*.094}" style="fill:var(--bd-bo,#4A8A66);stroke:var(--bd-wire,#aeb4bd);stroke-width:.7"/><circle cx="${cx}" cy="${cy}" r="${R*.037}" style="fill:var(--bd-bi,#A84545);stroke:var(--bd-wire,#aeb4bd);stroke-width:.7"/>`;
+  return `<svg viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><defs><filter id="${uid}Sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="10" flood-opacity=".55"/></filter><radialGradient id="${uid}Vg" cx="50%" cy="38%" r="62%"><stop offset=".55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></radialGradient></defs><g filter="url(#${uid}Sh)">${s}<circle cx="${cx}" cy="${cy}" r="${R*1.22}" fill="url(#${uid}Vg)"/></g></svg>`;
 }
 function tabTitle(){
   return {play:'Games', practice:'Practice', custom:'Custom', players:'Players', darts:'Darts', stats:'Stats', camera:'Camera'}[state.navTab] || 'Oche';
@@ -5807,6 +5946,7 @@ function startGameFlow(gameId){
   if(g.status==='soon'){ return; }
   state.pendingGameId = gameId;
   state.pendingCustomGame = null;
+  state.playerOrderMode = 'random';   // Random is the default every time; tap In Order to change it for this game
   state.selectedPlayerIds = defaultSelectedPlayerIds();
   state.screen = 'playerSetup';
   render();
@@ -5816,6 +5956,7 @@ function startCustomGameFlow(templateId){
   if(!tpl) return;
   state.pendingCustomGame = tpl;
   state.pendingGameId = null;
+  state.playerOrderMode = 'random';
   state.selectedPlayerIds = defaultSelectedPlayerIds();
   state.screen = 'playerSetup';
   render();
@@ -7561,7 +7702,7 @@ function renderPlayerSetup(){
   const g = isCustom ? null : GAMES.find(x=>x.id===state.pendingGameId);
   const titleName = isCustom ? state.pendingCustomGame.name : g.name;
   ensureGameOptionsInitialized();
-  const orderMode = state.playerOrderMode || 'inorder';
+  const orderMode = state.playerOrderMode || 'random';
   return `<div class="topbar">
     <div class="iconbtn" onclick="state.screen='home'; render();">&#8592;</div>
     <h1 style="color:var(--brass); font-size:19px;">${titleName}</h1>
@@ -7589,8 +7730,8 @@ function renderPlayerSetup(){
     <div style="margin-top:14px;">
       <span class="field-label">Turn Order</span>
       <div class="gchip-wrap">
-        <span class="gchip ${orderMode==='inorder'?'selected':''}" onclick="state.playerOrderMode='inorder'; render();">In Order</span>
         <span class="gchip ${orderMode==='random'?'selected':''}" onclick="state.playerOrderMode='random'; render();">Random</span>
+        <span class="gchip ${orderMode==='inorder'?'selected':''}" onclick="state.playerOrderMode='inorder'; render();">In Order</span>
       </div>
     </div>
   </div>
@@ -7693,7 +7834,7 @@ function renderGameOptionsBody(){
       <div class="gchip-wrap">${chip('Off','lockMode','off')}${chip('Steal-Back Lock','lockMode','stealback')}</div>
       <div class="option-legend">
         <div class="leg-item ${o.lockMode!=='stealback'?'active-leg':''}"><b>Off</b> &mdash; any section can always be taken again (the classic game).</div>
-        <div class="leg-item ${o.lockMode==='stealback'?'active-leg':''}"><b>Steal-Back Lock</b> &mdash; if you lose a section and then win it back, it locks to you. A locked section is greyed out with a cross-hatch, nobody can take it again, and darts that land on it score nothing.</div>
+        <div class="leg-item ${o.lockMode==='stealback'?'active-leg':''}"><b>Steal-Back Lock</b> &mdash; if you lose a section and then win it back, it locks to you. A locked section is dimmed with a bold border in its owner's colour, nobody can take it again, and darts that land on it score nothing.</div>
       </div>
     </div>
     <div>
@@ -7919,11 +8060,28 @@ function settingsPageLook(){
       </div>
     </div>
     <div class="sh-card">
+      <span class="field-label">Board colours</span>
+      <p class="info-note" style="margin:0 0 10px 0;">Match the board on your wall. These colours are used on every dartboard picture in Oche. The size and shape of the board never change.</p>
+      <div style="display:flex; gap:22px; align-items:center; flex-wrap:wrap;">
+        <div style="width:200px; height:200px; flex:none;">${realBoardSvg('bcp')}</div>
+        <div style="flex:1; min-width:260px;">
+          <div class="theme-row" style="margin-bottom:12px;">
+            ${BOARD_PRESETS.map(p=>{ const bc = boardColors(); const on = ['s1','s2','d1','d2','bo','bi'].every(k=>bc[k].toLowerCase()===p.c[k].toLowerCase());
+              return `<div class="theme-swatch ${on?'selected':''}" onclick="pickBoardPreset('${p.id}')"><div class="circle" style="background:conic-gradient(${p.c.s1} 0 25%,${p.c.d1} 0 50%,${p.c.s2} 0 75%,${p.c.d2} 0);"></div><div class="tlabel">${p.name}</div></div>`; }).join('')}
+          </div>
+          <div class="tb-grid">
+            ${[['s1','Singles, 20 wedge'],['s2','Singles, 1 wedge'],['d1','Doubles and trebles, 20 wedge'],['d2','Doubles and trebles, 1 wedge'],['bo','Outer bull'],['bi','Bullseye']].map(([k,l])=>`<label class="tb-pick">${l}<input type="color" id="bc_${k}" value="${boardColors()[k]}" oninput="setBoardColorLive('${k}', this.value)" onchange="setBoardColor('${k}', this.value); render();"></label>`).join('')}
+          </div>
+          <div class="btn-row" style="margin-top:10px;"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="resetBoardColors()">Reset to Oche standard</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="sh-card">
       <span class="field-label">Theme builder</span>
       <div class="tb-grid">${picker('bg','Background')}${picker('accent','Accent')}${picker('text','Text')}</div>
       <div class="tb-prev"><div class="pv-btn">Play</div><div><div class="pv-t">Sam &middot; 501</div><div class="pv-s">Your turn, round 3</div></div></div>
       <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="resetCustomTheme()">Reset to Harbor Blue</button></div>
-      <p class="info-note">Changing a colour switches to Custom. Colours start from the theme you were using. The dartboard itself keeps its normal colours.</p>
+      <p class="info-note">Changing a colour switches to Custom. Colours start from the theme you were using. The dartboard colours are set in Board colours above.</p>
     </div>
     <div class="sh-card">
       <span class="field-label">Score panel width</span>
@@ -9333,7 +9491,7 @@ function renderWarBoard(s){
       const fill = claimed ? ((bd.rg && m!=='all') ? dtFill : warColorFor(s,owner)) : (bd.rg ? dtFill : '#151c30');
       const d = wedgePath(cx,cy,bd.r1,bd.r2,aStart,aEnd);
       fills += `<path d="${d}" fill="${fill}" stroke="${col}" stroke-width="${claimed?2:1}" class="board-seg" data-num="${num}" data-seg="${bd.seg}" data-ring="${bd.ring}" style="cursor:pointer;"/>`;
-      if(s.locks && s.locks[key]!==undefined) hatch += `<path d="${d}" fill="url(#warHatch)" style="pointer-events:none;"/><path d="${d}" fill="url(#warHatch2)" style="pointer-events:none;"/>`;
+      if(s.locks && s.locks[key]!==undefined) hatch += `<path d="${d}" fill="rgba(12,18,34,0.78)" style="pointer-events:none;"/><path d="${d}" fill="none" stroke="${col}" stroke-width="3.4" style="pointer-events:none;"/>`;
     });
     const lp = polar(cx,cy,R_NUMBER_LABEL,(aFull1+aFull2)/2);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
@@ -9374,10 +9532,12 @@ function warBullHatch(s){
   if(!s.locks) return '';
   let out = '';
   const ring = annulusPath(BOARD_CX,BOARD_CY,R_BULL_INNER,R_BULL_OUTER);
-  const dot = (r)=>`<circle cx="${BOARD_CX}" cy="${BOARD_CY}" r="${r}" fill="url(#warHatch)" style="pointer-events:none;"/><circle cx="${BOARD_CX}" cy="${BOARD_CY}" r="${r}" fill="url(#warHatch2)" style="pointer-events:none;"/>`;
-  if(s.locks['B']!==undefined) out += dot(R_BULL_OUTER);
-  if(s.locks['IB']!==undefined) out += dot(R_BULL_INNER);
-  if(s.locks['OB']!==undefined) out += `<path d="${ring}" fill="url(#warHatch)" style="pointer-events:none;"/><path d="${ring}" fill="url(#warHatch2)" style="pointer-events:none;"/>`;
+  const col = k=>warColorFor(s, s.locks[k]);
+  const dim = 'rgba(12,18,34,0.78)';
+  const dot = (r,k)=>`<circle cx="${BOARD_CX}" cy="${BOARD_CY}" r="${r}" fill="${dim}" style="pointer-events:none;"/><circle cx="${BOARD_CX}" cy="${BOARD_CY}" r="${r}" fill="none" stroke="${col(k)}" stroke-width="3.6" style="pointer-events:none;"/>`;
+  if(s.locks['B']!==undefined) out += dot(R_BULL_OUTER,'B');
+  if(s.locks['IB']!==undefined) out += dot(R_BULL_INNER,'IB');
+  if(s.locks['OB']!==undefined) out += `<path d="${ring}" fill="${dim}" style="pointer-events:none;"/><path d="${ring}" fill="none" stroke="${col('OB')}" stroke-width="3.6" style="pointer-events:none;"/>`;
   return out;
 }
 function renderWarPlayerBoxes(s){
@@ -9543,6 +9703,7 @@ function renderChalkboard(s){
     return `<div class="cb-mark">${content}</div>`;
   };
   return `<div class="chalkboard-panel" id="chalkboardWrap" style="${floatingStyle(state.settings.chalkboardPos)}">
+    <button class="cb-miss" onclick="recordMiss()">Miss</button>
     ${renderMoveHandle('chalkboardPos','chalkboardWrap')}    <div class="cb-vs">&mdash; VS &mdash;</div>
     <div class="cb-title">CRICKET</div>
     <div class="cb-header-row" style="grid-template-columns:${cols};">
@@ -9978,7 +10139,7 @@ function renderEntryArea(s){
     : state.settings.entryMethod;
   let entryHtml='';
   if(isCricket && method==='chalkboard'){
-    entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button><div class="chalkboard-standalone">${renderChalkboard(s)}</div></div>`;
+    entryHtml = `<div style="position:relative; padding-top:2px;"><div class="chalkboard-standalone">${renderChalkboard(s)}</div></div>`;
   } else if(method==='grid'){
     entryHtml = `<div style="position:relative; padding-top:76px;"><button class="board-miss-btn" onclick="recordMiss()">Miss</button>${renderNumberGrid(s)}</div>`;
   } else {
@@ -10149,6 +10310,7 @@ function renderGameMenu(s){
       </div>
     </div>`;
   }
+  if(state.liveOptsOpen) return renderLiveOptionsModal(s);
   if(state.callerMenuOpen){
     const ck = CALLER_KINDS.find(x=>x[0]===s.kind) ? s.kind : 'all';
     return `<div class="modal-overlay gx" onclick="if(event.target===this){ state.callerMenuOpen=false; render(); }">
@@ -10170,6 +10332,7 @@ function renderGameMenu(s){
       <h3>Menu</h3>
       <button class="btn btn-primary btn-full" onclick="closeGameMenu()">Back to game</button>
       <button class="btn btn-secondary btn-full" onclick="openTips()">Tips and rules</button>
+      ${(s._launch && !s._launch.custom && s._launch.gameId) ? `<button class="btn btn-secondary btn-full" onclick="openLiveOptions()">Game options</button>` : ''}
       <button class="btn btn-secondary btn-full" onclick="state.callerMenuOpen=true; render();">Caller options</button>
       <button class="btn btn-secondary btn-full" onclick="openSettingsFromGameMenu()">All settings</button>
       ${s.kind==='custom' && s.cfg.winCondition==='manual' ? `<button class="btn btn-secondary btn-full" onclick="state.gameMenuOpen=false; endCustomGameManually(state.session); finishCustomGame(state.session); render();">End game now and tally score</button>` : ''}
@@ -10573,8 +10736,8 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
     const num = BOARD_ORDER[i];
     const aStart = -9+i*18+WEDGE_ROTATION, aEnd = aStart+18;
     const even = i%2===0;
-    const singleFill = even? '#E8E1D0' : '#232D28';
-    const dtFill = even? '#4A8A66' : '#A84545';
+    const singleFill = even? 'var(--bd-s1,#E8E1D0)' : 'var(--bd-s2,#232D28)';
+    const dtFill = even? 'var(--bd-d1,#4A8A66)' : 'var(--bd-d2,#A84545)';
     const overFill = '#2A2A26';
     const bandDefs = [
       {band:'inner', rIn:R_BULL_OUTER, rOut:R_TRIPLE_IN, fill:singleFill},
@@ -10597,8 +10760,8 @@ function renderSectionBoardSVG(targetZoneId, clickHandler, hitPoint, missHandler
     const lp = polar(cx,cy,R_NUMBER_LABEL,(aStart+aEnd)/2);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="18" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
   }
-  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="#4A8A66" stroke="var(--ink)" stroke-width="1" class="section-zone" data-zone="bull-outer" style="cursor:pointer;"/>`;
-  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="#A84545" stroke="var(--ink)" stroke-width="1" class="section-zone" data-zone="bull-inner" style="cursor:pointer;"/>`;
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="var(--bd-bo,#4A8A66)" stroke="var(--ink)" stroke-width="1" class="section-zone" data-zone="bull-outer" style="cursor:pointer;"/>`;
+  wedges += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="var(--bd-bi,#A84545)" stroke="var(--ink)" stroke-width="1" class="section-zone" data-zone="bull-inner" style="cursor:pointer;"/>`;
   if(targetZoneId==='bull-outer'){
     highlight = `<path d="${annulusPath(cx,cy,R_BULL_INNER,R_BULL_OUTER)}" fill="#FFD23F" fill-opacity="0.65" fill-rule="evenodd" stroke="#FFD23F" stroke-width="4" style="pointer-events:none;">
       <animate attributeName="fill-opacity" values="0.4;0.8;0.4" dur="1s" repeatCount="indefinite"/>
