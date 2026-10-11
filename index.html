@@ -1083,7 +1083,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v7.3';
+const BUILD_STAMP = 'v7.4 SAFE';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -8551,6 +8551,7 @@ function renderCamLive(){
         ? `<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="disconnectBoardManager()">Disconnect</button>`
         : `<button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="connectBoardManager()">Connect</button>`}
       <div class="checkbox-row" style="padding:0;"><input type="checkbox" ${state.settings.dartsCallerCameraMode?'checked':''} onchange="camToggleMode()"> Camera Mode: real throws drive the game</div>
+      <div class="checkbox-row" style="padding:0;"><input type="checkbox" ${state.settings.camHandsOff!==false?'checked':''} onchange="setSetting('camHandsOff', this.checked); persistState();"> Hands-off: Oche never starts, resets or restarts the camera by itself (only the buttons here do)</div>
       ${camOpenLink()}
     </div>`;
 }
@@ -9120,7 +9121,8 @@ function handleBoardManagerState(data){
   // stopped one.
   if(data.running === false){
     boardManagerTakeoutStuckSince = null;
-    if(boardManagerStartAttempts < BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
+    if(state.settings.camHandsOff!==false){ /* v7.4 SAFE: hands-off, Oche never starts the engine by itself */ }
+    else if(boardManagerStartAttempts < BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
       boardManagerStartAttempts++;
       console.warn(`Oche: Board Manager detection is stopped — attempting to start it (attempt ${boardManagerStartAttempts}/${BOARD_MANAGER_MAX_AUTO_ATTEMPTS})`);
       startBoardManagerDetection();
@@ -9137,7 +9139,7 @@ function handleBoardManagerState(data){
     if(boardManagerTakeoutStuckSince === null){
       boardManagerTakeoutStuckSince = Date.now();
       boardManagerResetAttempts = 0;
-    } else if(Date.now() - boardManagerTakeoutStuckSince > BOARD_MANAGER_STUCK_TIMEOUT_MS){
+    } else if(state.settings.camHandsOff===false && Date.now() - boardManagerTakeoutStuckSince > BOARD_MANAGER_STUCK_TIMEOUT_MS){
       if(boardManagerResetAttempts < BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
         boardManagerResetAttempts++;
         console.warn(`Oche: Board Manager looks stuck on takeout — auto-resetting (attempt ${boardManagerResetAttempts}/${BOARD_MANAGER_MAX_AUTO_ATTEMPTS})`);
@@ -12773,6 +12775,13 @@ function renderPlayerDetail(){
 
 /* ========================= INIT ========================= */
 hydrateState();
+(function(){ try{
+  if(!state.settings.safe74){
+    state.settings.safe74 = true; state.settings.camHandsOff = true;
+    state.settings.callerMode = 'off'; state.settings.callerOn = false; state.settings.soundOn = false;
+    persistStateNow();
+  }
+}catch(e){} })();
 initDartFieldOptions();
 render();
 if(boardManagerBase()){ connectBoardManager(); }
