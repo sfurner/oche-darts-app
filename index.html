@@ -1083,7 +1083,19 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v7.0';
+const BUILD_STAMP = 'v7.3';
+/* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
+const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
+  poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
+  lag:{max:0, last:0, over80:0}, lastStatus:'', lastEvent:'', lastThrows:null, clip:'', screen:''};
+function dbgLog(k, d){
+  try{
+    const e = {t:Math.round(performance.now()-DBG.t0), w:(function(){const d=new Date(),p=(n,l)=>String(n).padStart(l||2,'0');return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+'.'+p(d.getMilliseconds(),3);})(), k:k};
+    if(d!==undefined) e.d = d;
+    DBG.log.push(e);
+    if(DBG.log.length > DBG.max) DBG.log.splice(0, 500);
+  }catch(x){}
+}
 const THEMES = [
   { id:'emerald', name:'Refined Green', swatch:'#173A31',
     vars:{ '--felt-dark':'#061814', '--felt':'#173A31', '--felt-light':'#29463A', '--felt-lighter':'#2D6256',
@@ -1502,11 +1514,25 @@ const PERSISTENT_STATE_KEYS = [
   'sectionSessions', 'precisionSessions', 'settings', 'playerSettings',
   'pausedGame', 'dartFieldOptions', 'rememberedGameOptions', 'ladderBestAvg', 'ladderHistory', 'ladderProHistory',
 ];
+let _persistTimer = null;
 function persistState(){
+  if(_persistTimer) return;
+  _persistTimer = setTimeout(()=>{ _persistTimer = null; persistStateNow(); }, 500);
+}
+function persistFlush(){ if(_persistTimer){ clearTimeout(_persistTimer); _persistTimer = null; persistStateNow(); } }
+window.addEventListener('pagehide', persistFlush);
+window.addEventListener('beforeunload', persistFlush);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') persistFlush(); });
+function persistStateNow(){
   try{
     const payload = { uid };
     PERSISTENT_STATE_KEYS.forEach(k=>{ payload[k] = state[k]; });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    const _t = performance.now();
+    const _s = JSON.stringify(payload);
+    localStorage.setItem(STORAGE_KEY, _s);
+    const _d = performance.now() - _t, P = DBG.persist;
+    P.n++; P.sum += _d; P.last = _d; P.len = _s.length; if(_d > P.max) P.max = _d;
+    if(_d > 30) dbgLog('slow-save', {ms:Math.round(_d), kb:Math.round(_s.length/1024)});
   } catch(e){
     console.warn('Oche: could not save data locally', e);
   }
@@ -1626,6 +1652,16 @@ function callerPlayClips(pack, keys, ok, bad){
     let a;
     try{ a = new Audio('voices/'+encodeURIComponent(pack.id)+'/'+keys[i]+'.mp3'); }catch(e){ return end(bad); }
     i++; callerAudio = a;
+    const cname = keys[i-1], tn = performance.now(); DBG.clip = cname;
+    dbgLog('clip-new', cname);
+    try{
+      a.addEventListener('loadedmetadata', ()=>dbgLog('clip-meta', {c:cname, durMs:Math.round((a.duration||0)*1000), after:Math.round(performance.now()-tn)}));
+      a.addEventListener('playing', ()=>dbgLog('clip-playing', {c:cname, after:Math.round(performance.now()-tn)}));
+      a.addEventListener('ended', ()=>dbgLog('clip-ended', {c:cname, durMs:Math.round((a.duration||0)*1000), playedMs:Math.round((a.currentTime||0)*1000), after:Math.round(performance.now()-tn)}));
+      a.addEventListener('error', ()=>dbgLog('clip-error', {c:cname, code:a.error && a.error.code}));
+      a.addEventListener('stalled', ()=>dbgLog('clip-stalled', cname));
+      a.addEventListener('waiting', ()=>dbgLog('clip-waiting', cname));
+    }catch(e){}
     try{ a.playbackRate = state.settings.callerRate || 1; }catch(e){}
     try{ a.volume = masterVol(); }catch(e){}
     let done = false, to;
@@ -1635,8 +1671,9 @@ function callerPlayClips(pack, keys, ok, bad){
     };
     to = setTimeout(()=>adv(false), 6000);
     a.onended = ()=>adv(true);
-    a.onerror = ()=>adv(false);
-    try{ const pr = a.play(); if(pr && pr.catch) pr.catch(()=>adv(false)); }catch(e){ adv(false); }
+    a.onerror = ()=>adv(true);   // v7.1: a missing clip (e.g. deleted in the voice review) is skipped, the rest of the call is still said
+    dbgLog('clip-play', cname);
+    try{ const pr = a.play(); if(pr && pr.then) pr.then(()=>dbgLog('clip-resolved', {c:cname, after:Math.round(performance.now()-tn)}), ()=>{}); if(pr && pr.catch) pr.catch(e=>adv(e && e.name==='NotAllowedError' ? false : true)); }catch(e){ adv(false); }
   };
   next();
   return ()=>{ finished = true; try{ if(callerAudio) callerAudio.pause(); }catch(e){} };
@@ -1665,8 +1702,21 @@ function callerPump(){
 // Queues the calls in order (dart, then total, then "you require") without cutting off a
 // call that is still being spoken, so three quick camera darts are each heard in full.
 // Each call is {t: text for the browser voice, c: [clip names for a voice pack]}.
+/* v7.3: Caller mode. 'off' (default) never touches audio, 'totals' calls only turn totals / bust / game shot / requires,
+   'all' calls everything (every dart). callerOn===false from older saves also means off. */
+function callerMode(){
+  const st = state.settings;
+  if(st.callerOn===false) return 'off';
+  return st.callerMode || 'off';
+}
+function callerMuted(){ return callerMode()==='off'; }
+function setCallerMode(m){
+  state.settings.callerMode = m; state.settings.callerOn = (m!=='off');
+  if(m==='off'){ try{ callerStopAll(); }catch(e){} }
+  persistState(); render();
+}
 function callerSay(parts){
-  if(state.settings.callerOn===false) return;
+  if(callerMuted()) return;
   if(!callerSynth() && !callerActivePack()) return;
   try{
     if(callerTour) callerStopAll();
@@ -1730,6 +1780,7 @@ function callerOpts(kind){
   if(kind!=='x01' && st.callerAllGames===false){ o.dart = false; o.miss = false; }
   if(st.callerGlobal) Object.assign(o, st.callerGlobal);
   if(kind && st.callerGames && st.callerGames[kind]) Object.assign(o, st.callerGames[kind]);
+  if(callerMode()==='totals'){ o.dart = false; o.miss = false; o.reqDart = false; o.aimDart = false; o.botDart = false; }
   return o;
 }
 function callerSetOpt(kind, key, val){
@@ -1812,7 +1863,8 @@ function callerHoldActive(){
 function callerClearHeld(){ callerHeld = null; if(callerHeldTimer){ clearTimeout(callerHeldTimer); callerHeldTimer = null; } }
 function callerHoldItems(items){
   callerClearHeld(); callerHeld = items;
-  callerHeldTimer = setTimeout(()=>{ const it = callerHeld; callerClearHeld(); if(it) callerSay(it); }, CALLER_HOLD_MS);
+  dbgLog('hold-start', {items:items.map(x=>x.t)});
+  callerHeldTimer = setTimeout(()=>{ const it = callerHeld; callerClearHeld(); dbgLog('hold-timeout', {said:!!it}); if(it) callerSay(it); }, CALLER_HOLD_MS);
 }
 // The camera confirmed the darts were pulled: sound first, then the held total and "you require".
 function callerOnTakeout(){
@@ -1822,7 +1874,7 @@ function callerOnTakeout(){
 }
 function callerAnnounceX01(s, num, seg, res){
   callerClearHeld();
-  if(state.settings.callerOn===false) return;
+  if(callerMuted()) return;
   const p = x01Current(s), o = callerOpts('x01'), bot = callerIsBot(s);
   const calls = [];
   if(o.dart && (!bot || o.botDart)) calls.push(callerDartItem(num, seg));
@@ -1852,7 +1904,7 @@ function callerAnnounceX01(s, num, seg, res){
 }
 function callerAnnounceX01Miss(s){
   callerClearHeld();
-  if(state.settings.callerOn===false) return;
+  if(callerMuted()) return;
   const p = x01Current(s), o = callerOpts('x01'), bot = callerIsBot(s);
   const calls = [];
   const said = o.miss && o.dart && (!bot || o.botDart);
@@ -2015,9 +2067,9 @@ function renderCallerSettings(){
       </div>`;
   }
   return `<div class="section-label" style="padding-left:0; margin-top:18px;">Caller</div>
-    <div class="checkbox-row">
-      <input type="checkbox" ${s.callerOn!==false?'checked':''} onchange="setSetting('callerOn', ${s.callerOn===false})">
-      Call the scores out loud
+    <div>
+      <span class="field-label">Caller (Off is lightest on a small PC)</span>
+      <div class="chip-wrap">${['off','Off','totals','Totals only','all','Every dart'].reduce((a,v,i,ar)=> i%2 ? a : a+`<span class="chip ${callerMode()===v?'selected':''}" onclick="setCallerMode('${v}')">${ar[i+1]}</span>`, '')}</div>
     </div>
     <div>
       <span class="field-label">Call style</span>
@@ -6021,7 +6073,80 @@ function updateDiag(){
   e.textContent = window.innerWidth+'x'+window.innerHeight+' | screen '+screen.width+'x'+screen.height+' | top '+t;
 }
 window.addEventListener('resize', ()=>{ setAppHeight(); try{ fitChalkboard(); updateDiag(); }catch(e){} });
-(function(){ const r0 = render; render = function(){ r0.apply(this, arguments); try{ fitChalkboard(); updateDiag(); }catch(e){} }; })();
+(function(){ const r0 = render; render = function(){
+  const a = performance.now();
+  r0.apply(this, arguments);
+  try{ fitChalkboard(); updateDiag(); }catch(e){}
+  const d = performance.now() - a, R = DBG.render;
+  R.n++; R.sum += d; R.last = d; if(d > R.max) R.max = d;
+  if(state.screen !== DBG.screen){ DBG.screen = state.screen; dbgLog('screen', state.screen); }
+  if(d > 25) dbgLog('slow-render', {ms:Math.round(d), screen:state.screen});
+}; })();
+(function(){
+  const wrap = (name, tag, pick)=>{ const f = window[name]; if(typeof f!=='function') return; window[name] = function(){ try{ dbgLog(tag, pick ? pick.apply(null, arguments) : undefined); }catch(e){} return f.apply(this, arguments); }; };
+  wrap('dispatchThrowCore', 'dart', (n,s)=>({num:n, seg:s, blocked:!!cameraPendingTurnEnd}));
+  wrap('recordMissCore', 'miss', ()=>({blocked:!!cameraPendingTurnEnd}));
+  wrap('handleCameraThrow', 'cam-throw', (t)=>({name:t&&t.segment&&t.segment.name, num:t&&t.segment&&t.segment.number, mult:t&&t.segment&&t.segment.multiplier, bed:t&&t.segment&&t.segment.bed}));
+  wrap('callerOnTakeout', 'takeout');
+  wrap('forceEndCurrentTurnFromTakeout', 'takeout-force', ()=>({pending:!!cameraPendingTurnEnd}));
+  wrap('resetBoardManagerNow', 'bm-RESET');
+  wrap('startBoardManagerDetection', 'bm-START');
+  wrap('hardRestartBoardManager', 'bm-HARD-RESTART');
+  wrap('callerSay', 'say', (parts)=>(parts||[]).map(p=>p && (p.t||p)));
+  wrap('playSfxById', 'sfx', (id)=>id);
+})();
+(function(){ let last = performance.now(); setInterval(()=>{
+  const n = performance.now(), lag = n - last - 100; last = n;
+  if(document.hidden || lag <= 0) return;
+  DBG.lag.last = lag; if(lag > DBG.lag.max) DBG.lag.max = lag;
+  if(lag > 80){ DBG.lag.over80++; dbgLog('lag', Math.round(lag)); }
+}, 100); })();
+function dbgInfo(){
+  return {version:BUILD_STAMP, ua:navigator.userAgent, cores:navigator.hardwareConcurrency, dpr:window.devicePixelRatio, inner:window.innerWidth+'x'+window.innerHeight,
+    outer:window.outerWidth+'x'+window.outerHeight, screen:screen.width+'x'+screen.height, saved:new Date().toISOString(),
+    detection:state.settings.detectionSource||'autodarts', cameraMode:!!state.settings.dartsCallerCameraMode, caller:state.settings.callerVoice||'', screenNow:state.screen,
+    settings:{callerAfterTakeout:state.settings.callerAfterTakeout, botSpeed:state.settings.botSpeed, masterVolume:state.settings.masterVolume},
+    data:{history:(state.history||[]).length, players:(state.players||[]).length, savedGames:(state.savedGames||[]).length, storageKB:Math.round(DBG.persist.len/1024)}};
+}
+function dbgStats(){
+  const P = DBG.poll;
+  return {polls:P.n, pollErrors:P.err, pollAvgMs:P.n?Math.round(P.latSum/P.n):0, pollMaxMs:Math.round(P.latMax), maxInFlight:DBG.maxInflight,
+    renders:DBG.render.n, renderAvgMs:DBG.render.n?+(DBG.render.sum/DBG.render.n).toFixed(1):0, renderMaxMs:Math.round(DBG.render.max),
+    saves:DBG.persist.n, saveAvgMs:DBG.persist.n?+(DBG.persist.sum/DBG.persist.n).toFixed(1):0, saveMaxMs:Math.round(DBG.persist.max), saveKB:Math.round(DBG.persist.len/1024),
+    lagMaxMs:Math.round(DBG.lag.max), lagOver80:DBG.lag.over80, logEntries:DBG.log.length};
+}
+function dbgDownload(){
+  try{
+    const body = JSON.stringify({info:dbgInfo(), stats:dbgStats(), log:DBG.log}, null, 1);
+    const b = new Blob([body], {type:'application/json'}), a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'oche-diagnostics-'+new Date().toISOString().replace(/[:T]/g,'-').slice(0,19)+'.json';
+    document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }catch(e){ alert('Could not save the log: '+e.message); }
+}
+function dbgClear(){ DBG.log.length = 0; DBG.poll = {n:0, err:0, latSum:0, latMax:0, last:0}; DBG.render = {n:0, sum:0, max:0, last:0}; DBG.persist.n = 0; DBG.persist.sum = 0; DBG.persist.max = 0; DBG.lag = {max:0, last:0, over80:0}; DBG.maxInflight = 0; dbgLog('log-cleared'); render(); }
+function dbgMark(){ dbgLog('MARK'); }
+function setDiagHud(on){ state.settings.diagHud = !!on; persistState(); dbgHudUpdate(); }
+function dbgHudUpdate(){
+  let el = document.getElementById('dbgHud');
+  if(!state.settings.diagHud){ if(el) el.remove(); return; }
+  if(!el){
+    el = document.createElement('div'); el.id = 'dbgHud';
+    el.style.cssText = 'position:fixed; left:6px; bottom:6px; z-index:99999; pointer-events:none; background:rgba(0,0,0,0.72); color:#9fffb5; font:11px/1.35 ui-monospace,Menlo,Consolas,monospace; padding:5px 8px; border-radius:6px; white-space:pre;';
+    document.body.appendChild(el);
+  }
+  const P = DBG.poll, d = new Date(), pad = (n,l)=>String(n).padStart(l||2,'0');
+  el.textContent =
+    pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+'.'+pad(d.getMilliseconds(),3)+'  '+BUILD_STAMP+'\n'+
+    'poll '+Math.round(P.last)+'ms avg '+(P.n?Math.round(P.latSum/P.n):0)+' max '+Math.round(P.latMax)+' inflight '+DBG.inflight+' err '+P.err+'\n'+
+    'bm '+(DBG.lastStatus||'-')+' | '+(DBG.lastEvent||'-')+' | n='+(DBG.lastThrows===null?'-':DBG.lastThrows)+'\n'+
+    'lag '+Math.round(DBG.lag.last)+'ms max '+Math.round(DBG.lag.max)+' (>80: '+DBG.lag.over80+')\n'+
+    'render '+DBG.render.last.toFixed(1)+'ms max '+Math.round(DBG.render.max)+'  save '+DBG.persist.last.toFixed(1)+'ms '+Math.round(DBG.persist.len/1024)+'KB\n'+
+    'clip '+(DBG.clip||'-');
+}
+setInterval(()=>{ try{ if(state.settings.diagHud) dbgHudUpdate(); }catch(e){} }, 100);
+window.addEventListener('keydown', e=>{ if(e.ctrlKey && e.shiftKey && (e.key==='D'||e.key==='d')){ e.preventDefault(); setDiagHud(!state.settings.diagHud); } });
+window.addEventListener('load', ()=>{ dbgLog('info', dbgInfo()); });
 function openRules(gameId){ state.rulesGameId = gameId; state.screen='rules'; render(); }
 function backFromRules(){ state.screen='home'; render(); }
 function defaultSelectedPlayerIds(){
@@ -7297,7 +7422,7 @@ function render(){
   const app = document.getElementById('app');
   const appFooter = document.getElementById('app-footer');
   const sn = document.getElementById('sidenav');
-  if(sn){ sn.innerHTML = renderSidenav(); sn.classList.toggle('collapsed', !!state.settings.sidenavCollapsed); }
+  if(sn){ const _sh = renderSidenav(); if(_sh !== window._lastSidenav){ sn.innerHTML = _sh; window._lastSidenav = _sh; } sn.classList.toggle('collapsed', !!state.settings.sidenavCollapsed); }
   const deviceEl = document.querySelector('.device');
   const ladderProShowsBoard = !(state.ladderPro && state.ladderPro.phase==='lapComplete');
   if(deviceEl) deviceEl.classList.toggle('game-layout', GAME_LAYOUT_SCREENS.has(state.screen) && (state.screen!=='ladderProActive' || ladderProShowsBoard));
@@ -7356,8 +7481,14 @@ function render(){
   if(state.celebration) html += renderCelebrationOverlay();
   if(state.pbFlash) html += renderPBFlashOverlay();
   const footerSplit = html.split(FOOTER_MARKER);
-  app.innerHTML = footerSplit[0];
-  if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
+  const _hk = state.screen==='home' ? html : null;
+  if(_hk !== null && _hk === window._lastHomeHtml && app.firstElementChild){
+    /* v7.3: Home looks exactly the same as the last draw: leave the page alone (the big board picture was costly to repaint) */
+  } else {
+    app.innerHTML = footerSplit[0];
+    if(appFooter) appFooter.innerHTML = footerSplit[1] || '';
+    window._lastHomeHtml = _hk;
+  }
   if(state.screen==='active') trackTurnSnapshot();
   persistState();
   maybeRunBotTurn();
@@ -8307,10 +8438,19 @@ function confirmResetAll(){
   if(confirm('Erase ALL Oche data on this device (players, history, settings)? This cannot be undone.')){ try{ localStorage.removeItem(STORAGE_KEY); }catch(e){} location.reload(); }
 }
 function settingsPageAbout(){
-  const p = state.pausedGame;
+  const p = state.pausedGame, ds = dbgStats();
   return `<div class="sh-card">
       <span class="field-label">Version</span>
       <div style="font-family:'JetBrains Mono',monospace; font-size:20px; color:var(--brass);">${BUILD_STAMP}</div>
+    </div>
+    <div class="sh-card">
+      <span class="field-label">Diagnostics</span>
+      <div class="checkbox-row"><input type="checkbox" ${state.settings.diagHud?'checked':''} onchange="setDiagHud(this.checked)"> Show a small live readout in the bottom-left corner (clock, camera delay, lag, caller clip). Handy for screen recordings. Shortcut: Ctrl+Shift+D</div>
+      <div class="btn-row">
+        <button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="dbgDownload()">Download log</button>
+        <button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="dbgClear()">Clear log</button>
+      </div>
+      <p class="info-note" style="margin:0;">The app always keeps the last few thousand timed events (camera updates, darts, turn ends, caller clips, slow redraws). Download the log after a game and send it with your screen recording. ${ds.logEntries} events kept; ${ds.polls} camera updates, average ${ds.pollAvgMs} ms, slowest ${ds.pollMaxMs} ms; redraw average ${ds.renderAvgMs} ms; save ${ds.saveKB} KB taking ${ds.saveAvgMs} ms on average.</p>
     </div>
     <div class="sh-card">
       <span class="field-label">Backup</span>
@@ -8805,7 +8945,7 @@ function connectBoardManager(){
   boardManagerLastThrowCount = 0;
   boardManagerLastEvent = null;
   pollBoardManagerOnce(url, /*isFirst*/ true);
-  boardManagerPollTimer = setInterval(()=>pollBoardManagerOnce(url, false), 300);
+  boardManagerPollTimer = setInterval(()=>pollBoardManagerOnce(url, false), 400);
 }
 
 function disconnectBoardManager(){
@@ -8814,14 +8954,32 @@ function disconnectBoardManager(){
   render();
 }
 
+function dbgPoll(lat, data){
+  const p = DBG.poll; p.n++; p.latSum += lat; p.last = lat; if(lat > p.latMax) p.latMax = lat;
+  const st = (data && data.status) || '', ev = (data && data.event) || '', nt = data ? data.numThrows : null;
+  if(st!==DBG.lastStatus || ev!==DBG.lastEvent || nt!==DBG.lastThrows || lat>250){
+    dbgLog('poll', {lat:Math.round(lat), status:st, event:ev, numThrows:nt, throws:((data&&data.throws)||[]).length, running:data&&data.running, connected:data&&data.connected});
+    DBG.lastStatus = st; DBG.lastEvent = ev; DBG.lastThrows = nt;
+  }
+}
+let bmBusy = false, bmBusySince = 0;
 function pollBoardManagerOnce(url, isFirst){
-  fetch(url + '/api/state')
+  if(bmBusy && (performance.now() - bmBusySince) < 3000){ DBG.poll.skipped = (DBG.poll.skipped||0)+1; return; }
+  bmBusy = true; bmBusySince = performance.now();
+  const tq = performance.now(); let settled = false;
+  DBG.inflight++; if(DBG.inflight > DBG.maxInflight) DBG.maxInflight = DBG.inflight;
+  const fin = ()=>{ if(!settled){ settled = true; DBG.inflight--; } bmBusy = false; };
+  let _ac = null, _to = null;
+  try{ _ac = new AbortController(); _to = setTimeout(()=>{ try{ _ac.abort(); }catch(e){} }, 2500); }catch(e){}
+  fetch(url + '/api/state', _ac ? {signal:_ac.signal} : undefined)
     .then(res => { if(!res.ok) throw new Error('HTTP '+res.status); return res.json(); })
     .then(data => {
+      clearTimeout(_to); fin(); dbgPoll(performance.now()-tq, data);
       if(state.dartsCallerStatus !== 'connected'){ state.dartsCallerStatus = 'connected'; render(); }
       handleBoardManagerState(data);
     })
     .catch(err => {
+      clearTimeout(_to); fin(); DBG.poll.err++; dbgLog('poll-err', String((err && err.message) || err));
       console.warn('Oche: Board Manager poll failed', err && err.message);
       if(isFirst){ state.dartsCallerStatus = 'error'; render(); }
       // On later polls we leave the status as-is rather than flapping to
@@ -9092,6 +9250,7 @@ function wrapEndTurnForCamera(originalFn){
   return function(s){
     if(state.settings.dartsCallerCameraMode && cameraThrowInProgress){
       cameraPendingTurnEnd = ()=>originalFn(s);
+      dbgLog('turn-pending', {kind:s.kind});
       return;
     }
     originalFn(s);
@@ -10415,7 +10574,7 @@ function renderGameMenu(s){
     return `<div class="modal-overlay gx" onclick="if(event.target===this){ state.callerMenuOpen=false; render(); }">
       <div class="modal" style="max-height:85vh; overflow-y:auto;">
         <h3>Caller${ck==='all'?'':' &middot; '+CALLER_KINDS.find(x=>x[0]===ck)[1]}</h3>
-        <label class="checkbox-row"><input type="checkbox" ${state.settings.callerOn!==false?'checked':''} onchange="setSetting('callerOn', this.checked)"><span><b>Caller on</b></span></label>
+        <div class="chip-wrap" style="margin-bottom:8px;">${[['off','Off'],['totals','Totals only'],['all','Every dart']].map(m=>`<span class="chip ${callerMode()===m[0]?'selected':''}" onclick="setCallerMode('${m[0]}')">${m[1]}</span>`).join('')}</div>
         <p class="info-note" style="margin-top:0;">${ck==='all'?'These apply to every game.':'Changes here are saved for this game type only.'}</p>
         ${callerOptionRows(ck)}
         <div class="btn-row" style="margin-top:12px;">
