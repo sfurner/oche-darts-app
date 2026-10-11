@@ -768,21 +768,6 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .theme-swatch.selected .circle{border-color:var(--brass); box-shadow:0 0 0 2px var(--brass);}
 .theme-swatch .tlabel{font-size:12px; color:var(--cream-dim); text-align:center; line-height:1.2;}
 .info-note{font-size:13px; color:var(--cream-dim); line-height:1.5; margin-top:6px; max-width:640px;}
-/* Caller voice browser (Gameplay settings) */
-.caller-list{ max-height:300px; overflow-y:auto; border:1px solid var(--felt-lighter); border-radius:10px; margin-top:8px; max-width:640px; }
-.caller-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border-top:1px solid var(--felt-lighter); }
-.caller-row:first-child{ border-top:none; }
-.caller-row.sel{ background:color-mix(in srgb, var(--brass) 14%, transparent); }
-.caller-row.playing{ outline:2px solid var(--brass); outline-offset:-2px; }
-.caller-info{ min-width:0; display:flex; flex-direction:column; }
-.caller-info b{ font-size:14px; color:var(--cream); font-weight:600; overflow-wrap:anywhere; }
-.caller-info span{ font-size:12px; color:var(--cream-dim); }
-.caller-hear{ flex:none; padding:8px 14px; }
-.caller-opt{ align-items:flex-start; }
-.caller-opt input{ margin-top:3px; flex:none; }
-.caller-opt span{ display:flex; flex-direction:column; }
-.caller-opt small{ font-size:12px; color:var(--cream-dim); }
-.caller-scope{ max-width:640px; margin-top:8px; }
 .co-row{display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--felt-light); font-family:'JetBrains Mono',monospace; font-size:13px;}
 .co-row .co-score{color:var(--brass); font-family:'Oswald',sans-serif; font-size:17px; width:44px;}
 .co-row .co-route{color:var(--cream);}
@@ -1083,7 +1068,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v7.4 SAFE';
+const BUILD_STAMP = 'v8.0 BARE';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -1181,177 +1166,6 @@ function applyTheme(){
 }
 
 
-/* ========================= SOUND EFFECTS =========================
-   Every effect is synthesized live with the Web Audio API, so there are no
-   audio files to load and the app stays a single file. Each effect is a
-   small function that schedules oscillators/noise on the shared context.
-   Three moments are wired up today: a dart landing on the board (hit),
-   a dart missing the board completely (miss), and a game being won. Each
-   moment has its own setting, so any effect in the library can be assigned
-   to any moment. */
-let _sfxCtx = null, _sfxMaster = null, _sfxNoiseBuf = null;
-const _sfxLastPlayed = {};
-function sfxEnsureContext(){
-  try{
-    if(!_sfxCtx){
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if(!AC) return null;
-      _sfxCtx = new AC();
-      _sfxMaster = _sfxCtx.createGain();
-      _sfxMaster.connect(_sfxCtx.destination);
-      const len = _sfxCtx.sampleRate * 2;
-      _sfxNoiseBuf = _sfxCtx.createBuffer(1, len, _sfxCtx.sampleRate);
-      const d = _sfxNoiseBuf.getChannelData(0);
-      for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
-    }
-    if(_sfxCtx.state==='suspended') _sfxCtx.resume();
-    return _sfxCtx;
-  } catch(e){ return null; }
-}
-// Browsers only allow audio after the person has touched the page once, so
-// the context is created/unlocked on the first tap or key press.
-['pointerdown','keydown','touchstart'].forEach(ev=>document.addEventListener(ev, ()=>{ sfxEnsureContext(); }, {passive:true}));
-function sfxTone(c, o){ // o: {f, f2, dur, type, vol, at, attack}
-  const t0 = c.currentTime + (o.at||0);
-  const osc = c.createOscillator(); const g = c.createGain();
-  osc.type = o.type || 'sine';
-  osc.frequency.setValueAtTime(o.f, t0);
-  if(o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(1,o.f2), t0 + o.dur);
-  const peak = o.vol===undefined ? 0.5 : o.vol;
-  const atk = o.attack===undefined ? 0.005 : o.attack;
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(Math.max(0.0002,peak), t0 + atk);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
-  osc.connect(g); g.connect(_sfxMaster);
-  osc.start(t0); osc.stop(t0 + o.dur + 0.05);
-  return {osc, g, t0};
-}
-function sfxNoise(c, o){ // o: {dur, ftype, f, f2, q, vol, at, attack}
-  const t0 = c.currentTime + (o.at||0);
-  const src = c.createBufferSource(); src.buffer = _sfxNoiseBuf; src.loop = true;
-  const flt = c.createBiquadFilter(); flt.type = o.ftype || 'lowpass';
-  flt.frequency.setValueAtTime(o.f||1000, t0);
-  if(o.f2) flt.frequency.exponentialRampToValueAtTime(Math.max(20,o.f2), t0 + o.dur);
-  flt.Q.value = o.q===undefined ? 1 : o.q;
-  const g = c.createGain();
-  const peak = o.vol===undefined ? 0.5 : o.vol;
-  const atk = o.attack===undefined ? 0.005 : o.attack;
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(Math.max(0.0002,peak), t0 + atk);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
-  src.connect(flt); flt.connect(g); g.connect(_sfxMaster);
-  src.start(t0, Math.random()); src.stop(t0 + o.dur + 0.05);
-}
-function sfxBrass(c, f, at, dur, vol){ // one trumpet-ish note: two detuned saws through a opening filter, with a little vibrato
-  const t0 = c.currentTime + at;
-  const flt = c.createBiquadFilter(); flt.type='lowpass'; flt.Q.value = 2;
-  flt.frequency.setValueAtTime(500, t0);
-  flt.frequency.exponentialRampToValueAtTime(3200, t0 + 0.06);
-  flt.frequency.exponentialRampToValueAtTime(1800, t0 + dur);
-  const g = c.createGain();
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(vol, t0 + 0.04);
-  g.gain.setValueAtTime(vol, t0 + Math.max(0.05, dur-0.12));
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  const lfo = c.createOscillator(); const lfoG = c.createGain();
-  lfo.frequency.value = 5.5; lfoG.gain.value = f*0.006;
-  lfo.connect(lfoG);
-  [0,6].forEach(detune=>{
-    const o = c.createOscillator(); o.type='sawtooth'; o.frequency.value = f; o.detune.value = detune;
-    lfoG.connect(o.frequency);
-    o.connect(flt); o.start(t0); o.stop(t0+dur+0.05);
-  });
-  flt.connect(g); g.connect(_sfxMaster);
-  lfo.start(t0); lfo.stop(t0+dur+0.05);
-}
-const SFX_LIBRARY = {
-  none:     {name:'Silent', group:'none', play(){}},
-  // ---- dart landing on the board ----
-  thud:     {name:'Thud', group:'hit', play(c){ sfxTone(c,{f:150,f2:55,dur:0.16,type:'sine',vol:0.9}); sfxNoise(c,{dur:0.05,ftype:'lowpass',f:900,vol:0.35}); }},
-  thunk:    {name:'Wooden thunk', group:'hit', play(c){ sfxTone(c,{f:260,f2:110,dur:0.12,type:'triangle',vol:0.7}); sfxNoise(c,{dur:0.04,ftype:'bandpass',f:1400,q:2,vol:0.3}); }},
-  tock:     {name:'Tock', group:'hit', play(c){ sfxTone(c,{f:820,f2:520,dur:0.07,type:'square',vol:0.22}); sfxTone(c,{f:200,f2:120,dur:0.09,type:'sine',vol:0.5}); }},
-  pop:      {name:'Pop', group:'hit', play(c){ sfxTone(c,{f:520,f2:140,dur:0.09,type:'sine',vol:0.7}); }},
-  thwack:   {name:'Sharp thwack', group:'hit', play(c){ sfxNoise(c,{dur:0.07,ftype:'bandpass',f:2200,q:1.2,vol:0.6}); sfxTone(c,{f:180,f2:70,dur:0.1,type:'triangle',vol:0.55}); }},
-  ding:     {name:'Bell ding', group:'hit', play(c){ sfxTone(c,{f:1320,dur:0.7,type:'sine',vol:0.35,attack:0.003}); sfxTone(c,{f:1980,dur:0.45,type:'sine',vol:0.15,attack:0.003}); }},
-  coin:     {name:'Coin', group:'hit', play(c){ sfxTone(c,{f:988,dur:0.08,type:'square',vol:0.2}); sfxTone(c,{f:1319,dur:0.4,type:'square',vol:0.2,at:0.07}); }},
-  // ---- dart missing the board ----
-  swish:    {name:'Swish', group:'miss', play(c){ sfxNoise(c,{dur:0.28,ftype:'bandpass',f:5200,f2:900,q:1.5,vol:0.55,attack:0.06}); }},
-  whoosh:   {name:'Whoosh', group:'miss', play(c){ sfxNoise(c,{dur:0.45,ftype:'bandpass',f:400,f2:3000,q:0.8,vol:0.5,attack:0.18}); }},
-  fwip:     {name:'Quick fwip', group:'miss', play(c){ sfxNoise(c,{dur:0.12,ftype:'highpass',f:3500,f2:1200,q:0.7,vol:0.5,attack:0.02}); }},
-  whistle:  {name:'Falling whistle', group:'miss', play(c){ sfxTone(c,{f:1400,f2:300,dur:0.5,type:'sine',vol:0.25,attack:0.02}); }},
-  womp:     {name:'Sad womp', group:'miss', play(c){ sfxTone(c,{f:220,f2:150,dur:0.35,type:'sawtooth',vol:0.18,attack:0.02}); sfxTone(c,{f:165,f2:110,dur:0.5,type:'sawtooth',vol:0.18,at:0.3,attack:0.02}); }},
-  buzzer:   {name:'Buzzer', group:'miss', play(c){ sfxTone(c,{f:120,dur:0.38,type:'square',vol:0.22,attack:0.01}); }},
-  // ---- celebrations ----
-  // ---- darts pulled from the board (camera confirmed the takeout) ----
-  chime:    {name:'Soft chime', group:'takeout', play(c){ sfxTone(c,{f:880,dur:0.30,type:'sine',vol:0.38}); sfxTone(c,{f:1320,dur:0.42,type:'sine',vol:0.32,at:0.11}); }},
-  ding:     {name:'Bell ding', group:'takeout', play(c){ sfxTone(c,{f:1175,dur:0.55,type:'sine',vol:0.4}); sfxTone(c,{f:2350,dur:0.3,type:'sine',vol:0.12}); }},
-  blip:     {name:'Double blip', group:'takeout', play(c){ sfxTone(c,{f:700,dur:0.07,type:'triangle',vol:0.4}); sfxTone(c,{f:950,dur:0.09,type:'triangle',vol:0.4,at:0.1}); }},
-  click:    {name:'Soft click', group:'takeout', play(c){ sfxNoise(c,{dur:0.035,ftype:'bandpass',f:2400,q:3,vol:0.4}); sfxTone(c,{f:620,f2:420,dur:0.08,type:'sine',vol:0.35}); }},
-  trumpets: {name:'Trumpet fanfare', group:'win', play(c){
-              const n = [[392,0,0.16],[392,0.18,0.16],[392,0.36,0.16],[523.25,0.54,0.7]]; // G G G high-C: ta-ta-ta-DAAA
-              n.forEach(([f,at,d])=>{ sfxBrass(c,f,at,d,0.22); sfxBrass(c,f*1.25,at,d,0.12); }); }},
-  fanfare2: {name:'Royal fanfare', group:'win', play(c){
-              [[523.25,0,0.2],[659.25,0.2,0.2],[783.99,0.4,0.2],[1046.5,0.6,0.8]].forEach(([f,at,d])=>{ sfxBrass(c,f,at,d,0.2); sfxBrass(c,f*0.75,at,d,0.12); }); }},
-  chimes:   {name:'Victory chimes', group:'win', play(c){ [523.25,659.25,783.99,1046.5,1318.5].forEach((f,i)=>sfxTone(c,{f,dur:0.9,type:'sine',vol:0.25,at:i*0.11,attack:0.004})); }},
-  applause: {name:'Applause', group:'win', play(c){ for(let i=0;i<46;i++){ sfxNoise(c,{dur:0.05+Math.random()*0.04,ftype:'bandpass',f:1500+Math.random()*3000,q:0.8,vol:0.16+Math.random()*0.14,at:Math.random()*1.6,attack:0.003}); } sfxNoise(c,{dur:1.9,ftype:'bandpass',f:2400,q:0.5,vol:0.09,attack:0.3}); }},
-  airhorn:  {name:'Air horn', group:'win', play(c){ [0,0.32].forEach(at=>{ sfxTone(c,{f:466,dur:0.28,type:'sawtooth',vol:0.2,at,attack:0.01}); sfxTone(c,{f:622,dur:0.28,type:'sawtooth',vol:0.18,at,attack:0.01}); }); sfxTone(c,{f:466,dur:0.7,type:'sawtooth',vol:0.2,at:0.7,attack:0.01}); sfxTone(c,{f:622,dur:0.7,type:'sawtooth',vol:0.18,at:0.7,attack:0.01}); }},
-  levelup:  {name:'Level-up arpeggio', group:'win', play(c){ [392,494,587,784,988].forEach((f,i)=>sfxTone(c,{f,dur:0.16,type:'square',vol:0.17,at:i*0.08})); sfxTone(c,{f:1175,dur:0.5,type:'square',vol:0.17,at:0.42}); }},
-  drumroll: {name:'Drum roll + cymbal', group:'win', play(c){ for(let i=0;i<26;i++){ sfxNoise(c,{dur:0.05,ftype:'bandpass',f:380,q:1.2,vol:0.1+i*0.01,at:i*0.035,attack:0.003}); } sfxNoise(c,{dur:1.1,ftype:'highpass',f:5000,q:0.6,vol:0.3,at:0.95,attack:0.004}); }},
-};
-// Which setting controls which moment, plus the factory default for each.
-const SFX_EVENTS = {
-  hit: {setting:'sfxHit', label:'Dart lands on the board', def:'thud', group:'hit'},
-  miss:{setting:'sfxMiss', label:'Dart misses the board', def:'swish', group:'miss'},
-  win: {setting:'sfxWin', label:'Game is won', def:'trumpets', group:'win'},
-  takeout:{setting:'sfxTakeout', label:'Darts removed (camera sees the takeout)', def:'chime', group:'takeout'},
-};
-function masterVol(){ const v = state.settings.masterVolume; return v===undefined ? 1 : Math.max(0, Math.min(1, v)); }
-function setMasterVolumeLive(pct){
-  state.settings.masterVolume = Math.max(0, Math.min(100, +pct))/100;
-  try{ if(callerAudio) callerAudio.volume = masterVol(); }catch(e){}
-  document.querySelectorAll('.mvol-val').forEach(e=>{ e.textContent = Math.round(masterVol()*100)+'%'; });
-  document.querySelectorAll('.mvol-range').forEach(e=>{ if(+e.value!==Math.round(masterVol()*100)) e.value = Math.round(masterVol()*100); });
-}
-function setMasterVolumeDone(){ persistState(); try{ previewSfx(state.settings.sfxHit||'thud'); }catch(e){} }
-function masterVolumeRow(){
-  const pct = Math.round(masterVol()*100);
-  return `<div class="mvol-row">
-    <span class="field-label">Volume <b class="mvol-val">${pct}%</b></span>
-    <div style="display:flex; gap:10px; align-items:center;">
-      <input class="mvol-range" type="range" min="0" max="100" step="5" value="${pct}" style="flex:1;" aria-label="Volume for sound effects and the caller"
-        oninput="setMasterVolumeLive(this.value)" onchange="setMasterVolumeDone()">
-      <button class="btn btn-secondary" style="flex:none; padding:8px 12px;" onclick="callerSay([{t:'One hundred and eighty!', c:['n_180']}])">Test caller</button>
-    </div>
-  </div>`;
-}
-function playSfxById(id){
-  const c = sfxEnsureContext(); const fx = SFX_LIBRARY[id];
-  if(!c || !fx || id==='none') return;
-  const vol = Math.max(0, Math.min(1, state.settings.soundVolume===undefined ? 0.7 : state.settings.soundVolume)) * masterVol();
-  _sfxMaster.gain.cancelScheduledValues(c.currentTime);
-  _sfxMaster.gain.setValueAtTime(vol, c.currentTime);
-  try{ fx.play(c); } catch(e){}
-}
-function playSfx(eventKey){
-  const ev = SFX_EVENTS[eventKey];
-  if(!ev || state.settings.soundOn===false) return;
-  // Several code paths can report the same dart (e.g. the camera path and
-  // the game engine), so identical events inside 80ms count as one.
-  const now = Date.now();
-  if(_sfxLastPlayed[eventKey] && now-_sfxLastPlayed[eventKey] < 80) return;
-  _sfxLastPlayed[eventKey] = now;
-  playSfxById(state.settings[ev.setting] || ev.def);
-}
-function previewSfx(id){ playSfxById(id); }
-function sfxOptionsHtml(group, selected){
-  const groups = [['hit','Hits'],['miss','Misses'],['win','Celebrations'],['takeout','Takeout cues']];
-  const keepOrder = groups.map(([g,label])=>{
-    const items = Object.entries(SFX_LIBRARY).filter(([id,fx])=>fx.group===g).map(([id,fx])=>`<option value="${id}" ${selected===id?'selected':''}>${fx.name}</option>`).join('');
-    return `<optgroup label="${label}">${items}</optgroup>`;
-  }).join('');
-  return `<option value="none" ${selected==='none'?'selected':''}>Silent</option>${keepOrder}`;
-}
-
 /* ========================= STATE ========================= */
 let state = {
   screen: 'home',
@@ -1441,9 +1255,6 @@ let state = {
     detectionSource: 'autodarts', // 'autodarts' = Autodarts Board Manager (3 cameras, home) | 'singlecam' = single-camera program (travel)
     singleCamHost: '', // host[:port] of the single-camera program; blank = localhost:3180. Kept separate so switching never overwrites boardManagerHost.
     dartsCallerCameraMode: false, // when on, real throws from the board drive gameplay instead of clicks
-    soundOn: true, soundVolume: 0.7, // sound effects master switch + volume (0-1)
-    sfxHit: 'thud', sfxMiss: 'swish', sfxWin: 'trumpets', // which effect plays for each moment ('none' = silent)
-    callerOn: true, callerVoice: '', callerRate: 1, callerPitch: 1, callerStyle: 'full', callerRequire: true, callerAllGames: true, // spoken score calls (see CALLER section); undefined is treated as the default so older saves keep working
   },
   dartsCallerStatus: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'error'
   freshCameraDot: false, // true briefly after a real camera-detected dart, makes the newest hit dot flash green
@@ -1472,7 +1283,6 @@ let state = {
   // Tracks the live progress of the "Fix Board" escalating recovery sequence
   // so the panel can show real, honest status instead of a silent button
   // press. phase: null | 'soft' | 'waiting-soft' | 'hard' | 'waiting-hard' | 'ok' | 'stuck'
-  boardFixInProgress: null,
   theLadder: null,
   ladderBestAvg: null,
   ladderSetupSeg: 'any',
@@ -1563,551 +1373,6 @@ function hydrateState(){
     console.warn('Oche: could not load saved data', e);
   }
 }
-
-/* ========================= CALLER (spoken score calls) =========================
-   Reads each dart out loud ("Triple twenty"), then the turn total, "Bust", "Game shot!"
-   and "You require 40", using the browser's built-in speech voices (speechSynthesis).
-   Voices come from the browser and the computer it runs on, so the list differs per
-   machine. Options live under Gameplay settings > Caller. Every setting is undefined-safe
-   so saves from before the caller existed keep working. */
-const CALLER_SAMPLE = 'Triple twenty. One hundred and eighty!';
-const CALLER_ONES = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
-const CALLER_TENS = ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
-function callerWords(n){
-  if(n<20) return CALLER_ONES[n];
-  if(n<100) return CALLER_TENS[Math.floor(n/10)] + (n%10 ? '-'+CALLER_ONES[n%10] : '');
-  const h = Math.floor(n/100), r = n%100;
-  return CALLER_ONES[h] + ' hundred' + (r ? ' and '+callerWords(r) : '');
-}
-function callerCap(t){ return t.charAt(0).toUpperCase() + t.slice(1); }
-function callerSynth(){ try{ return window.speechSynthesis || null; }catch(e){ return null; } }
-let callerVoices = [];
-let callerLangFilter = 'en';
-// Heuristic for "advanced" voices: names the OS/browser use for its neural/enhanced sets, or online (cloud) voices.
-function callerIsHQ(v){ return /enhanced|premium|natural|neural|siri|wavenet|studio|journey|google|online/i.test(String(v.name)) || v.localService===false; }
-let callerShown = [];
-let callerTour = null;
-function callerEsc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function callerBaseLang(v){ return String(v.lang||'').split(/[-_]/)[0].toLowerCase(); }
-function callerLangName(code){
-  try{ return new Intl.DisplayNames(['en'],{type:'language'}).of(String(code).replace('_','-')) || code; }
-  catch(e){ return code; }
-}
-function callerLoadVoices(){
-  const syn = callerSynth(); if(!syn) return;
-  const list = syn.getVoices();
-  if(!list || !list.length) return;
-  callerVoices = list.slice().sort((a,b)=> String(a.lang).localeCompare(String(b.lang)) || String(a.name).localeCompare(String(b.name)));
-}
-// Pre-recorded voice packs (voices/index.json, made by make-oche-voices.py) sit alongside the app.
-// Each pack is a folder of short audio clips; the caller stitches them like a real caller and
-// falls back to the browser's speech voices for anything a pack doesn't cover (e.g. player names).
-let callerPacks = [];
-let callerQueue = [], callerPlaying = false, callerGen = 0, callerCancel = null, callerAudio = null;
-function callerPackKey(p){ return 'pack:'+p.id; }
-function callerCurrentKey(){
-  const uri = state.settings.callerVoice;
-  if(uri){
-    if(uri.indexOf('pack:')===0 ? callerPacks.some(p=>callerPackKey(p)===uri) : (!callerPacks.length && callerVoices.some(v=>v.voiceURI===uri))) return uri;
-  }
-  return callerPacks.length ? callerPackKey(callerPacks[0]) : '';
-}
-function callerActivePack(){
-  const k = callerCurrentKey();
-  return k.indexOf('pack:')===0 ? (callerPacks.find(p=>callerPackKey(p)===k) || null) : null;
-}
-function callerSettingsOpen(){ return state.screen==='settingsHub' && state.settingsPage==='sound'; }
-function callerLoadPacks(){
-  try{
-    fetch('voices/index.json', {cache:'no-cache'}).then(r=>r.ok ? r.json() : []).then(list=>{
-      callerPacks = (Array.isArray(list) ? list : []).filter(p=>p && p.id);
-      if(callerPacks.length && callerSettingsOpen()) render();
-    }).catch(()=>{});
-  }catch(e){}
-}
-function callerGetVoice(){
-  const uri = state.settings.callerVoice;
-  if(uri && uri.indexOf('pack:')!==0){ const v = callerVoices.find(x=>x.voiceURI===uri); if(v) return v; }
-  const en = callerVoices.filter(v=>callerBaseLang(v)==='en');
-  return en.find(v=>v.default) || en[0] || null;
-}
-function callerUtter(text, v){
-  const u = new SpeechSynthesisUtterance(text);
-  if(v){ u.voice = v; u.lang = v.lang; } else { u.lang = 'en-GB'; }
-  u.rate = state.settings.callerRate || 1;
-  try{ u.volume = masterVol(); }catch(e){}
-  u.pitch = state.settings.callerPitch || 1;
-  return u;
-}
-// Plays the clips of a pack one after another. Calls ok() when all played, bad() if any clip fails
-// (missing file, blocked autoplay, stalled). Returns a function that cancels playback.
-const CALLER_CLIP_GAP_MS = 170;   // pause between the clips of one call
-const CALLER_ITEM_GAP_MS = 220;   // pause between separate calls (dart, total, you require)
-function callerPlayClips(pack, keys, ok, bad){
-  let i = 0, finished = false;
-  const end = fn=>{ if(finished) return; finished = true; if(fn) fn(); };
-  const next = ()=>{
-    if(finished) return;
-    if(i>=keys.length) return end(ok);
-    let a;
-    try{ a = new Audio('voices/'+encodeURIComponent(pack.id)+'/'+keys[i]+'.mp3'); }catch(e){ return end(bad); }
-    i++; callerAudio = a;
-    const cname = keys[i-1], tn = performance.now(); DBG.clip = cname;
-    dbgLog('clip-new', cname);
-    try{
-      a.addEventListener('loadedmetadata', ()=>dbgLog('clip-meta', {c:cname, durMs:Math.round((a.duration||0)*1000), after:Math.round(performance.now()-tn)}));
-      a.addEventListener('playing', ()=>dbgLog('clip-playing', {c:cname, after:Math.round(performance.now()-tn)}));
-      a.addEventListener('ended', ()=>dbgLog('clip-ended', {c:cname, durMs:Math.round((a.duration||0)*1000), playedMs:Math.round((a.currentTime||0)*1000), after:Math.round(performance.now()-tn)}));
-      a.addEventListener('error', ()=>dbgLog('clip-error', {c:cname, code:a.error && a.error.code}));
-      a.addEventListener('stalled', ()=>dbgLog('clip-stalled', cname));
-      a.addEventListener('waiting', ()=>dbgLog('clip-waiting', cname));
-    }catch(e){}
-    try{ a.playbackRate = state.settings.callerRate || 1; }catch(e){}
-    try{ a.volume = masterVol(); }catch(e){}
-    let done = false, to;
-    const adv = good=>{
-      if(done) return; done = true; clearTimeout(to);
-      if(good){ if(i>=keys.length) next(); else setTimeout(next, CALLER_CLIP_GAP_MS); } else { try{ a.pause(); }catch(e){} end(bad); }
-    };
-    to = setTimeout(()=>adv(false), 6000);
-    a.onended = ()=>adv(true);
-    a.onerror = ()=>adv(true);   // v7.1: a missing clip (e.g. deleted in the voice review) is skipped, the rest of the call is still said
-    dbgLog('clip-play', cname);
-    try{ const pr = a.play(); if(pr && pr.then) pr.then(()=>dbgLog('clip-resolved', {c:cname, after:Math.round(performance.now()-tn)}), ()=>{}); if(pr && pr.catch) pr.catch(e=>adv(e && e.name==='NotAllowedError' ? false : true)); }catch(e){ adv(false); }
-  };
-  next();
-  return ()=>{ finished = true; try{ if(callerAudio) callerAudio.pause(); }catch(e){} };
-}
-function callerSpeakText(text, done){
-  const syn = callerSynth();
-  if(!syn || !text) return done();
-  let to; const fin = ()=>{ clearTimeout(to); done(); };
-  try{ const u = callerUtter(text, callerGetVoice()); u.onend = fin; u.onerror = fin; to = setTimeout(fin, 8000); syn.speak(u); }
-  catch(e){ fin(); }
-}
-function callerPump(){
-  if(callerPlaying) return;
-  const item = callerQueue.shift();
-  if(!item) return;
-  callerPlaying = true;
-  const gen = callerGen;
-  let once = false;
-  const done = ()=>{ if(once || gen!==callerGen) return; once = true; callerPlaying = false; setTimeout(callerPump, CALLER_ITEM_GAP_MS); };
-  const pack = callerActivePack();
-  const speak = ()=>{ if(pack) done(); else callerSpeakText(item.t, done); };   // recorded voice selected: a missing clip is silent, never a robot voice
-  if(pack && item.c && item.c.length) callerCancel = callerPlayClips(pack, item.c, done, speak);
-  else if(pack) done();   // recorded voice selected, nothing recorded for this line: stay silent rather than switch voices
-  else speak();
-}
-// Queues the calls in order (dart, then total, then "you require") without cutting off a
-// call that is still being spoken, so three quick camera darts are each heard in full.
-// Each call is {t: text for the browser voice, c: [clip names for a voice pack]}.
-/* v7.3: Caller mode. 'off' (default) never touches audio, 'totals' calls only turn totals / bust / game shot / requires,
-   'all' calls everything (every dart). callerOn===false from older saves also means off. */
-function callerMode(){
-  const st = state.settings;
-  if(st.callerOn===false) return 'off';
-  return st.callerMode || 'off';
-}
-function callerMuted(){ return callerMode()==='off'; }
-function setCallerMode(m){
-  state.settings.callerMode = m; state.settings.callerOn = (m!=='off');
-  if(m==='off'){ try{ callerStopAll(); }catch(e){} }
-  persistState(); render();
-}
-function callerSay(parts){
-  if(callerMuted()) return;
-  if(!callerSynth() && !callerActivePack()) return;
-  try{
-    if(callerTour) callerStopAll();
-    parts.forEach(p=>{ if(p) callerQueue.push(typeof p==='string' ? {t:p} : p); });
-    callerPump();
-  }catch(e){ console.warn('Oche: caller could not speak', e); }
-}
-function callerDartCall(num, seg){
-  const style = state.settings.callerStyle || 'full';
-  if(num==='B') return seg==='bull' ? 'Bullseye' : 'Twenty-five';
-  const n = parseInt(num,10);
-  const mult = seg==='triple' ? 3 : seg==='double' ? 2 : 1;
-  if(style==='score') return callerCap(callerWords(n*mult));
-  if(mult===3) return 'Triple '+callerWords(n);
-  if(mult===2) return 'Double '+callerWords(n);
-  return style==='short' ? callerCap(callerWords(n)) : 'Single '+callerWords(n);
-}
-function callerTotalCall(t){
-  if(t===180) return 'One hundred and eighty!';
-  if(t===0) return 'No score';
-  return callerCap(callerWords(t));
-}
-function callerNumClip(n){ return (n>=0 && n<=501) ? 'n_'+n : null; }
-function callerDartClip(num, seg){
-  const style = state.settings.callerStyle || 'full';
-  if(num==='B') return seg==='bull' ? 'bull' : 'n_25';
-  const n = parseInt(num,10);
-  const mult = seg==='triple' ? 3 : seg==='double' ? 2 : 1;
-  if(style==='score') return 'n_'+(n*mult);
-  if(mult===3) return 't_'+n;
-  if(mult===2) return 'd_'+n;
-  return style==='short' ? 'n_'+n : 's_'+n;
-}
-function callerDartItem(num, seg){ return {t:callerDartCall(num, seg), c:[callerDartClip(num, seg)]}; }
-function callerTotalItem(t){ const c = t===0 ? 'noscore' : callerNumClip(t); return {t:callerTotalCall(t), c:c?[c]:null}; }
-/* --- per-game call options ---
-   Every option has a default; "All games" sets the baseline and any single game can
-   override just the options it wants to change (state.settings.callerGlobal / callerGames). */
-const CALLER_OPT_DEFAULTS = {dart:true, miss:true, endcalls:true, turn:true, req:true, reqDart:false, aimDart:false, left:false, botDart:true, botTurn:true};
-const CALLER_OPT_INFO = [
-  {k:'dart',    label:'Call every dart',                         hint:'"Triple twenty" after each dart'},
-  {k:'miss',    label:'Call misses',                             hint:'"No score" when a dart misses the board'},
-  {k:'endcalls',label:'Call Bust and Game shot',                 hint:'Still called even if darts are off', x01:true},
-  {k:'turn',    label:'Call the turn total',                     hint:'"Sixty" / "One hundred and eighty!" after the third dart', x01:true},
-  {k:'req',     label:'Call "you require" at the start of each turn', hint:'Said for the player whose turn is starting, once a 3-dart finish is possible (170 or less)', x01:true},
-  {k:'left',    label:'Call the score left above 170',           hint:'"341 left" at the start of a turn when no finish is possible yet', x01:true},
-  {k:'reqDart', label:'Call "you require" after every dart',     hint:'Updates mid-turn, like Autodarts', x01:true},
-  {k:'aimDart', label:'Call the suggested target for each dart', hint:'"Aim double sixteen" - only once the target stops being plain treble 20s', x01:true},
-  {k:'botDart', label:'Call the bots\' darts',                   hint:'Turn off to hear only human darts'},
-  {k:'botTurn', label:'Call the bots\' turn totals and requires',hint:'Turn off for silent bot turns'}
-];
-const CALLER_KINDS = [
-  ['x01','X01 (301, 501...)'],['cricket','Cricket'],['atc','Around the Clock'],['shanghai','Shanghai'],['baseball','Baseball'],
-  ['halveit','Half-It'],['killer','Killer'],['war','War'],['callshot','Call Your Shot'],['custom','High Score & custom games'],['personalbest','Personal Best']
-];
-let callerScope = 'all';
-function callerOpts(kind){
-  const st = state.settings;
-  const o = Object.assign({}, CALLER_OPT_DEFAULTS);
-  if(st.callerRequire===false) o.req = false;                       // older single toggle
-  if(kind!=='x01' && st.callerAllGames===false){ o.dart = false; o.miss = false; }
-  if(st.callerGlobal) Object.assign(o, st.callerGlobal);
-  if(kind && st.callerGames && st.callerGames[kind]) Object.assign(o, st.callerGames[kind]);
-  if(callerMode()==='totals'){ o.dart = false; o.miss = false; o.reqDart = false; o.aimDart = false; o.botDart = false; }
-  return o;
-}
-function callerSetOpt(kind, key, val){
-  const st = state.settings;
-  if(kind==='all'){ st.callerGlobal = st.callerGlobal || {}; st.callerGlobal[key] = val; }
-  else { st.callerGames = st.callerGames || {}; st.callerGames[kind] = st.callerGames[kind] || {}; st.callerGames[kind][key] = val; }
-  persistState(); render();
-}
-function callerResetScope(kind){
-  const st = state.settings;
-  if(kind==='all') st.callerGlobal = {};
-  else if(st.callerGames) delete st.callerGames[kind];
-  persistState(); render();
-}
-function callerOptionRows(kind){
-  const o = callerOpts(kind === 'all' ? null : kind);
-  const x01Only = kind!=='all' && kind!=='x01';
-  return CALLER_OPT_INFO.filter(i=>!(x01Only && i.x01)).map(i=>`<label class="checkbox-row caller-opt">
-      <input type="checkbox" ${o[i.k]?'checked':''} onchange="callerSetOpt('${kind}','${i.k}', this.checked)">
-      <span><b>${i.label}</b><small>${i.hint}</small></span>
-    </label>`).join('');
-}
-function callerIsBot(s){
-  const p = s.participants && s.participants[s.currentIdx];
-  return !!(p && isBotPlayerId(p.playerId));
-}
-// "You require 40" (a 3-dart finish exists) or, when asked, "341 left" above that. Returns spoken items or null.
-function callerRequireItems(s, p, o){
-  if(p.finished || p.score<=0) return null;
-  const lead = [];   // player names are never spoken
-  const nc = callerNumClip(p.score), words = callerWords(p.score);
-  if(rankedCheckout(p.score, 3, s.outRule)){
-    if(!o.req) return null;
-    const pk = callerActivePack();
-    const clips = (pk && pk.rq && p.score>=2 && p.score<=170) ? ['rq_'+p.score] : (nc ? ['require',nc] : null);
-    return lead.concat([{t:'You require '+words, c:clips}]);
-  }
-  if(o.left) return lead.concat([{t:words+' left', c:nc?[nc,'left']:null}]);
-  return null;
-}
-function x01NextIdx(s){
-  let tries = 0, idx = s.currentIdx;
-  do{ idx = (idx+1) % s.participants.length; tries++; } while(s.participants[idx].finished && tries<=s.participants.length);
-  return idx;
-}
-function callerNextRequire(s, out, o){
-  const np = s.participants[x01NextIdx(s)];
-  if(!np || np.finished) return;
-  if(isBotPlayerId(np.playerId) && !o.botTurn) return;
-  const r = callerRequireItems(s, np, {req:o.req, left:o.left});
-  if(r) r.forEach(x=>out.push(x));
-}
-function callerTurnTotal(s){ return s.currentTurnDarts.reduce((a,d)=>a+(d.value||0),0); }
-// Everything said after a dart in X01, per the options. Runs right after the dart is applied and
-// before the turn advances, so the player and the turn's darts are still the ones that just threw.
-function callerX01Tail(s, p, o, bot, turnOver, calls, missed, held){
-  if(turnOver){
-    const out = held || calls;   // when held, these are said after the takeout
-    if(o.turn && (!bot || o.botTurn)){
-      const t = callerTurnTotal(s);
-      if(t>0 || !missed) out.push(callerTotalItem(t));
-    }
-    callerNextRequire(s, out, o);   // v7.0: the NEXT player hears what they require as their turn starts
-  } else if(!bot){
-    if(o.reqDart){ const r = callerRequireItems(s, p, {req:true, left:false}); if(r) r.forEach(x=>calls.push(x)); }
-    if(o.aimDart){
-      const plan = x01Plan(s);
-      if(plan && plan.mode!=='score' && plan.darts.length){
-        const t = parseThrowLabel(plan.darts[0]);
-        calls.push({t:'Aim, '+callerDartCall(t.num, t.seg).toLowerCase(), c:['aim', callerDartClip(t.num, t.seg)]});
-      }
-    }
-  }
-}
-let callerHeld = null, callerHeldTimer = null;
-const CALLER_HOLD_MS = 10000;   // if the takeout is never seen, say the held calls anyway after this long
-function callerHoldActive(){
-  return state.settings.callerAfterTakeout!==false && !!state.settings.dartsCallerCameraMode && state.dartsCallerStatus==='connected';
-}
-function callerClearHeld(){ callerHeld = null; if(callerHeldTimer){ clearTimeout(callerHeldTimer); callerHeldTimer = null; } }
-function callerHoldItems(items){
-  callerClearHeld(); callerHeld = items;
-  dbgLog('hold-start', {items:items.map(x=>x.t)});
-  callerHeldTimer = setTimeout(()=>{ const it = callerHeld; callerClearHeld(); dbgLog('hold-timeout', {said:!!it}); if(it) callerSay(it); }, CALLER_HOLD_MS);
-}
-// The camera confirmed the darts were pulled: sound first, then the held total and "you require".
-function callerOnTakeout(){
-  try{ playSfx('takeout'); }catch(e){}
-  const it = callerHeld; callerClearHeld();
-  if(it && it.length) setTimeout(()=>callerSay(it), 450);
-}
-function callerAnnounceX01(s, num, seg, res){
-  callerClearHeld();
-  if(callerMuted()) return;
-  const p = x01Current(s), o = callerOpts('x01'), bot = callerIsBot(s);
-  const calls = [];
-  if(o.dart && (!bot || o.botDart)) calls.push(callerDartItem(num, seg));
-  if(res.bust){
-    if(o.endcalls) calls.push({t:'Bust', c:['bust']});
-    if(res.turnOver){
-      const heldB = callerHoldActive() ? [] : null;
-      callerNextRequire(s, heldB || calls, o);
-      callerSay(calls);
-      if(heldB && heldB.length) callerHoldItems(heldB);
-      return;
-    }
-  }
-  else if(res.win){
-    if(o.endcalls){
-      calls.push({t:'Game shot!', c:['gameshot']});
-    }
-  }
-  else{
-    const held = (res.turnOver && callerHoldActive()) ? [] : null;
-    callerX01Tail(s, p, o, bot, res.turnOver, calls, false, held);
-    callerSay(calls);
-    if(held && held.length) callerHoldItems(held);
-    return;
-  }
-  callerSay(calls);
-}
-function callerAnnounceX01Miss(s){
-  callerClearHeld();
-  if(callerMuted()) return;
-  const p = x01Current(s), o = callerOpts('x01'), bot = callerIsBot(s);
-  const calls = [];
-  const said = o.miss && o.dart && (!bot || o.botDart);
-  if(said) calls.push({t:'No score', c:['noscore']});
-  const over = s.currentTurnDarts.length>=3;
-  const held = (over && callerHoldActive()) ? [] : null;
-  callerX01Tail(s, p, o, bot, over, calls, said, held);
-  callerSay(calls);
-  if(held && held.length) callerHoldItems(held);
-}
-// Every other game: read out what landed (or the miss), per that game's options.
-function callerAnnounceDart(s, num, seg){
-  const o = callerOpts(s.kind), bot = callerIsBot(s);
-  if(o.dart && (!bot || o.botDart)) callerSay([callerDartItem(num, seg)]);
-}
-// War: Whole Wedges just says the number. Inside and Outside say "Inner twelve" / "Outer twelve".
-// Master Mode says "Inner single twelve", "Triple twelve" and so on. A dart that locks a section says
-// "Locked ..."; a dart on a section somebody has already locked says "No score". Needs the clips
-// inner / outer / locked (voice pack flagged "war": true); older packs just say the number.
-function callerAnnounceWar(s, ann){
-  const o = callerOpts('war'), bot = callerIsBot(s);
-  if(!ann || !o.dart || (bot && !o.botDart)) return;
-  if(ann.type==='none' || ann.type==='lockedhit'){ callerSay([{t:'No score', c:['noscore']}]); return; }
-  const pk = callerActivePack(), rich = !pk || !!pk.war;
-  const num = ann.num, key = String(ann.key||'');
-  if(num==='B'){
-    const it = callerDartItem('B', ann.segType);
-    callerSay([ann.lockedNow && rich ? {t:'Locked '+it.t.toLowerCase(), c:['locked'].concat(it.c)} : it]); return;
-  }
-  const n = parseInt(num,10), w = callerWords(n), nc = 'n_'+n;
-  let t = callerCap(w), c = [nc];
-  if(rich){
-    if(s.ringMode==='split'){
-      const side = /o$/.test(key) ? 'outer' : 'inner';
-      t = callerCap(side)+' '+w; c = [side, nc];
-    } else if(s.ringMode==='all'){
-      if(ann.segType==='triple'){ t = 'Triple '+w; c = ['t_'+n]; }
-      else if(ann.segType==='double'){ t = 'Double '+w; c = ['d_'+n]; }
-      else { const side = /os$/.test(key) ? 'outer' : 'inner'; t = callerCap(side)+' single '+w; c = [side, 's_'+n]; }
-    }
-    if(ann.lockedNow){ t = 'Locked '+t.charAt(0).toLowerCase()+t.slice(1); c = ['locked'].concat(c); }
-  } else {
-    const it = callerDartItem(num, ann.segType); t = it.t; c = it.c;
-  }
-  callerSay([{t, c}]);
-}
-function callerAnnounceMiss(s){
-  const o = callerOpts(s.kind), bot = callerIsBot(s);
-  if(o.miss && o.dart && (!bot || o.botDart)) callerSay([{t:'No score', c:['noscore']}]);
-}
-/* --- voice browser in Settings --- */
-function callerMarkSelected(){
-  const cur = callerCurrentKey();
-  const lab = document.getElementById('callerCurrent');
-  if(lab){
-    const pk = callerActivePack(), cv = callerGetVoice();
-    lab.textContent = pk ? (pk.name || pk.id) : (cv ? cv.name : 'Browser default');
-  }
-  document.querySelectorAll('.caller-row').forEach(r=>{ r.classList.toggle('sel', r.dataset.uri===cur); });
-}
-function callerStopTour(){
-  if(!callerTour) return;
-  callerTour = null;
-  document.querySelectorAll('.caller-row.playing').forEach(r=>r.classList.remove('playing'));
-  const b = document.getElementById('callerPlayAll'); if(b) b.textContent = 'Play all';
-}
-function callerStopAll(){
-  callerStopTour();
-  callerGen++; callerQueue = []; callerPlaying = false; callerClearHeld();
-  if(callerCancel){ callerCancel(); callerCancel = null; }
-  const syn = callerSynth(); if(syn){ try{ syn.cancel(); }catch(e){} }
-}
-// Plays the sample line in a pack voice or a browser voice; done() when it has finished.
-function callerPreview(e, done){
-  if(e.pack){ callerCancel = callerPlayClips(e.pack, ['t_20','n_180'], done, done); return; }
-  const syn = callerSynth(); if(!syn) return done();
-  let to; const fin = ()=>{ clearTimeout(to); done(); };
-  try{ const u = callerUtter(CALLER_SAMPLE, e.voice); u.onend = fin; u.onerror = fin; to = setTimeout(fin, 9000); syn.speak(u); }
-  catch(err){ fin(); }
-}
-function callerHear(idx){
-  const e = callerShown[idx]; if(!e) return;
-  callerStopAll();
-  state.settings.callerVoice = e.key;
-  persistState();
-  callerMarkSelected();
-  callerPreview(e, ()=>{});
-}
-function callerTest(){
-  callerStopAll();
-  const pk = callerActivePack();
-  callerPreview(pk ? {pack:pk} : {voice:callerGetVoice()}, ()=>{});
-}
-function callerPlayAll(){
-  if(!callerShown.length) return;
-  callerStopAll();
-  const t = {i:0, list:callerShown.slice()};
-  callerTour = t;
-  const b = document.getElementById('callerPlayAll'); if(b) b.textContent = 'Playing…';
-  callerTourNext(t);
-}
-function callerTourNext(t){
-  if(callerTour!==t) return;
-  if(t.i>=t.list.length){ callerStopTour(); return; }
-  const e = t.list[t.i];
-  document.querySelectorAll('.caller-row').forEach(r=>{
-    const on = r.dataset.uri===e.key;
-    r.classList.toggle('playing', on);
-    if(on && r.scrollIntoView) r.scrollIntoView({block:'nearest'});
-  });
-  let done = false, to;
-  const go = ()=>{ if(done || callerTour!==t) return; done = true; clearTimeout(to); t.i++; setTimeout(()=>callerTourNext(t), 350); };
-  to = setTimeout(go, 9000);
-  const syn = callerSynth(); if(syn){ try{ syn.cancel(); }catch(err){} }
-  callerPreview(e, go);
-}
-function renderCallerSettings(){
-  const s = state.settings;
-  const syn = callerSynth();
-  const chip = (label, val)=>`<span class="chip ${(s.callerStyle||'full')===val?'selected':''}" onclick="setSetting('callerStyle','${val}')">${label}</span>`;
-  const entries = [];
-  callerPacks.forEach(p=>entries.push({key:callerPackKey(p), name:p.name||p.id, sub:(p.desc||'Natural voice')+' · Oche voice', pack:p}));
-  // Recorded Oche voices are the only ones listed when any are installed; the
-  // browser's own voices are kept only as a fallback for when there are none.
-  const showBrowser = !callerPacks.length && !!syn && callerVoices.length > 0;
-  let filterHtml = '';
-  if(showBrowser){
-    const codes = {};
-    callerVoices.forEach(v=>{ codes[callerBaseLang(v)] = true; });
-    const keys = Object.keys(codes).sort((a,b)=>callerLangName(a).localeCompare(callerLangName(b)));
-    if(callerLangFilter!=='all' && !codes[callerLangFilter]) callerLangFilter = codes.en ? 'en' : 'all';
-    callerVoices.filter(v=>(callerLangFilter==='all' || callerBaseLang(v)===callerLangFilter) && (!s.callerHQOnly || callerIsHQ(v)))
-      .forEach(v=>entries.push({key:v.voiceURI, name:v.name, sub:callerLangName(v.lang)+' · '+(v.localService?'on device':'online'), voice:v}));
-    filterHtml = `<select class="input" style="flex:1; min-width:140px;" aria-label="Voice language" onchange="callerLangFilter=this.value; render();">
-          <option value="all" ${callerLangFilter==='all'?'selected':''}>All languages</option>
-          ${keys.map(k=>`<option value="${callerEsc(k)}" ${callerLangFilter===k?'selected':''}>${callerEsc(callerLangName(k))}</option>`).join('')}
-        </select>`;
-  }
-  callerShown = entries;
-  const cur = callerCurrentKey();
-  let voicesHtml;
-  if(!entries.length && !showBrowser){
-    voicesHtml = `<p class="info-note">${syn ? 'No voices found. This browser has not reported any speech voices, and no Oche voice packs are installed (see make-oche-voices.py). Voices come from the browser and the computer it runs on: Chrome, Edge and Safari list plenty, while Firefox on Linux needs the speech-dispatcher service and a voice package installed.' : 'This browser has no speech synthesis and no Oche voice packs are installed, so the caller cannot talk here.'}</p>`;
-  } else {
-    const cp = callerActivePack(), cvv = callerGetVoice();
-    voicesHtml = `
-      ${callerPacks.length ? '' : '<p class="info-note">Tip: Oche voice packs (natural recorded voices that sound the same on every device) are not installed yet. Run make-oche-voices.py once to add them.</p>'}
-      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px;">
-        ${filterHtml}
-        <button class="btn btn-primary" id="callerPlayAll" style="flex:none; padding:8px 14px;" onclick="callerPlayAll()">Play all</button>
-        <button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="callerStopAll()">Stop</button>
-      </div>
-      ${showBrowser ? `<label class="checkbox-row"><input type="checkbox" ${s.callerHQOnly?'checked':''} onchange="setSetting('callerHQOnly', this.checked)"><span>Only show advanced browser voices (Enhanced, Premium, Natural, Neural, online)</span></label>` : ''}
-      <div class="field-label" style="margin-top:10px;">${entries.length} voice${entries.length===1?'':'s'} &middot; calling voice: <span id="callerCurrent" style="color:var(--cream); text-transform:none; letter-spacing:0;">${callerEsc(cp ? (cp.name||cp.id) : (cvv ? cvv.name : 'Browser default'))}</span></div>
-      <div class="caller-list">
-        ${entries.map((e,i)=>`<div class="caller-row${e.key===cur?' sel':''}" data-uri="${callerEsc(e.key)}">
-          <div class="caller-info"><b>${callerEsc(e.name)}</b><span>${callerEsc(e.sub)}</span></div>
-          <button class="btn btn-secondary caller-hear" onclick="callerHear(${i})">Hear</button>
-        </div>`).join('')}
-      </div>`;
-  }
-  return `<div class="section-label" style="padding-left:0; margin-top:18px;">Caller</div>
-    <div>
-      <span class="field-label">Caller (Off is lightest on a small PC)</span>
-      <div class="chip-wrap">${['off','Off','totals','Totals only','all','Every dart'].reduce((a,v,i,ar)=> i%2 ? a : a+`<span class="chip ${callerMode()===v?'selected':''}" onclick="setCallerMode('${v}')">${ar[i+1]}</span>`, '')}</div>
-    </div>
-    <div>
-      <span class="field-label">Call style</span>
-      <div class="chip-wrap">${chip('Triple twenty','full')}${chip('Twenty (singles plain)','short')}${chip('Sixty (points only)','score')}</div>
-    </div>
-    <div class="caller-scope">
-      <span class="field-label">What to call, for</span>
-      <select class="input" aria-label="Caller options for" onchange="callerScope=this.value; render();">
-        <option value="all" ${callerScope==='all'?'selected':''}>All games (default)</option>
-        ${CALLER_KINDS.map(([k,n])=>`<option value="${k}" ${callerScope===k?'selected':''}>${n}${(s.callerGames&&s.callerGames[k]&&Object.keys(s.callerGames[k]).length)?' \u2022 custom':''}</option>`).join('')}
-      </select>
-      ${callerScope==='all'
-        ? '<p class="info-note">These apply to every game unless a game below has its own settings.</p>'
-        : '<p class="info-note">Only the options you change here are special for this game; the rest follow &ldquo;All games&rdquo;.</p>'}
-      ${callerOptionRows(callerScope)}
-      <button class="btn btn-secondary" style="flex:none; padding:8px 14px; margin-top:6px;" onclick="callerResetScope(callerScope)">${callerScope==='all'?'Reset to defaults':'Use the default for this game'}</button>
-    </div>
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px 16px; margin-top:6px;">
-      <div><span class="field-label">Speed ${(s.callerRate||1).toFixed(2).replace(/0$/,'')}</span>
-        <input type="range" min="60" max="160" value="${Math.round((s.callerRate||1)*100)}" style="width:100%;" aria-label="Caller speed" onchange="state.settings.callerRate = this.value/100; persistState(); render();"></div>
-      <div><span class="field-label">Pitch ${(s.callerPitch||1).toFixed(2).replace(/0$/,'')}</span>
-        <input type="range" min="50" max="150" value="${Math.round((s.callerPitch||1)*100)}" style="width:100%;" aria-label="Caller pitch" onchange="state.settings.callerPitch = this.value/100; persistState(); render();"></div>
-    </div>
-    <div style="margin-top:8px;"><button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="callerTest()">&#9654; Test call</button></div>
-    ${voicesHtml}
-    <p class="info-note">Tap Hear on any voice to preview it and make it the caller. The first tap anywhere in the app switches speech on, since browsers keep audio locked until you touch the page.</p>`;
-}
-(function(){
-  try{
-    callerLoadPacks();
-    const syn = callerSynth(); if(!syn) return;
-    const refresh = ()=>{ callerLoadVoices(); if(typeof state!=='undefined' && callerSettingsOpen()) render(); };
-    callerLoadVoices();
-    if('onvoiceschanged' in syn) syn.onvoiceschanged = refresh;
-    setTimeout(refresh, 800);
-    setTimeout(refresh, 2500);
-  }catch(e){}
-})();
 
 /* ========================= HELPERS ========================= */
 function el(html){ const d=document.createElement('div'); d.innerHTML=html.trim(); return d.firstElementChild; }
@@ -4386,7 +3651,6 @@ function commitBoardThrow(c){
   state.pendingHitPoint = c.point || null;
   state.pendingHitRing = c.ring || null; // 'inner' | 'outer' — only War's split-ring mode reads this
   state.returnedToPreviousPlayer = false;
-  if(!cameraPendingTurnEnd) playSfx('hit'); // a dart that is being ignored while we wait for takeout stays silent
   if(state.practiceSession && c.point) state.practiceSession.lastHitPoint = c.point;
   if(state.checkoutPractice && c.point) state.checkoutPractice.lastHitPoint = c.point;
   let num, mult;
@@ -4467,12 +3731,10 @@ function dispatchThrowCore(num, segType){
   // visibly happens until takeout eventually fires and everything dumps at
   // once. This affects every camera-mode game, not just one.
   if(cameraPendingTurnEnd) return;
-  playSfx('hit');
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
   if(thisPoint) s.turnHitPoints.push(thisPoint);
-  if(s.kind!=='x01' && s.kind!=='war') callerAnnounceDart(s, num, segType);
   if(s.kind==='x01'){
     let throwObj;
     if(num==='B' && segType==='bull') throwObj = {label:fullDartLabel('B','bull'),value:50,type:'bull',hitTarget:true};
@@ -4484,7 +3746,6 @@ function dispatchThrowCore(num, segType){
       else throwObj = {label:fullDartLabel(n,'triple'),value:n*3,type:'triple',n,hitTarget:true};
     }
     const res = x01ApplyDart(s, throwObj);
-    callerAnnounceX01(s, num, segType, res);
     if(res.turnOver){
       if(res.bust){ finalizeBustThenAdvance(s); }
       else if(res.win){
@@ -4540,7 +3801,6 @@ function dispatchThrowCore(num, segType){
     if(res.turnOver){ personalBestEndTurn(s); if(s.complete) finishPersonalBestGame(s); }
   } else if(s.kind==='war'){
     const res = warApplyDart(s, num, segType);
-    callerAnnounceWar(s, res.ann);
     if(res.turnOver){ warEndTurn(s); if(s.complete) finishWarGame(s); }
   }
   if(s.currentTurnDarts.length>0){
@@ -4550,7 +3810,6 @@ function dispatchThrowCore(num, segType){
   render();
 }
 function recordMiss(){
-  if(!cameraPendingTurnEnd) playSfx('miss');
   state.pendingHitRing = null;
   if(state.screen==='proRoutine'){ proRoutineRecordDart(0,'miss',null); return; }
   if(state.screen==='closeoutTrainerActive'){ closeoutTrainerRecordDart(0,'miss'); return; }
@@ -4571,12 +3830,10 @@ function recordMissCore(){
   const thisMissPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
   if(thisMissPoint) s.turnHitPoints.push(thisMissPoint);
-  if(s.kind!=='x01') callerAnnounceMiss(s);
   if(s.kind==='x01'){
     if(s.currentTurnDarts.length===0) s.scoreBeforeTurn = x01Current(s).score;
     s.currentTurnDarts.push({label:'Miss', value:0});
     x01Current(s).stats.darts++;
-    callerAnnounceX01Miss(s);
     if(s.currentTurnDarts.length>=3){ x01EndTurn(s); if(s.complete) finishX01Game(s); }
   } else if(s.kind==='cricket'){
     s.currentTurnDarts.push({label:'Miss', num:null, marksHit:0, pointsScored:0});
@@ -5343,7 +4600,6 @@ function participantThrowCounts(s){
   return counts;
 }
 function buildAndShowReview(opts){
-  if(opts && (opts.winnerId || opts.winnerName)) playSfx('win');
   const reviewPlayers = opts.participantIds.map(pid=>{
     const player = state.players.find(x=>x.id===pid);
     return {
@@ -5687,7 +4943,7 @@ function gameOverlays(s){
 /* ---- Home / leave / save / resume ---- */
 function goHubHome(){
   state.confirmHome=false; state.gameMenuOpen=false; state.tipsOpen=false; state.confirmQuitGame=false; state.confirmRestart=false;
-  state.callerMenuOpen=false; liveOptsRestore();
+  liveOptsRestore();
   state.session=null; state.pendingBoard=null; state.pendingSelection=null; _turnSnap=null;
   state.screen='home'; state.navTab='hub';
   render();
@@ -6087,13 +5343,7 @@ window.addEventListener('resize', ()=>{ setAppHeight(); try{ fitChalkboard(); up
   wrap('dispatchThrowCore', 'dart', (n,s)=>({num:n, seg:s, blocked:!!cameraPendingTurnEnd}));
   wrap('recordMissCore', 'miss', ()=>({blocked:!!cameraPendingTurnEnd}));
   wrap('handleCameraThrow', 'cam-throw', (t)=>({name:t&&t.segment&&t.segment.name, num:t&&t.segment&&t.segment.number, mult:t&&t.segment&&t.segment.multiplier, bed:t&&t.segment&&t.segment.bed}));
-  wrap('callerOnTakeout', 'takeout');
   wrap('forceEndCurrentTurnFromTakeout', 'takeout-force', ()=>({pending:!!cameraPendingTurnEnd}));
-  wrap('resetBoardManagerNow', 'bm-RESET');
-  wrap('startBoardManagerDetection', 'bm-START');
-  wrap('hardRestartBoardManager', 'bm-HARD-RESTART');
-  wrap('callerSay', 'say', (parts)=>(parts||[]).map(p=>p && (p.t||p)));
-  wrap('playSfxById', 'sfx', (id)=>id);
 })();
 (function(){ let last = performance.now(); setInterval(()=>{
   const n = performance.now(), lag = n - last - 100; last = n;
@@ -6104,8 +5354,8 @@ window.addEventListener('resize', ()=>{ setAppHeight(); try{ fitChalkboard(); up
 function dbgInfo(){
   return {version:BUILD_STAMP, ua:navigator.userAgent, cores:navigator.hardwareConcurrency, dpr:window.devicePixelRatio, inner:window.innerWidth+'x'+window.innerHeight,
     outer:window.outerWidth+'x'+window.outerHeight, screen:screen.width+'x'+screen.height, saved:new Date().toISOString(),
-    detection:state.settings.detectionSource||'autodarts', cameraMode:!!state.settings.dartsCallerCameraMode, caller:state.settings.callerVoice||'', screenNow:state.screen,
-    settings:{callerAfterTakeout:state.settings.callerAfterTakeout, botSpeed:state.settings.botSpeed, masterVolume:state.settings.masterVolume},
+    detection:state.settings.detectionSource||'autodarts', cameraMode:!!state.settings.dartsCallerCameraMode, screenNow:state.screen,
+    settings:{botSpeed:state.settings.botSpeed},
     data:{history:(state.history||[]).length, players:(state.players||[]).length, savedGames:(state.savedGames||[]).length, storageKB:Math.round(DBG.persist.len/1024)}};
 }
 function dbgStats(){
@@ -6582,7 +5832,6 @@ function callShotBoardClickForAttempt(evt){
 function callShotRegisterDart(hitZoneId){
   const s = state.session;
   if(!s || s.kind!=='callshot') return;
-  playSfx(hitZoneId ? 'hit' : 'miss');
   callShotPushHistory(s);
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisPoint = state.pendingHitPoint || null;
@@ -7473,10 +6722,6 @@ function render(){
     case 'checkoutTable': html = renderCheckoutTable(); break;
     default: html = renderHomeShell();
   }
-  if(state.camTroubleOpen){
-    const cm = renderCamTroubleModal();
-    html = html.includes(FOOTER_MARKER) ? html.replace(FOOTER_MARKER, cm+FOOTER_MARKER) : html + cm;
-  }
   if(state.emojiPickerPlayerId) html += renderEmojiPickerModal(state.emojiPickerPlayerId);
   if(state.celebration) html += renderCelebrationOverlay();
   if(state.pbFlash) html += renderPBFlashOverlay();
@@ -7603,7 +6848,7 @@ function openContextualSettings(){
 function openSettingsFromGameMenu(){
   state.settingsReturnTo = {screen: state.screen};
   state.gameMenuOpen = false;
-  state.settingsPage = 'sound';
+  state.settingsPage = 'look';
   state.screen = 'settingsHub';
   render();
 }
@@ -8238,7 +7483,6 @@ function renderDartSettingsScreen(){
 }
 const SETTINGS_PAGES = [
   {id:'look',     name:'Look',              note:'Theme and layout'},
-  {id:'sound',    name:'Sound and caller',  note:'Effects, volume, caller voice'},
   {id:'board',    name:'Board',             note:'Entry method and camera link'},
   {id:'defaults', name:'Game defaults',     note:'Guidance, turns, dart lists'},
   {id:'lobby',    name:'Lobby and status',  note:'Privacy and your status'},
@@ -8247,7 +7491,7 @@ const SETTINGS_PAGES = [
 function setSettingsPage(id){ state.settingsPage = id; render(); }
 function renderSettingsHub(){
   const pg = state.settingsPage || 'look';
-  const fn = {look:settingsPageLook, sound:settingsPageSound, board:settingsPageBoard, defaults:settingsPageDefaults, lobby:settingsPageLobby, about:settingsPageAbout}[pg] || settingsPageLook;
+  const fn = {look:settingsPageLook, board:settingsPageBoard, defaults:settingsPageDefaults, lobby:settingsPageLobby, about:settingsPageAbout}[pg] || settingsPageLook;
   const meta = SETTINGS_PAGES.find(p=>p.id===pg) || SETTINGS_PAGES[0];
   return `${settingsTopbar('Settings')}
   <div class="sh-wrap">
@@ -8309,38 +7553,6 @@ function settingsPageLook(){
         oninput="state.settings.panelWidth=+this.value; document.documentElement.style.setProperty('--panel-width', this.value+'px'); document.documentElement.style.setProperty('--panel-scale', this.value/230);" onchange="persistState(); render();">
       <p class="info-note">Wider gives bigger score cards in games. You can also drag the edge of the panel in a game.</p>
     </div>`;
-}
-/* ---- Sound and caller ---- */
-function settingsPageSound(){
-  const s = state.settings;
-  return `<div class="sh-card">
-    ${masterVolumeRow()}
-    <p class="info-note" style="margin:0;">One volume for the effects and the caller. You can also change it in a game: Menu at the top, then Volume.</p>
-  </div>
-  <div class="sh-card">
-    <div class="checkbox-row"><input type="checkbox" ${s.callerAfterTakeout!==false?'checked':''} onchange="setSetting('callerAfterTakeout', this.checked)"> With the camera on, say the turn total after the darts are pulled (takeout sound first)</div>
-    <div class="checkbox-row">
-      <input type="checkbox" ${s.soundOn!==false?'checked':''} onchange="setSetting('soundOn', ${s.soundOn===false})">
-      Play sound effects
-    </div>
-    <div>
-      <span class="field-label">Sound effects level (on top of the volume above)</span>
-      <input type="range" min="0" max="100" value="${Math.round((s.soundVolume===undefined?0.7:s.soundVolume)*100)}" style="width:100%;" aria-label="Sound effects level"
-        onchange="state.settings.soundVolume = this.value/100; persistState(); previewSfx(state.settings.sfxHit||'thud');">
-    </div>
-    ${Object.entries(SFX_EVENTS).map(([key,ev])=>{
-      const cur = s[ev.setting] || ev.def;
-      return `<div>
-        <span class="field-label">${ev.label}</span>
-        <div style="display:flex; gap:8px; align-items:center;">
-          <select class="input" style="flex:1;" aria-label="${ev.label}" onchange="setSetting('${ev.setting}', this.value); previewSfx(this.value);">${sfxOptionsHtml(ev.group, cur)}</select>
-          <button class="btn btn-secondary" style="flex:none; padding:8px 14px;" onclick="previewSfx('${cur}')" aria-label="Preview ${ev.label}">&#9654;</button>
-        </div>
-      </div>`;
-    }).join('')}
-    <p class="info-note">Every effect in the list can be used for any of the three moments. The first tap anywhere in the app switches sound on, since browsers keep audio locked until you touch the page.</p>
-  </div>
-  ${renderCallerSettings()}`;
 }
 /* ---- Board ---- */
 function settingsPageBoard(){
@@ -8479,7 +7691,7 @@ function camAddress(){
   return b ? b.replace(/^http:\/\//,'') : '';
 }
 // One plain-language read of how the camera link is doing, shared by the
-// hub tile, the Live page, Troubleshoot and the in-game camera menu.
+// hub tile, the Live page and the in-game camera menu.
 function camSummary(){
   const st = state.dartsCallerStatus;
   const h = state.boardManagerHealth;
@@ -8488,11 +7700,11 @@ function camSummary(){
   if(st==='error') return {level:'bad', text:'Cannot reach camera', hint:'Check the camera PC is on and the address is right.'};
   if(st!=='connected') return {level:'off', text:'Not connected', hint:'Tap Connect on the Live page.'};
   if(!h) return {level:'warn', text:'Connected, waiting', hint:'No data from the camera yet.'};
-  if(Date.now()-h.updatedAt > 5000) return {level:'warn', text:'No recent data', hint:'The camera stopped reporting. Try Fix board.'};
+  if(Date.now()-h.updatedAt > 5000) return {level:'warn', text:'No recent data', hint:'The camera stopped reporting. Check the Autodarts Board page.'};
   const sx = (h.status||'').toLowerCase(), ev = (h.event||'').toLowerCase();
-  if(h.running===false) return {level:'bad', text:'Detection stopped', hint:'Try Fix board, or Start detection in Troubleshoot.'};
+  if(h.running===false) return {level:'bad', text:'Detection stopped', hint:'Start detection in the Autodarts Board page.'};
   if(h.connected===false) return {level:'bad', text:'Camera not connected', hint:'The software cannot see the cameras.'};
-  if(sx.includes('error') || ev.includes('failed') || ev.includes('error')) return {level:'bad', text:'Camera error', hint:'Try Fix board.'};
+  if(sx.includes('error') || ev.includes('failed') || ev.includes('error')) return {level:'bad', text:'Camera error', hint:'Open the camera software to check it.'};
   return {level:'ok', text:'Ready', hint:'Throw a dart to test.'};
 }
 function camSetTab(t){ state.camTab = t; render(); }
@@ -8505,24 +7717,16 @@ function camTestConnection(){
     .then(d=>camNote('Reached the camera software. Running: '+(d.running?'yes':'no')+', status: '+(d.status||'unknown')+'.'))
     .catch(e=>camNote('Could not reach '+base+' ('+(e&&e.message||'no answer')+'). Is the camera PC on and on the same network?'));
 }
-function camSoftReset(){ resetBoardManagerNow(); camNote('Soft reset sent. Give it a few seconds, then throw a test dart.'); }
-function camStartDetection(){ startBoardManagerDetection(); camNote('Start detection sent. It should show as running within a few seconds.'); }
-function camHardRestart(){
-  if(!confirm('Restart the camera service? It is offline for up to 20 seconds.')) return;
-  hardRestartBoardManager(); camNote('Restart sent. Cameras can take 10 to 20 seconds to come back.');
-}
 function camToggleMode(){ setSetting('dartsCallerCameraMode', !state.settings.dartsCallerCameraMode); persistState(); }
-function openCamTrouble(){ state.boardHealthExpanded=false; state.camMsg=null; state.camTroubleOpen=true; render(); }
-function closeCamTrouble(){ state.camTroubleOpen=false; render(); }
 function camOpenLink(){
   const b = boardManagerBase();
   return b ? `<a class="btn btn-secondary" style="flex:none; padding:8px 16px; text-decoration:none;" href="${b}" target="_blank" rel="noopener">Open camera software</a>` : '';
 }
 function renderCameraTab(){
   const t = state.camTab || 'live';
-  const page = t==='setup' ? renderCamSetup() : t==='trouble' ? renderCamTroubleBody() : renderCamLive();
+  const page = t==='setup' ? renderCamSetup() : renderCamLive();
   return `<div class="cam-wrap">
-    <div class="cam-tabs">${[['live','Live'],['setup','Setup guide'],['trouble','Troubleshoot']].map(x=>`<button class="${t===x[0]?'on':''}" onclick="camSetTab('${x[0]}')">${x[1]}</button>`).join('')}</div>
+    <div class="cam-tabs">${[['live','Live'],['setup','Setup guide']].map(x=>`<button class="${t===x[0]?'on':''}" onclick="camSetTab('${x[0]}')">${x[1]}</button>`).join('')}</div>
     ${page}
   </div>`;
 }
@@ -8551,7 +7755,6 @@ function renderCamLive(){
         ? `<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="disconnectBoardManager()">Disconnect</button>`
         : `<button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="connectBoardManager()">Connect</button>`}
       <div class="checkbox-row" style="padding:0;"><input type="checkbox" ${state.settings.dartsCallerCameraMode?'checked':''} onchange="camToggleMode()"> Camera Mode: real throws drive the game</div>
-      <div class="checkbox-row" style="padding:0;"><input type="checkbox" ${state.settings.camHandsOff!==false?'checked':''} onchange="setSetting('camHandsOff', this.checked); persistState();"> Hands-off: Oche never starts, resets or restarts the camera by itself (only the buttons here do)</div>
       ${camOpenLink()}
     </div>`;
 }
@@ -8569,38 +7772,6 @@ function renderCamSetup(){
     ${step(5,boardManagerLooksHealthy(),'Check it is ready','The status on the Live page should say Ready. Then throw one dart: it should appear in a game within a second.',`<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="camSetTab('live')">Go to Live</button>`)}
     ${state.camMsg ? `<div class="cam-msg">${state.camMsg}</div>` : ''}
     <div class="sh-card"><span class="field-label">Other camera systems</span><p class="info-note" style="margin:0;">Oche reads the camera through a simple status link, the same one the Autodarts Board Manager and the single-camera program provide. Other systems that offer it can use the single-camera option. More camera types are planned.</p></div>`;
-}
-function renderCamTroubleBody(){
-  const fix = state.boardFixInProgress;
-  const busy = !!fix && fix.phase!=='ok' && fix.phase!=='stuck';
-  const sm = camSummary();
-  const step=(n,title,desc,btn)=>`<div class="cam-step"><div class="n">${n}</div><div style="flex:1; min-width:0;"><div class="st">${title}</div><div class="sd">${desc}</div><div class="sa">${btn}</div></div></div>`;
-  const b=(label,fn,cls)=>`<button class="btn ${cls||'btn-secondary'}" style="flex:none; padding:8px 16px;" onclick="${fn}">${label}</button>`;
-  return `${camStatusCard()}
-    <div class="sh-card" style="flex-direction:row; align-items:center; gap:14px; flex-wrap:wrap;">
-      <div style="flex:1; min-width:220px;"><div class="st" style="font-size:16px; font-weight:600; color:var(--cream);">Fix board</div><div class="sd" style="font-size:13px; color:var(--cream-dim);">Tries a soft reset, checks it worked, and restarts the camera service only if needed.</div></div>
-      <button class="btn btn-primary" style="flex:none; padding:10px 22px;" ${busy?'disabled':''} onclick="fixBoardNow()">&#128295; Fix board</button>
-    </div>
-    ${fix ? `<div class="fix-board-status ${fix.phase==='ok'?'ok':fix.phase==='stuck'?'stuck':'working'}" style="font-size:13px;">${fix.message}</div>` : ''}
-    <p class="info-note" style="margin:0;">Or work through these one at a time, gentlest first.</p>
-    ${step(1,'Test the connection','Checks Oche can reach the camera software at all.',b('Test connection','camTestConnection()')+camOpenLink())}
-    ${step(2,'Soft reset','Clears a confused detection state, like pressing Reset in the camera software. Fixes darts that stop registering.',b('Soft reset','camSoftReset()'))}
-    ${step(3,'Start detection','Use this if detection shows as Stopped. A reset does nothing when detection is stopped.',b('Start detection','camStartDetection()'))}
-    ${step(4,'Check calibration','If darts land in the wrong place, the board or a camera may have moved. Open the camera software, make sure each camera sees the whole board, and run calibration there.',camOpenLink() || '<span class="sd">Set the camera address first.</span>')}
-    ${step(5,'Restart the camera service','Stronger than a reset. Restarts the camera service on the darts PC. Takes up to 20 seconds.',b('Restart service','camHardRestart()','btn-danger'))}
-    ${step(6,'Still stuck?','Restart the darts PC itself, then reconnect from the Live page.','')}
-    ${state.camMsg ? `<div class="cam-msg">${state.camMsg}</div>` : ''}`;
-}
-function renderCamTroubleModal(){
-  return `<div class="modal-overlay gx" onclick="if(event.target===this) closeCamTrouble();">
-    <div class="modal cam-modal" style="max-height:calc(100vh - 48px);">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-        <h3 style="margin:0;">Camera troubleshooting</h3>
-        <button class="gtb-btn" onclick="closeCamTrouble()">Close</button>
-      </div>
-      <div style="display:flex; flex-direction:column; gap:12px;">${renderCamTroubleBody()}</div>
-    </div>
-  </div>`;
 }
 
 setInterval(()=>{ try{ if(state.screen==='home' && state.navTab==='camera' && (state.camTab||'live')!=='setup' && !document.hidden) render(); }catch(e){} }, 2000);
@@ -8893,11 +8064,6 @@ window.addEventListener('focus', ()=>{ if(lobbySignedIn() && lobbyMyId()) lobbyS
 let boardManagerPollTimer = null;
 let boardManagerLastThrowCount = 0;
 let boardManagerLastEvent = null;
-let boardManagerTakeoutStuckSince = null;
-let boardManagerResetAttempts = 0;
-let boardManagerStartAttempts = 0;
-const BOARD_MANAGER_MAX_AUTO_ATTEMPTS = 3; // cap auto-recovery so a genuinely broken engine gets surfaced instead of hammered with requests indefinitely
-const BOARD_MANAGER_STUCK_TIMEOUT_MS = 6000; // a real physical takeout takes 1-3s; this is a generous grace period before assuming the vision engine itself is stuck
 
 // Which detector Oche polls. 'autodarts' (default) is the home Board Manager
 // exactly as before; 'singlecam' points the very same poller at the
@@ -8932,7 +8098,6 @@ function setDetectionSource(src){
   // Start clean so nothing from the other detector (health readout, retry
   // counters, takeout timers) leaks across the switch.
   state.boardManagerHealth = null;
-  boardManagerStartAttempts = 0; boardManagerResetAttempts = 0; boardManagerTakeoutStuckSince = null;
   disconnectBoardManager();
   if(wasLive && boardManagerBase()) connectBoardManager();
 }
@@ -8993,38 +8158,17 @@ function pollBoardManagerOnce(url, isFirst){
 // exact same action as clicking "Reset" on Board Manager's own web page.
 // Confirmed endpoint (from the ha-autodarts-local Home Assistant
 // integration's source, which implements the same button).
-function resetBoardManagerNow(){
-  const base = boardManagerBase();
-  if(!base) return;
-  fetch(base + '/api/reset', { method:'POST' })
-    .then(()=> console.log('Oche: Board Manager reset triggered'))
-    .catch(err => console.warn('Oche: Board Manager reset failed', err && err.message));
-}
 // Different real action from reset — confirmed via Board Manager's own API
 // (button.py in the ha-autodarts-local integration): reset only clears a
 // confused detection state on an engine that's still running. If the
 // engine has actually stopped (data.running === false), reset does nothing
 // at all — this is what start_detection is for.
-function startBoardManagerDetection(){
-  const base = boardManagerBase();
-  if(!base) return;
-  fetch(base + '/api/start', { method:'PUT' })
-    .then(()=> console.log('Oche: Board Manager start triggered'))
-    .catch(err => console.warn('Oche: Board Manager start failed', err && err.message));
-}
 // Genuinely stronger than Reset/Start above — those only act on Board
 // Manager's own detection API, which isn't enough when the whole service
 // itself came up broken (confirmed the hard way: a full PC restart alone
 // didn't fix it, restarting the actual autodarts.service afterward did).
 // Goes through the launcher helper (port 9090), not Board Manager directly,
 // since only the launcher has permission to run systemctl.
-function hardRestartBoardManager(){
-  const launcher = boardManagerLauncherBase();
-  if(!launcher) return;
-  fetch(launcher + '/api/board-manager/hard-restart', { method:'POST' })
-    .then(()=> console.log('Oche: Board Manager hard restart triggered'))
-    .catch(err => console.warn('Oche: Board Manager hard restart failed', err && err.message));
-}
 
 // True once Board Manager's most recent poll looks genuinely healthy —
 // connected, running, not sitting on an error/failed status, and the data
@@ -9044,59 +8188,11 @@ function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
 // Polls boardManagerLooksHealthy() repeatedly for up to maxWaitMs, rather
 // than trusting one fixed delay — a restart's cameras can take anywhere
 // from a couple seconds to closer to 20s to reopen and calibrate.
-async function waitForBoardManagerHealthy(maxWaitMs, checkEveryMs){
-  const start = Date.now();
-  while(Date.now() - start < maxWaitMs){
-    if(boardManagerLooksHealthy()) return true;
-    await sleep(checkEveryMs);
-  }
-  return boardManagerLooksHealthy();
-}
 // The real "Fix Board" action: tries the gentle option first, actually
 // checks whether it worked (rather than assuming), and only escalates to a
 // full service restart if the gentle option didn't clear it. Every stage
 // updates state.boardFixInProgress so the panel shows honest, live status
 // instead of a silent fire-and-forget click.
-let boardFixRunning = false;
-async function fixBoardNow(){
-  if(boardFixRunning) return; // guard against double-tapping mid-sequence
-  if(!boardManagerBase()) return;
-  boardFixRunning = true;
-  try{
-    state.boardFixInProgress = { phase:'soft', message:'Resetting…' };
-    render();
-    resetBoardManagerNow();
-    state.boardFixInProgress = { phase:'waiting-soft', message:'Checking if that cleared it…' };
-    render();
-    const softWorked = await waitForBoardManagerHealthy(4000, 500);
-    if(softWorked){
-      state.boardFixInProgress = { phase:'ok', message:'Back online, ready to play.' };
-      render();
-      await sleep(3000);
-      state.boardFixInProgress = null;
-      render();
-      return;
-    }
-    state.boardFixInProgress = { phase:'hard', message:"Soft reset didn't clear it — restarting the service…" };
-    render();
-    hardRestartBoardManager();
-    state.boardFixInProgress = { phase:'waiting-hard', message:'Waiting for cameras to come back online…' };
-    render();
-    const hardWorked = await waitForBoardManagerHealthy(20000, 1000);
-    if(hardWorked){
-      state.boardFixInProgress = { phase:'ok', message:'Back online, ready to play.' };
-      render();
-      await sleep(3000);
-      state.boardFixInProgress = null;
-      render();
-    } else {
-      state.boardFixInProgress = { phase:'stuck', message:'Still stuck — may need a manual reboot.' };
-      render();
-    }
-  } finally {
-    boardFixRunning = false;
-  }
-}
 function handleBoardManagerState(data){
   // Persisted so any screen can show a live readout of exactly what Board
   // Manager is reporting, without needing to separately open its own web
@@ -9108,51 +8204,6 @@ function handleBoardManagerState(data){
   const eventText = data.event || null;
   if(throws.length !== boardManagerLastThrowCount){
     console.log('Oche: poll saw throws.length change', boardManagerLastThrowCount, '->', throws.length, JSON.stringify(data));
-  }
-
-  // Two genuinely different failure modes, confirmed the hard way:
-  // (1) detection fully stopped (data.running === false) — reset does
-  //     nothing here, only /api/start helps.
-  // (2) detection running but stuck believing a takeout is still in
-  //     progress — reset is the right fix.
-  // Both are capped at a few auto-attempts rather than retried forever:
-  // hammering an already-unstable Board Manager with repeated requests may
-  // itself have been part of what escalated a stuck state into a fully
-  // stopped one.
-  if(data.running === false){
-    boardManagerTakeoutStuckSince = null;
-    if(state.settings.camHandsOff!==false){ /* v7.4 SAFE: hands-off, Oche never starts the engine by itself */ }
-    else if(boardManagerStartAttempts < BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
-      boardManagerStartAttempts++;
-      console.warn(`Oche: Board Manager detection is stopped — attempting to start it (attempt ${boardManagerStartAttempts}/${BOARD_MANAGER_MAX_AUTO_ATTEMPTS})`);
-      startBoardManagerDetection();
-    } else if(boardManagerStartAttempts === BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
-      boardManagerStartAttempts++;
-      console.error('Oche: Board Manager still stopped after repeated auto-start attempts — this needs a manual look, not another automatic retry.');
-    }
-    return;
-  }
-  boardManagerStartAttempts = 0;
-
-  const statusText = (data.status || '').toLowerCase();
-  if(statusText.includes('takeout')){
-    if(boardManagerTakeoutStuckSince === null){
-      boardManagerTakeoutStuckSince = Date.now();
-      boardManagerResetAttempts = 0;
-    } else if(state.settings.camHandsOff===false && Date.now() - boardManagerTakeoutStuckSince > BOARD_MANAGER_STUCK_TIMEOUT_MS){
-      if(boardManagerResetAttempts < BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
-        boardManagerResetAttempts++;
-        console.warn(`Oche: Board Manager looks stuck on takeout — auto-resetting (attempt ${boardManagerResetAttempts}/${BOARD_MANAGER_MAX_AUTO_ATTEMPTS})`);
-        resetBoardManagerNow();
-        boardManagerTakeoutStuckSince = Date.now(); // wait a full fresh timeout before trying again, rather than immediately re-triggering
-      } else if(boardManagerResetAttempts === BOARD_MANAGER_MAX_AUTO_ATTEMPTS){
-        boardManagerResetAttempts++;
-        console.error('Oche: Board Manager still stuck after repeated auto-reset attempts — this needs a manual look, not another automatic retry.');
-      }
-    }
-  } else {
-    boardManagerTakeoutStuckSince = null;
-    boardManagerResetAttempts = 0;
   }
 
   // New dart(s) landed since our last poll.
@@ -9171,7 +8222,6 @@ function handleBoardManagerState(data){
   // ("Takeout finished"), not data.status (which stayed "Throw" throughout).
   if(eventText !== boardManagerLastEvent){
     if(eventText === 'Takeout finished'){
-      callerOnTakeout();
       forceEndCurrentTurnFromTakeout();
       boardManagerLastThrowCount = 0; // board will report a fresh empty throws[] for the next player
     }
@@ -9478,17 +8528,10 @@ function renderCameraHelpTrigger(){
   </div>`;
 }
 function renderCameraHelpPanel(){
-  const fix = state.boardFixInProgress;
-  const busy = !!fix && fix.phase!=='ok' && fix.phase!=='stuck';
-  const statusClass = !fix ? '' : (fix.phase==='ok' ? 'ok' : fix.phase==='stuck' ? 'stuck' : 'working');
   const sm = camSummary();
   return `<div class="camera-help-panel">
     <div class="camera-help-stats"><b>${sm.text}</b><br>${sm.hint}</div>
-    <div class="cam-menu-btns">
-      <div class="tiny-edit-btn primary${busy?' disabled':''}" ${busy?'':'onclick="fixBoardNow()"'}>&#128295; Fix board</div>
-      <div class="tiny-edit-btn" onclick="openCamTrouble()">Troubleshoot</div>
-    </div>
-    ${fix ? `<div class="fix-board-status ${statusClass}">${busy?'&#9203; ':fix.phase==='ok'?'&#9989; ':'&#9888; '}${fix.message}</div>` : ''}
+    <div class="cam-menu-btns">${camOpenLink()}</div>
   </div>`;
 }
 function renderEditTurnRow(s){
@@ -10571,30 +9614,13 @@ function renderGameMenu(s){
     </div>`;
   }
   if(state.liveOptsOpen) return renderLiveOptionsModal(s);
-  if(state.callerMenuOpen){
-    const ck = CALLER_KINDS.find(x=>x[0]===s.kind) ? s.kind : 'all';
-    return `<div class="modal-overlay gx" onclick="if(event.target===this){ state.callerMenuOpen=false; render(); }">
-      <div class="modal" style="max-height:85vh; overflow-y:auto;">
-        <h3>Caller${ck==='all'?'':' &middot; '+CALLER_KINDS.find(x=>x[0]===ck)[1]}</h3>
-        <div class="chip-wrap" style="margin-bottom:8px;">${[['off','Off'],['totals','Totals only'],['all','Every dart']].map(m=>`<span class="chip ${callerMode()===m[0]?'selected':''}" onclick="setCallerMode('${m[0]}')">${m[1]}</span>`).join('')}</div>
-        <p class="info-note" style="margin-top:0;">${ck==='all'?'These apply to every game.':'Changes here are saved for this game type only.'}</p>
-        ${callerOptionRows(ck)}
-        <div class="btn-row" style="margin-top:12px;">
-          <button class="btn btn-secondary" onclick="callerResetScope('${ck}')">Default</button>
-          <button class="btn btn-primary" onclick="state.callerMenuOpen=false; render();">Done</button>
-        </div>
-      </div>
-    </div>`;
-  }
   const canRestart = !!s._launch;
   return `<div class="modal-overlay gx" onclick="if(event.target===this) closeGameMenu();">
     <div class="modal menu-modal">
       <h3>Menu</h3>
       <button class="btn btn-primary btn-full" onclick="closeGameMenu()">Back to game</button>
-      <div style="padding:2px 2px 6px 2px;">${masterVolumeRow()}</div>
       <button class="btn btn-secondary btn-full" onclick="openTips()">Tips and rules</button>
       ${(s._launch && !s._launch.custom && s._launch.gameId) ? `<button class="btn btn-secondary btn-full" onclick="openLiveOptions()">Game options</button>` : ''}
-      <button class="btn btn-secondary btn-full" onclick="state.callerMenuOpen=true; render();">Caller options</button>
       <button class="btn btn-secondary btn-full" onclick="openSettingsFromGameMenu()">All settings</button>
       ${s.kind==='custom' && s.cfg.winCondition==='manual' ? `<button class="btn btn-secondary btn-full" onclick="state.gameMenuOpen=false; endCustomGameManually(state.session); finishCustomGame(state.session); render();">End game now and tally score</button>` : ''}
       <button class="btn btn-secondary btn-full" onclick="returnToLauncherHome()">Back to launcher</button>
@@ -12775,13 +11801,6 @@ function renderPlayerDetail(){
 
 /* ========================= INIT ========================= */
 hydrateState();
-(function(){ try{
-  if(!state.settings.safe74){
-    state.settings.safe74 = true; state.settings.camHandsOff = true;
-    state.settings.callerMode = 'off'; state.settings.callerOn = false; state.settings.soundOn = false;
-    persistStateNow();
-  }
-}catch(e){} })();
 initDartFieldOptions();
 render();
 if(boardManagerBase()){ connectBoardManager(); }
