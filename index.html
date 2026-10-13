@@ -195,6 +195,14 @@ body{
 .ps-score{ margin-left:auto; font-family:'Oswald',sans-serif; font-size:19px; color:var(--cream); font-weight:700; }
 .ps-summary{ margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream-dim); }
 .ps-body{ padding:0 10px 10px 10px; }
+.gtb-vol{ height:44px; padding:0 14px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--brass); display:flex; align-items:center; gap:10px; }
+.gtb-vol input[type=range], .vol-row input[type=range]{ accent-color:var(--brass); }
+.gtb-vol input[type=range]{ width:130px; }
+.vol-block{ display:flex; flex-direction:column; gap:10px; margin:2px 0 10px 0; }
+.vol-row{ display:flex; align-items:center; gap:10px; }
+.vol-lab{ width:64px; font-size:13px; color:var(--cream-dim); }
+.vol-row input[type=range]{ flex:1; min-width:0; }
+.vol-val{ width:40px; text-align:right; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--cream); }
 .tstrip{ display:flex; align-items:stretch; height:58px; background:var(--felt-dark); border:1px solid var(--felt-lighter); border-radius:12px; overflow:hidden; }
 .tslot{ flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--cream-dim); }
 .tslot .tl{ font-family:'Oswald',sans-serif; font-weight:600; font-size:20px; line-height:1; color:var(--cream); }
@@ -1080,7 +1088,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v8.2 BARE';
+const BUILD_STAMP = 'v8.3 BARE';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -1178,6 +1186,67 @@ function applyTheme(){
 }
 
 
+/* ========================= SOUNDS (v8.3) =========================
+   Three effects drawn live with Web Audio, no files: thud (dart hit), swoosh (miss), ding (takeout).
+   Volume = master x sounds, both saved in settings. Nothing is created until the first tap/click. */
+let _ac = null, _acNoise = null; const _sndLast = {};
+function sndVol(key, def){ const v = (typeof state!=='undefined' && state.settings) ? state.settings[key] : undefined; return typeof v==='number' ? Math.max(0, Math.min(1, v)) : def; }
+function sndLevel(){ return sndVol('volMaster', 0.7) * sndVol('volSounds', 0.8); }
+function sndCtx(){
+  if(_ac) return _ac;
+  try{ const C = window.AudioContext || window.webkitAudioContext; if(C) _ac = new C(); }catch(e){}
+  return _ac;
+}
+function sndNoise(c){
+  if(_acNoise) return _acNoise;
+  const n = Math.floor(c.sampleRate * 0.5), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+  for(let i=0;i<n;i++) d[i] = Math.random()*2-1;
+  return (_acNoise = b);
+}
+function sndPlay(kind){
+  try{
+    const lvl = sndLevel(); if(lvl <= 0.001) return;
+    const now = Date.now(); if(_sndLast[kind] && now - _sndLast[kind] < 80) return; _sndLast[kind] = now;
+    const c = sndCtx(); if(!c) return; if(c.state==='suspended') c.resume();
+    const t = c.currentTime, out = c.createGain(); out.gain.value = lvl; out.connect(c.destination);
+    const env = (g, peak, dur)=>{ g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t+0.006); g.gain.exponentialRampToValueAtTime(0.0001, t+dur); };
+    if(kind==='thud'){
+      const o = c.createOscillator(), g = c.createGain(); o.type = 'sine';
+      o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(55, t+0.13);
+      env(g, 0.9, 0.18); o.connect(g); g.connect(out); o.start(t); o.stop(t+0.2);
+      const s = c.createBufferSource(), f = c.createBiquadFilter(), g2 = c.createGain(); s.buffer = sndNoise(c);
+      f.type = 'lowpass'; f.frequency.value = 900; env(g2, 0.35, 0.05); s.connect(f); f.connect(g2); g2.connect(out); s.start(t); s.stop(t+0.06);
+    } else if(kind==='swoosh'){
+      const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(); s.buffer = sndNoise(c);
+      f.type = 'bandpass'; f.Q.value = 1.1; f.frequency.setValueAtTime(500, t); f.frequency.exponentialRampToValueAtTime(2600, t+0.28);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.7, t+0.09); g.gain.exponentialRampToValueAtTime(0.0001, t+0.3);
+      s.connect(f); f.connect(g); g.connect(out); s.start(t); s.stop(t+0.32);
+    } else if(kind==='ding'){
+      [[1318.5,0.5],[1975.5,0.22]].forEach(([fr,pk])=>{ const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = fr; env(g, pk, 0.9); o.connect(g); g.connect(out); o.start(t); o.stop(t+0.95); });
+    }
+  }catch(e){}
+}
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev, ()=>{ const c = sndCtx(); if(c && c.state==='suspended') c.resume(); }, {passive:true}));
+function onVolInput(key, val){
+  state.settings[key] = Math.max(0, Math.min(1, (+val)/100));
+  document.querySelectorAll('[data-vol-val="'+key+'"]').forEach(e=>{ e.textContent = Math.round(+val)+'%'; });
+  document.querySelectorAll('input[data-vol="'+key+'"]').forEach(e=>{ if(e.value!==String(val)) e.value = val; });
+  persistState();
+}
+function onVolDone(key){ sndPlay('thud'); }
+function volRow(key, label, def){
+  const v = Math.round(sndVol(key, def)*100);
+  return `<div class="vol-row"><span class="vol-lab">${label}</span><input type="range" min="0" max="100" value="${v}" data-vol="${key}" aria-label="${label} volume" oninput="onVolInput('${key}', this.value)" onchange="onVolDone('${key}')"><span class="vol-val" data-vol-val="${key}">${v}%</span></div>`;
+}
+const SPEAKER_ICON_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/><path d="M18.5 5.5a9 9 0 010 13"/></svg>';
+function renderHeaderVolume(){
+  const v = Math.round(sndVol('volMaster', 0.7)*100);
+  return `<div class="gtb-vol">${SPEAKER_ICON_SVG}<input type="range" min="0" max="100" value="${v}" data-vol="volMaster" aria-label="Master volume" oninput="onVolInput('volMaster', this.value)" onchange="onVolDone('volMaster')"></div>`;
+}
+function renderVolumeBlock(){
+  return `<div class="vol-block">${volRow('volMaster','Master',0.7)}${volRow('volSounds','Sounds',0.8)}</div>`;
+}
+
 /* ========================= STATE ========================= */
 let state = {
   screen: 'home',
@@ -1266,6 +1335,7 @@ let state = {
     boardManagerHost: '', // darts PC IP, e.g. 10.0.0.13 — Board Manager itself runs on port 3180 there
     detectionSource: 'autodarts', // 'autodarts' = Autodarts Board Manager (3 cameras, home) | 'singlecam' = single-camera program (travel)
     singleCamHost: '', // host[:port] of the single-camera program; blank = localhost:3180. Kept separate so switching never overwrites boardManagerHost.
+    volMaster: 0.7, volSounds: 0.8, // v8.3: master x sounds volume (0-1)
     dartsCallerCameraMode: false, // when on, real throws from the board drive gameplay instead of clicks
   },
   dartsCallerStatus: 'disconnected', // 'disconnected' | 'connecting' | 'connected' | 'error'
@@ -3663,6 +3733,7 @@ function commitBoardThrow(c){
   state.pendingHitPoint = c.point || null;
   state.pendingHitRing = c.ring || null; // 'inner' | 'outer' — only War's split-ring mode reads this
   state.returnedToPreviousPlayer = false;
+  if(!cameraPendingTurnEnd) sndPlay('thud');
   if(state.practiceSession && c.point) state.practiceSession.lastHitPoint = c.point;
   if(state.checkoutPractice && c.point) state.checkoutPractice.lastHitPoint = c.point;
   let num, mult;
@@ -3743,6 +3814,7 @@ function dispatchThrowCore(num, segType){
   // visibly happens until takeout eventually fires and everything dumps at
   // once. This affects every camera-mode game, not just one.
   if(cameraPendingTurnEnd) return;
+  sndPlay('thud');
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
@@ -3822,6 +3894,7 @@ function dispatchThrowCore(num, segType){
   render();
 }
 function recordMiss(){
+  if(!cameraPendingTurnEnd) sndPlay('swoosh');
   state.pendingHitRing = null;
   if(state.screen==='proRoutine'){ proRoutineRecordDart(0,'miss',null); return; }
   if(state.screen==='closeoutTrainerActive'){ closeoutTrainerRecordDart(0,'miss'); return; }
@@ -4943,7 +5016,7 @@ function renderGameTopBar(s, title){
     </div>
     <div class="gtb-mid"><div class="game-title-center">${title}</div>${sub}</div>
     <div class="gtb-right">
-      <button class="gtb-btn" onclick="openTips()">${BOOK_ICON_SVG}Tips and rules</button>
+      ${renderHeaderVolume()}
       ${renderCameraHelpTrigger()}
     </div>
   </div>`;
@@ -5844,6 +5917,7 @@ function callShotBoardClickForAttempt(evt){
 function callShotRegisterDart(hitZoneId){
   const s = state.session;
   if(!s || s.kind!=='callshot') return;
+  sndPlay(hitZoneId ? 'thud' : 'swoosh');
   callShotPushHistory(s);
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisPoint = state.pendingHitPoint || null;
@@ -7495,15 +7569,19 @@ function renderDartSettingsScreen(){
 }
 const SETTINGS_PAGES = [
   {id:'look',     name:'Look',              note:'Theme and layout'},
+  {id:'sound',    name:'Sound',             note:'Volume'},
   {id:'board',    name:'Board',             note:'Entry method and camera link'},
   {id:'defaults', name:'Game defaults',     note:'Guidance, turns, dart lists'},
   {id:'lobby',    name:'Lobby and status',  note:'Privacy and your status'},
   {id:'about',    name:'About and data',    note:'Version, backup, saved game'},
 ];
+function settingsPageSound(){
+  return `<div class="sh-card">${renderVolumeBlock()}<p class="info-note" style="margin:0;">Master moves everything. Sounds sets the thud, swoosh and ding against it. You can also change the master volume at the top of a game.</p></div>`;
+}
 function setSettingsPage(id){ state.settingsPage = id; render(); }
 function renderSettingsHub(){
   const pg = state.settingsPage || 'look';
-  const fn = {look:settingsPageLook, board:settingsPageBoard, defaults:settingsPageDefaults, lobby:settingsPageLobby, about:settingsPageAbout}[pg] || settingsPageLook;
+  const fn = {look:settingsPageLook, sound:settingsPageSound, board:settingsPageBoard, defaults:settingsPageDefaults, lobby:settingsPageLobby, about:settingsPageAbout}[pg] || settingsPageLook;
   const meta = SETTINGS_PAGES.find(p=>p.id===pg) || SETTINGS_PAGES[0];
   return `${settingsTopbar('Settings')}
   <div class="sh-wrap">
@@ -8237,6 +8315,7 @@ function handleBoardManagerState(data){
   if(_emptied && eventText !== 'Takeout finished' && Date.now() - boardManagerTakeoutSeenAt < 20000){
     dbgLog('takeout-by-empty', {event:eventText, status:data.status});
     boardManagerTakeoutSeenAt = 0;
+    sndPlay('ding');
     forceEndCurrentTurnFromTakeout();
   }
 
@@ -8247,6 +8326,7 @@ function handleBoardManagerState(data){
   if(eventText !== boardManagerLastEvent){
     if(eventText === 'Takeout finished'){
       boardManagerTakeoutSeenAt = 0;
+      sndPlay('ding');
       forceEndCurrentTurnFromTakeout();
       boardManagerLastThrowCount = 0; // board will report a fresh empty throws[] for the next player
     }
@@ -9654,6 +9734,7 @@ function renderGameMenu(s){
     <div class="modal menu-modal">
       <h3>Menu</h3>
       <button class="btn btn-primary btn-full" onclick="closeGameMenu()">Back to game</button>
+      ${renderVolumeBlock()}
       <button class="btn btn-secondary btn-full" onclick="openTips()">Tips and rules</button>
       ${(s._launch && !s._launch.custom && s._launch.gameId) ? `<button class="btn btn-secondary btn-full" onclick="openLiveOptions()">Game options</button>` : ''}
       <button class="btn btn-secondary btn-full" onclick="openSettingsFromGameMenu()">All settings</button>
