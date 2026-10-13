@@ -1092,7 +1092,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v8.4 CAM';
+const BUILD_STAMP = 'v8.5 SCAN';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -3733,6 +3733,10 @@ function commitBoardThrow(c){
     if(state.pinpoint && state.pinpoint.target && c.point) pinpointRecordDart(c.point);
     return;
   }
+  if(scanFix && !cameraThrowInProgress){
+    const f = scanFix; scanFix = null;
+    if(Date.now() - f.t < 30000 && c.point) scanSendFix(f, c);
+  }
   state.pendingBoard = null;
   state.pendingHitPoint = c.point || null;
   state.pendingHitRing = c.ring || null; // 'inner' | 'outer' — only War's split-ring mode reads this
@@ -4256,6 +4260,10 @@ function scheduleCallShotBotAction(isFirstAction){
 function removeDartFromCurrentTurn(index){
   const s = state.session;
   if(!s || index<0 || index>=s.currentTurnDarts.length) return;
+  if(usingSingleCam() && camTurnIds[index] && camTurnIds[index].id){
+    scanFix = {id: camTurnIds[index].id, label: camTurnIds[index].label, t: Date.now()};
+    camTurnIds.splice(index, 1);
+  } else if(camTurnIds.length) camTurnIds.splice(index, 1);
   const toReplay = s.currentTurnDarts.filter((d,i)=>i!==index).map(d=>({num:d._num, segType:d._segType}));
   while(s.currentTurnDarts.length>0){
     if(s.kind==='x01') x01Undo(s);
@@ -7667,8 +7675,8 @@ function settingsPageBoard(){
     </div>
     ${usingSingleCam() ? `
     <div style="margin-top:10px;">
-      <span class="field-label">DartCam address</span>
-      <input class="input" placeholder="127.0.0.1:5050" value="${s.singleCamHost}"
+      <span class="field-label">dartscan address</span>
+      <input class="input" placeholder="127.0.0.1:3180" value="${s.singleCamHost}"
         onchange="setSetting('singleCamHost', this.value.trim()); disconnectBoardManager();">
     </div>` : `
     <div style="margin-top:10px;">
@@ -7683,7 +7691,7 @@ function settingsPageBoard(){
       <span class="info-note" style="margin:0;">
         ${state.dartsCallerStatus==='connected' ? '🟢 Connected'
           : state.dartsCallerStatus==='connecting' ? '🟡 Connecting…'
-          : state.dartsCallerStatus==='error' ? ('🔴 Connection failed — check the address, and that ' + (usingSingleCam() ? 'the single-camera program is running at ' : 'Board Manager is reachable at ') + (boardManagerBase() || 'http://&lt;ip&gt;:3180'))
+          : state.dartsCallerStatus==='error' ? ('🔴 Connection failed — check the address, and that ' + (usingSingleCam() ? 'dartscan is running at ' : 'Board Manager is reachable at ') + (boardManagerBase() || 'http://&lt;ip&gt;:3180'))
           : '⚪ Not connected'}
       </span>
     </div>
@@ -7691,7 +7699,7 @@ function settingsPageBoard(){
       <input type="checkbox" ${s.dartsCallerCameraMode?'checked':''} onchange="setSetting('dartsCallerCameraMode', ${!s.dartsCallerCameraMode})">
       Camera Mode — real throws from the board drive gameplay instead of taps/clicks
     </div>
-    ${usingSingleCam() ? `<p class="info-note">Single camera mode listens to DartCam on this Mac instead of the Autodarts board. DartCam must be running, calibrated and have an empty-board baseline. One camera is less accurate than three (a dart can be missed or miscalled), so check each score and fix any wrong dart. Use the Takeout button in the Camera panel when you pull the darts. Switch back to "Autodarts board" at home; that setup is untouched.</p>` : ''}
+    ${usingSingleCam() ? `<p class="info-note">Single camera mode listens to dartscan on this Mac instead of the Autodarts board. dartscan must be running (./dart run) with an empty board at the start. One camera is less accurate than three (a dart can be missed or miscalled), so check each score and fix any wrong dart. Use the Takeout button in the Camera panel when you pull the darts. Switch back to "Autodarts board" at home; that setup is untouched.</p>` : ''}
     <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered. Oche also auto-resets Board Manager on its own if throws stop registering for more than a few seconds. If you need to reset it by hand, there's a button for that directly on the gameplay screen itself — no need to come here mid-game.</p>
     <p class="info-note">Live status, the setup guide and troubleshooting are in the Camera tab on Home.</p><div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="goTab('camera')">Open Camera tab</button></div>
     </div>`;
@@ -7792,16 +7800,13 @@ function camSummary(){
   const h = state.boardManagerHealth;
   if(!boardManagerBase()) return {level:'off', text:'No camera set up', hint:'Open the Setup guide to add your camera address.'};
   if(st==='connecting') return {level:'warn', text:'Connecting', hint:'Reaching the camera software.'};
-  if(st==='error') return {level:'bad', text:'Cannot reach camera', hint: usingSingleCam() ? 'Start DartCam on this Mac (double-click Start DartCam.command), then tap Connect.' : 'Check the camera PC is on and the address is right.'};
+  if(st==='error') return {level:'bad', text:'Cannot reach camera', hint: usingSingleCam() ? 'Start dartscan on this Mac (./dart run), then tap Connect.' : 'Check the camera PC is on and the address is right.'};
   if(st!=='connected') return {level:'off', text:'Not connected', hint:'Tap Connect on the Live page.'};
   if(!h) return {level:'warn', text:'Connected, waiting', hint:'No data from the camera yet.'};
   if(usingSingleCam()){
-    const d = h.dartcam || {};
-    if(Date.now()-h.updatedAt > 5000) return {level:'warn', text:'No recent data', hint:'DartCam stopped answering. Check that it is still running.'};
-    if(!d.camera) return {level:'bad', text:'Camera offline', hint:'In DartCam, open Camera setup and connect the camera.'};
-    if(d.calibrating) return {level:'warn', text:'Calibrating', hint:d.message || 'Finish the calibration in DartCam.'};
-    if(!d.calibrated) return {level:'warn', text:'Needs calibration', hint:'Calibrate the board in DartCam first.'};
-    if(!d.baseline) return {level:'warn', text:'Needs baseline', hint:'Take every dart out, then press Capture baseline in DartCam.'};
+    if(Date.now()-h.updatedAt > 5000) return {level:'warn', text:'No recent data', hint:'dartscan stopped answering. Check that it is still running.'};
+    if(h.connected===false) return {level:'bad', text:'Camera offline', hint:'dartscan is running but gets no picture. Check the camera power and wifi.'};
+    if(/no baseline/i.test(h.detector||'')) return {level:'warn', text:'Getting ready', hint:'Keep the board empty and stay still for a moment.'};
     return {level:'ok', text:'Ready', hint:'Throw a dart.'};
   }
   if(Date.now()-h.updatedAt > 5000) return {level:'warn', text:'No recent data', hint:'The camera stopped reporting. Check the Autodarts Board page.'};
@@ -7848,7 +7853,7 @@ function renderCamLive(){
       ${kv('Camera setup', usingSingleCam() ? 'Single camera' : 'Autodarts board')}
       ${kv('Address', camAddress() || 'Not set')}
       ${kv('Link', connected ? 'Connected' : state.dartsCallerStatus==='connecting' ? 'Connecting' : state.dartsCallerStatus==='error' ? 'Failed' : 'Not connected')}
-      ${usingSingleCam() ? kv('Ready to score', h && h.running ? 'Yes' : 'No') + kv('Calibrated', h && h.dartcam && h.dartcam.calibrated ? 'Yes' : 'No') + kv('Baseline', h && h.dartcam && h.dartcam.baseline ? 'Captured' : 'Not captured') : kv('Detection', h ? (h.running ? 'Running' : 'Stopped') : '—')}
+      ${usingSingleCam() ? kv('Ready to score', h && h.connected && !/no baseline/i.test(h.detector||'') ? 'Yes' : 'No') + kv('Detector', h && h.detector ? h.detector : '—') : kv('Detection', h ? (h.running ? 'Running' : 'Stopped') : '—')}
       ${kv('Status', h && h.status ? h.status : '—')}
       ${kv('Last event', h && h.event ? h.event : '—')}
       ${kv('Darts this turn', h ? h.numThrows : '—')}
@@ -7869,8 +7874,8 @@ function renderCamSetup(){
   const single = usingSingleCam();
   return `<p class="info-note" style="margin:0;">Follow these in order. Each step ticks off by itself.</p>
     ${step(1,true,'Choose your camera setup','Autodarts board is the 3-camera setup at home. Single camera is the travel program on a laptop.',`<div class="chip-wrap">${chip('Autodarts board (3 cameras)','autodarts')}${chip('Single camera (travel)','singlecam')}</div>`)}
-    ${step(2,!!boardManagerBase(), single?'Enter the program address':'Enter the darts PC address', single?'Usually 127.0.0.1:5050 when DartCam runs on this same Mac. Start it by double-clicking Start DartCam.command.':'The IP address of the PC the cameras are plugged into, for example 10.0.0.13.',
-      `<input class="input" style="max-width:260px;" placeholder="${single?'127.0.0.1:5050':'10.0.0.13'}" value="${single?state.settings.singleCamHost:state.settings.boardManagerHost}" onchange="setSetting('${single?'singleCamHost':'boardManagerHost'}', this.value.trim()); disconnectBoardManager();">`)}
+    ${step(2,!!boardManagerBase(), single?'Enter the program address':'Enter the darts PC address', single?'Usually 127.0.0.1:3180 when dartscan runs on this same Mac. Start it with ./dart run in the dartscan folder.':'The IP address of the PC the cameras are plugged into, for example 10.0.0.13.',
+      `<input class="input" style="max-width:260px;" placeholder="${single?'127.0.0.1:3180':'10.0.0.13'}" value="${single?state.settings.singleCamHost:state.settings.boardManagerHost}" onchange="setSetting('${single?'singleCamHost':'boardManagerHost'}', this.value.trim()); disconnectBoardManager();">`)}
     ${step(3,connected,'Connect','Oche reaches the camera software over your network.',connected?`<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="disconnectBoardManager()">Disconnect</button>`:`<button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="connectBoardManager()">Connect</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="camTestConnection()">Test connection</button>`)}
     ${step(4,!!state.settings.dartsCallerCameraMode,'Turn on Camera Mode','With it on, darts the camera sees are entered for you instead of tapped in.',`<div class="checkbox-row" style="padding:0;"><input type="checkbox" ${state.settings.dartsCallerCameraMode?'checked':''} onchange="camToggleMode()"> Camera Mode</div>`)}
     ${step(5,boardManagerLooksHealthy(),'Check it is ready','The status on the Live page should say Ready. Then throw one dart: it should appear in a game within a second.',`<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="camSetTab('live')">Go to Live</button>`)}
@@ -8175,9 +8180,9 @@ let boardManagerTakeoutSeenAt = 0; // v8.1: last time the board reported anythin
 // single-camera program, which serves the same /api/state contract.
 function usingSingleCam(){ return state.settings.detectionSource === 'singlecam'; }
 function singleCamBase(){
-  let h = (state.settings.singleCamHost || '').trim() || '127.0.0.1:5050';
+  let h = (state.settings.singleCamHost || '').trim() || '127.0.0.1:3180';
   h = h.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-  if(!/:\d+$/.test(h)) h += ':5050';
+  if(!/:\d+$/.test(h)) h += ':3180';
   return 'http://' + h;
 }
 // Base URL of whichever detector is selected, or null if not configured.
@@ -8215,7 +8220,6 @@ function connectBoardManager(){
   render();
   boardManagerLastThrowCount = 0;
   boardManagerLastEvent = null;
-  dartCamLastId = null;
   pollBoardManagerOnce(url, /*isFirst*/ true);
   boardManagerPollTimer = setInterval(()=>pollBoardManagerOnce(url, false), 400);
 }
@@ -8248,7 +8252,7 @@ function pollBoardManagerOnce(url, isFirst){
     .then(data => {
       clearTimeout(_to); fin(); dbgPoll(performance.now()-tq, data);
       if(state.dartsCallerStatus !== 'connected'){ state.dartsCallerStatus = 'connected'; render(); }
-      if(usingSingleCam()) handleDartCamState(data); else handleBoardManagerState(data);
+      handleBoardManagerState(data);
     })
     .catch(err => {
       clearTimeout(_to); fin(); DBG.poll.err++; dbgLog('poll-err', String((err && err.message) || err));
@@ -8305,7 +8309,7 @@ function handleBoardManagerState(data){
   // UI — this is genuinely everything its API exposes (confirmed directly
   // against a real curl of /api/state), no richer diagnostic fields exist
   // to surface beyond these.
-  state.boardManagerHealth = { connected: data.connected, running: data.running, status: data.status, event: data.event, numThrows: data.numThrows, updatedAt: Date.now() };
+  state.boardManagerHealth = { connected: data.connected, running: data.running, status: data.status, event: data.event, numThrows: data.numThrows, detector: data.detector || '', learning: data.learning || {}, updatedAt: Date.now() };
   const throws = Array.isArray(data.throws) ? data.throws : [];
   const eventText = data.event || null;
   if(throws.length !== boardManagerLastThrowCount){
@@ -8411,8 +8415,12 @@ function camManualTakeout(){
   const base = boardManagerBase();
   const local = ()=>{ sndPlay('ding'); forceEndCurrentTurnFromTakeout(); };
   if(usingSingleCam() && base && state.dartsCallerStatus === 'connected'){
-    fetch(base + '/api/manual-takeout', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).catch(local);
+    fetch(base + '/api/takeout', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).catch(local);
   } else local();
+}
+function camResetScan(){
+  const base = boardManagerBase(); if(!base) return;
+  fetch(base + '/api/reset', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).catch(()=>{});
 }
 let _dcLastHtml = '';
 function syncDartCamPanel(){
@@ -8424,21 +8432,21 @@ function syncDartCamPanel(){
   }
   if(!box){
     box = document.createElement('div'); box.id = 'dcPanel';
-    box.innerHTML = '<img id="dcImg" alt="DartCam live view"><div id="dcInfo"></div>';
+    box.innerHTML = '<div id="dcInfo"></div>';
     document.body.appendChild(box);
   }
   box.style.display = 'block';
-  const base = boardManagerBase(), im = box.querySelector('#dcImg');
-  const want = base + '/video';
-  if(im.getAttribute('src') !== want) im.setAttribute('src', want);
-  const sm = camSummary(), h = state.boardManagerHealth, d = (h && h.dartcam) || {};
+  const base = boardManagerBase();
+  const sm = camSummary();
   const connected = state.dartsCallerStatus === 'connected';
+  const lg = (state.boardManagerHealth && state.boardManagerHealth.learning) || {};
+  const lgTxt = lg.corrections ? ('Fixes: ' + lg.corrections + ' · learned from ' + (lg.learned||0) + ' · tip height ' + (lg.tip_height_mm!=null ? lg.tip_height_mm + ' mm' : '—')) : 'No fixes yet. To fix a wrong dart: tap it in the dart list, then tap where it really landed on the board.';
   const html = `<div class="cam-status ${sm.level}" style="margin:0 0 8px 0;"><div class="big"></div><div><div class="ct">${sm.text}</div><div class="cs">${sm.hint}</div></div></div>
-    ${d.message ? `<div class="dc-msg">${d.message}</div>` : ''}
+    <div class="dc-msg">${lgTxt}${state.scanFixStatus ? '<br>' + state.scanFixStatus : ''}</div>
     <div class="cam-menu-btns">
       <div class="tiny-edit-btn" onclick="camManualTakeout()">Takeout</div>
       ${connected ? '' : `<div class="tiny-edit-btn" onclick="connectBoardManager()">Connect</div>`}
-      <a class="tiny-edit-btn" style="text-decoration:none; color:inherit;" href="${base}" target="_blank" rel="noopener">Open DartCam</a>
+      <div class="tiny-edit-btn" onclick="camResetScan()">Reset turn</div>
       <div class="tiny-edit-btn" onclick="state.boardHealthExpanded=false; render();">Close</div>
     </div>`;
   if(html !== _dcLastHtml){ _dcLastHtml = html; box.querySelector('#dcInfo').innerHTML = html; }
@@ -8534,8 +8542,13 @@ killerEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.killer);
 personalBestEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.personalbest);
 warEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.war);
 
+// v8.5: dartscan gives every dart an id. Oche remembers them, in order, for the current turn so a
+// fix (tap the wrong dart, tap the board) can say which dart it is correcting.
+let camTurnIds = [];
+let scanFix = null;      // {id, label, t}: a camera dart the player just cleared, waiting for the real hit
 function handleCameraThrow(throwEntry){
   if(!state.settings.dartsCallerCameraMode) return;
+  try{ const s0 = state.session; if(!s0 || !s0.currentTurnDarts || s0.currentTurnDarts.length === 0) camTurnIds = []; }catch(e){}
   const segment = throwEntry && throwEntry.segment;
   cameraThrowInProgress = true;
   try{
@@ -8552,10 +8565,25 @@ function handleCameraThrow(throwEntry){
     const mapped = mapBoardManagerSegmentToThrow(segment, throwEntry.coords);
     state.lastCameraHitLabel = mapped.label;
     commitBoardThrow(mapped);
+    if(usingSingleCam() && throwEntry && throwEntry.id){
+      const n = (state.session && state.session.currentTurnDarts) ? state.session.currentTurnDarts.length : camTurnIds.length + 1;
+      camTurnIds[n-1] = {id: throwEntry.id, label: mapped.label};
+    }
     flashCameraDot();
   } finally {
     cameraThrowInProgress = false;
   }
+}
+function scanSendFix(fix, c){
+  const base = boardManagerBase(); if(!base || !c.point) return;
+  const hit = {kind:'point', x: (c.point.x - BOARD_CX)/R_DOUBLE_OUT, y: -(c.point.y - BOARD_CY)/R_DOUBLE_OUT, label: c.label};
+  state.scanFixStatus = 'Sending fix…'; 
+  fetch(base + '/api/correction', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id: fix.id, detected_label: fix.label, hit})})
+    .then(r => r.json()).then(j => {
+      state.scanFixStatus = j && j.ok ? ('Fix saved (' + (j.outcome || 'ok') + ')') : ('Fix not saved: ' + ((j && j.error) || 'unknown'));
+      dbgLog('scan-fix', {id:fix.id, from:fix.label, to:c.label, res:j}); render();
+    }).catch(() => { state.scanFixStatus = 'Fix not saved: dartscan not reachable'; render(); });
 }
 
 // Fallback for messy real-world throws (bounce-outs, no-scores) that never
