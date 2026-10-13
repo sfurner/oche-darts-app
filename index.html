@@ -1092,7 +1092,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v8.5 SCAN';
+const BUILD_STAMP = 'v8.5b SCAN';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -3720,7 +3720,16 @@ function proRoutineRecordDart(num, mult, point){
   render();
 }
 
+// v8.5b: the tap that replaces a cleared camera dart must not hand the turn over by itself;
+// the real takeout still ends it, exactly like a camera dart.
 function commitBoardThrow(c){
+  if(scanFix && !cameraThrowInProgress && state.settings.dartsCallerCameraMode){
+    cameraThrowInProgress = true;
+    try{ return commitBoardThrowCore(c); } finally { cameraThrowInProgress = false; }
+  }
+  return commitBoardThrowCore(c);
+}
+function commitBoardThrowCore(c){
   if(state.screen==='throwAnalyzer'){
     if(c.point) throwAnalyzerRecordDart(c.point);
     return;
@@ -4260,6 +4269,7 @@ function scheduleCallShotBotAction(isFirstAction){
 function removeDartFromCurrentTurn(index){
   const s = state.session;
   if(!s || index<0 || index>=s.currentTurnDarts.length) return;
+  if(cameraPendingTurnEnd) cameraPendingTurnEnd = null;   // reopen the turn so the fix can be entered
   if(usingSingleCam() && camTurnIds[index] && camTurnIds[index].id){
     scanFix = {id: camTurnIds[index].id, label: camTurnIds[index].label, t: Date.now()};
     camTurnIds.splice(index, 1);
@@ -8735,7 +8745,7 @@ function renderActivePlayerSection(s,p,i){
     const isBustLike = d.label==='Miss' || d.bust;
     const cls = isBustLike || d.hitTarget===false ? ' miss' : d.hitTarget===true ? ' hit' : '';
     const lab = shortLabel(d);
-    return `<div class="tslot thrown${cls}"><div class="tl${String(lab).length>4?' long':''}">${lab}</div></div>`;
+    return `<div class="tslot thrown${cls}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="tl${String(lab).length>4?' long':''}">${lab}</div></div>`;
   }).join('');
   const turnTotal = s.kind==='x01' ? darts.reduce((t,d)=>t+(typeof d.value==='number' ? d.value : 0),0) : null;
   const rows = `<div class="tstrip">${slots}${turnTotal!==null ? `<div class="ttot">${turnTotal}</div>` : ''}</div>`;
@@ -9111,7 +9121,7 @@ function renderWarPlayerBoxes(s){
       const d = darts[idx];
       if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
       const rowClass = d.hitTarget===true ? ' hit-target' : (d.hitTarget===false ? ' miss' : '');
-      return `<div class="turn-dart-row${rowClass}"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val"></div></div>`;
+      return `<div class="turn-dart-row${rowClass}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val"></div></div>`;
     }).join('') : '';
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
       <div class="ps-header">
@@ -9176,7 +9186,7 @@ function renderCallShotActiveSection(s, p, i){
     const isHitTarget = d.hitTarget===true;
     const isMiss = isBustLike || d.hitTarget===false;
     const rowClass = isHitTarget ? ' hit-target' : (isMiss ? ' miss' : '');
-    return `<div class="turn-dart-row${rowClass}"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val"></div></div>`;
+    return `<div class="turn-dart-row${rowClass}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val"></div></div>`;
   }).join('');
   return `<div class="player-section active">
     <div class="ps-header">
