@@ -692,6 +692,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .precision-hint-toggle{ position:absolute; top:10px; right:14px; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); opacity:0.6; cursor:pointer; padding:4px 8px; border:1px solid var(--felt-lighter); border-radius:6px; z-index:4; }
 .precision-hint-toggle:active{ opacity:1; }
 .camera-help-wrap{ position:relative; display:inline-block; }
+#dcPanel{ position:fixed; top:58px; right:10px; width:min(440px, calc(100vw - 20px)); background:var(--felt); border:1px solid var(--felt-lighter); border-radius:12px; padding:10px; box-shadow:var(--shadow); z-index:60; display:none; text-align:left; }
+#dcPanel img{ width:100%; aspect-ratio:16/9; object-fit:contain; background:#000; border-radius:8px; display:block; }
+#dcInfo{ margin-top:8px; font-size:13px; color:var(--cream); }
+#dcInfo .dc-msg{ font-size:12px; color:var(--cream-dim); margin-bottom:8px; }
 .camera-help-trigger{ display:flex; align-items:center; gap:5px; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--cream-dim); opacity:0.65; cursor:pointer; padding:4px 8px; border:1px solid var(--felt-lighter); border-radius:20px; }
 .camera-help-trigger:active{ opacity:1; }
 .camera-help-dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; }
@@ -1088,7 +1092,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v8.3 BARE';
+const BUILD_STAMP = 'v8.4 CAM';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -6822,6 +6826,7 @@ function render(){
   }
   if(state.screen==='active') trackTurnSnapshot();
   persistState();
+  try{ syncDartCamPanel(); }catch(e){}
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
   autoFitScreens();
@@ -7662,8 +7667,8 @@ function settingsPageBoard(){
     </div>
     ${usingSingleCam() ? `
     <div style="margin-top:10px;">
-      <span class="field-label">Single-camera program address</span>
-      <input class="input" placeholder="localhost:3180" value="${s.singleCamHost}"
+      <span class="field-label">DartCam address</span>
+      <input class="input" placeholder="127.0.0.1:5050" value="${s.singleCamHost}"
         onchange="setSetting('singleCamHost', this.value.trim()); disconnectBoardManager();">
     </div>` : `
     <div style="margin-top:10px;">
@@ -7686,7 +7691,7 @@ function settingsPageBoard(){
       <input type="checkbox" ${s.dartsCallerCameraMode?'checked':''} onchange="setSetting('dartsCallerCameraMode', ${!s.dartsCallerCameraMode})">
       Camera Mode — real throws from the board drive gameplay instead of taps/clicks
     </div>
-    ${usingSingleCam() ? `<p class="info-note">Single camera mode listens to the single-camera program on your laptop instead of the Autodarts board. One camera is less accurate than three (a dart hidden behind another can be missed, and darts close to a wire can be miscalled), so keep an eye on the score and use Oche's undo or edit to fix a dart. Switch back to "Autodarts board" at home — that setup is untouched.</p>` : ''}
+    ${usingSingleCam() ? `<p class="info-note">Single camera mode listens to DartCam on this Mac instead of the Autodarts board. DartCam must be running, calibrated and have an empty-board baseline. One camera is less accurate than three (a dart can be missed or miscalled), so check each score and fix any wrong dart. Use the Takeout button in the Camera panel when you pull the darts. Switch back to "Autodarts board" at home; that setup is untouched.</p>` : ''}
     <p class="info-note">Camera Mode polls Autodarts' own Board Manager directly for real dart hits — it does not change how games are scored, only how darts get entered. Oche also auto-resets Board Manager on its own if throws stop registering for more than a few seconds. If you need to reset it by hand, there's a button for that directly on the gameplay screen itself — no need to come here mid-game.</p>
     <p class="info-note">Live status, the setup guide and troubleshooting are in the Camera tab on Home.</p><div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="goTab('camera')">Open Camera tab</button></div>
     </div>`;
@@ -7787,9 +7792,18 @@ function camSummary(){
   const h = state.boardManagerHealth;
   if(!boardManagerBase()) return {level:'off', text:'No camera set up', hint:'Open the Setup guide to add your camera address.'};
   if(st==='connecting') return {level:'warn', text:'Connecting', hint:'Reaching the camera software.'};
-  if(st==='error') return {level:'bad', text:'Cannot reach camera', hint:'Check the camera PC is on and the address is right.'};
+  if(st==='error') return {level:'bad', text:'Cannot reach camera', hint: usingSingleCam() ? 'Start DartCam on this Mac (double-click Start DartCam.command), then tap Connect.' : 'Check the camera PC is on and the address is right.'};
   if(st!=='connected') return {level:'off', text:'Not connected', hint:'Tap Connect on the Live page.'};
   if(!h) return {level:'warn', text:'Connected, waiting', hint:'No data from the camera yet.'};
+  if(usingSingleCam()){
+    const d = h.dartcam || {};
+    if(Date.now()-h.updatedAt > 5000) return {level:'warn', text:'No recent data', hint:'DartCam stopped answering. Check that it is still running.'};
+    if(!d.camera) return {level:'bad', text:'Camera offline', hint:'In DartCam, open Camera setup and connect the camera.'};
+    if(d.calibrating) return {level:'warn', text:'Calibrating', hint:d.message || 'Finish the calibration in DartCam.'};
+    if(!d.calibrated) return {level:'warn', text:'Needs calibration', hint:'Calibrate the board in DartCam first.'};
+    if(!d.baseline) return {level:'warn', text:'Needs baseline', hint:'Take every dart out, then press Capture baseline in DartCam.'};
+    return {level:'ok', text:'Ready', hint:'Throw a dart.'};
+  }
   if(Date.now()-h.updatedAt > 5000) return {level:'warn', text:'No recent data', hint:'The camera stopped reporting. Check the Autodarts Board page.'};
   const sx = (h.status||'').toLowerCase(), ev = (h.event||'').toLowerCase();
   if(h.running===false) return {level:'bad', text:'Detection stopped', hint:'Start detection in the Autodarts Board page.'};
@@ -7834,7 +7848,7 @@ function renderCamLive(){
       ${kv('Camera setup', usingSingleCam() ? 'Single camera' : 'Autodarts board')}
       ${kv('Address', camAddress() || 'Not set')}
       ${kv('Link', connected ? 'Connected' : state.dartsCallerStatus==='connecting' ? 'Connecting' : state.dartsCallerStatus==='error' ? 'Failed' : 'Not connected')}
-      ${kv('Detection', h ? (h.running ? 'Running' : 'Stopped') : '—')}
+      ${usingSingleCam() ? kv('Ready to score', h && h.running ? 'Yes' : 'No') + kv('Calibrated', h && h.dartcam && h.dartcam.calibrated ? 'Yes' : 'No') + kv('Baseline', h && h.dartcam && h.dartcam.baseline ? 'Captured' : 'Not captured') : kv('Detection', h ? (h.running ? 'Running' : 'Stopped') : '—')}
       ${kv('Status', h && h.status ? h.status : '—')}
       ${kv('Last event', h && h.event ? h.event : '—')}
       ${kv('Darts this turn', h ? h.numThrows : '—')}
@@ -7855,8 +7869,8 @@ function renderCamSetup(){
   const single = usingSingleCam();
   return `<p class="info-note" style="margin:0;">Follow these in order. Each step ticks off by itself.</p>
     ${step(1,true,'Choose your camera setup','Autodarts board is the 3-camera setup at home. Single camera is the travel program on a laptop.',`<div class="chip-wrap">${chip('Autodarts board (3 cameras)','autodarts')}${chip('Single camera (travel)','singlecam')}</div>`)}
-    ${step(2,!!boardManagerBase(), single?'Enter the program address':'Enter the darts PC address', single?'Usually localhost:3180 when it runs on this same laptop.':'The IP address of the PC the cameras are plugged into, for example 10.0.0.13.',
-      `<input class="input" style="max-width:260px;" placeholder="${single?'localhost:3180':'10.0.0.13'}" value="${single?state.settings.singleCamHost:state.settings.boardManagerHost}" onchange="setSetting('${single?'singleCamHost':'boardManagerHost'}', this.value.trim()); disconnectBoardManager();">`)}
+    ${step(2,!!boardManagerBase(), single?'Enter the program address':'Enter the darts PC address', single?'Usually 127.0.0.1:5050 when DartCam runs on this same Mac. Start it by double-clicking Start DartCam.command.':'The IP address of the PC the cameras are plugged into, for example 10.0.0.13.',
+      `<input class="input" style="max-width:260px;" placeholder="${single?'127.0.0.1:5050':'10.0.0.13'}" value="${single?state.settings.singleCamHost:state.settings.boardManagerHost}" onchange="setSetting('${single?'singleCamHost':'boardManagerHost'}', this.value.trim()); disconnectBoardManager();">`)}
     ${step(3,connected,'Connect','Oche reaches the camera software over your network.',connected?`<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="disconnectBoardManager()">Disconnect</button>`:`<button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="connectBoardManager()">Connect</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="camTestConnection()">Test connection</button>`)}
     ${step(4,!!state.settings.dartsCallerCameraMode,'Turn on Camera Mode','With it on, darts the camera sees are entered for you instead of tapped in.',`<div class="checkbox-row" style="padding:0;"><input type="checkbox" ${state.settings.dartsCallerCameraMode?'checked':''} onchange="camToggleMode()"> Camera Mode</div>`)}
     ${step(5,boardManagerLooksHealthy(),'Check it is ready','The status on the Live page should say Ready. Then throw one dart: it should appear in a game within a second.',`<button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="camSetTab('live')">Go to Live</button>`)}
@@ -8161,9 +8175,9 @@ let boardManagerTakeoutSeenAt = 0; // v8.1: last time the board reported anythin
 // single-camera program, which serves the same /api/state contract.
 function usingSingleCam(){ return state.settings.detectionSource === 'singlecam'; }
 function singleCamBase(){
-  let h = (state.settings.singleCamHost || '').trim() || 'localhost:3180';
+  let h = (state.settings.singleCamHost || '').trim() || '127.0.0.1:5050';
   h = h.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-  if(!/:\d+$/.test(h)) h += ':3180';
+  if(!/:\d+$/.test(h)) h += ':5050';
   return 'http://' + h;
 }
 // Base URL of whichever detector is selected, or null if not configured.
@@ -8201,6 +8215,7 @@ function connectBoardManager(){
   render();
   boardManagerLastThrowCount = 0;
   boardManagerLastEvent = null;
+  dartCamLastId = null;
   pollBoardManagerOnce(url, /*isFirst*/ true);
   boardManagerPollTimer = setInterval(()=>pollBoardManagerOnce(url, false), 400);
 }
@@ -8233,7 +8248,7 @@ function pollBoardManagerOnce(url, isFirst){
     .then(data => {
       clearTimeout(_to); fin(); dbgPoll(performance.now()-tq, data);
       if(state.dartsCallerStatus !== 'connected'){ state.dartsCallerStatus = 'connected'; render(); }
-      handleBoardManagerState(data);
+      if(usingSingleCam()) handleDartCamState(data); else handleBoardManagerState(data);
     })
     .catch(err => {
       clearTimeout(_to); fin(); DBG.poll.err++; dbgLog('poll-err', String((err && err.message) || err));
@@ -8332,6 +8347,101 @@ function handleBoardManagerState(data){
     }
     boardManagerLastEvent = eventText;
   }
+}
+
+/* ========================= DARTCAM (single camera) v8.4 =========================
+   DartCam is a small Flask program on the Mac (port 5050). /api/state lists every
+   detected dart and takeout in training_history, each with an id. Oche remembers the
+   highest id it has handled and feeds only newer events to the game, the same way
+   Board Manager throws are fed. Oche only reads, except the Takeout button. */
+let dartCamLastId = null;
+function dartCamLabelToThrow(label, tip){
+  const L = String(label || '').toUpperCase().trim();
+  if(!L || L === 'MISS') return {miss:true};
+  const point = (tip && tip.length === 2) ? { x: BOARD_CX + ((tip[0]-450)/378)*R_DOUBLE_OUT, y: BOARD_CY + ((tip[1]-450)/378)*R_DOUBLE_OUT } : null;
+  if(L === 'DBULL') return {num:'B', seg:'bullinner', label:'Bull (50)', point};
+  if(L === 'BULL') return {num:'B', seg:'bullouter', label:'Outer Bull (25)', point};
+  const m = /^([SDT])(\d{1,2})$/.exec(L);
+  if(!m) return null;
+  const num = +m[2], seg = m[1]==='S' ? 'single' : m[1]==='D' ? 'double' : 'triple';
+  const ring = seg==='triple' ? 'inner' : seg==='double' ? 'outer' : (point ? warRingFromRadius(Math.hypot(point.x-BOARD_CX, point.y-BOARD_CY)) : 'inner');
+  return {num, seg, label:(seg==='single'?'Single ':seg==='double'?'Double ':'Triple ')+num, point, ring};
+}
+function handleDartCamDart(label, tip){
+  if(!state.settings.dartsCallerCameraMode) return;
+  const mapped = dartCamLabelToThrow(label, tip);
+  if(!mapped) return;
+  cameraThrowInProgress = true;
+  try{
+    if(mapped.miss){ state.lastCameraHitLabel = 'Miss'; recordMiss(); return; }
+    state.lastCameraHitLabel = mapped.label;
+    commitBoardThrow(mapped);
+    flashCameraDot();
+  } finally { cameraThrowInProgress = false; }
+}
+function handleDartCamEvent(e){
+  if(e.classification === 'false_dart' || e.classification === 'false_takeout') return;
+  if(e.event_type === 'takeout'){
+    dbgLog('dartcam-takeout', {id:e.id, manual:!!e.manual});
+    if(state.settings.dartsCallerCameraMode){ sndPlay('ding'); forceEndCurrentTurnFromTakeout(); }
+    return;
+  }
+  const label = e.corrected_label || e.original_label || e.label;
+  dbgLog('dartcam-dart', {id:e.id, label, conf:e.confidence});
+  handleDartCamDart(label, e.corrected_tip || e.original_tip);
+}
+function handleDartCamState(data){
+  const visit = Array.isArray(data.visit) ? data.visit : [];
+  state.boardManagerHealth = {
+    connected: !!data.connected, running: !!(data.connected && data.calibrated && data.baseline_ready),
+    status: data.in_motion ? 'Motion' : 'Watching', event: data.message || '', numThrows: visit.length, updatedAt: Date.now(),
+    dartcam: { camera: !!data.connected, calibrated: !!data.calibrated, baseline: !!data.baseline_ready, calibrating: !!data.calibrating, message: data.message || '', level: data.level || 'info' }
+  };
+  const hist = Array.isArray(data.training_history) ? data.training_history : [];
+  let maxId = 0; hist.forEach(e => { if(+e.id > maxId) maxId = +e.id; });
+  if(dartCamLastId === null){ dartCamLastId = maxId; }       // first look: never replay old events
+  else if(maxId < dartCamLastId){ dartCamLastId = 0; }        // DartCam was restarted, its ids began again
+  const fresh = hist.filter(e => +e.id > dartCamLastId).sort((a,b) => a.id - b.id);
+  for(const e of fresh){ dartCamLastId = +e.id; try{ handleDartCamEvent(e); }catch(err){ console.warn('Oche: DartCam event failed', err); } }
+  if(fresh.length) render(); else syncDartCamPanel();
+}
+// Takeout button: DartCam records the takeout (so its own history stays right) and Oche
+// picks that event up on the next poll. If DartCam cannot be reached, end the turn directly.
+function camManualTakeout(){
+  const base = boardManagerBase();
+  const local = ()=>{ sndPlay('ding'); forceEndCurrentTurnFromTakeout(); };
+  if(usingSingleCam() && base && state.dartsCallerStatus === 'connected'){
+    fetch(base + '/api/manual-takeout', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).catch(local);
+  } else local();
+}
+let _dcLastHtml = '';
+function syncDartCamPanel(){
+  let box = document.getElementById('dcPanel');
+  const show = usingSingleCam() && !!state.boardHealthExpanded;
+  if(!show){
+    if(box){ const im = box.querySelector('img'); if(im && im.getAttribute('src')) im.removeAttribute('src'); box.style.display = 'none'; _dcLastHtml = ''; }
+    return;
+  }
+  if(!box){
+    box = document.createElement('div'); box.id = 'dcPanel';
+    box.innerHTML = '<img id="dcImg" alt="DartCam live view"><div id="dcInfo"></div>';
+    document.body.appendChild(box);
+  }
+  box.style.display = 'block';
+  const base = boardManagerBase(), im = box.querySelector('#dcImg');
+  const want = base + '/video';
+  if(im.getAttribute('src') !== want) im.setAttribute('src', want);
+  const sm = camSummary(), h = state.boardManagerHealth, d = (h && h.dartcam) || {};
+  const connected = state.dartsCallerStatus === 'connected';
+  const html = `<div class="cam-status ${sm.level}" style="margin:0 0 8px 0;"><div class="big"></div><div><div class="ct">${sm.text}</div><div class="cs">${sm.hint}</div></div></div>
+    ${d.message ? `<div class="dc-msg">${d.message}</div>` : ''}
+    <div class="cam-menu-btns">
+      <div class="tiny-edit-btn" onclick="camManualTakeout()">Takeout</div>
+      ${connected ? '' : `<div class="tiny-edit-btn" onclick="connectBoardManager()">Connect</div>`}
+      <a class="tiny-edit-btn" style="text-decoration:none; color:inherit;" href="${base}" target="_blank" rel="noopener">Open DartCam</a>
+      <div class="tiny-edit-btn" onclick="state.boardHealthExpanded=false; render();">Close</div>
+    </div>`;
+  if(html !== _dcLastHtml){ _dcLastHtml = html; box.querySelector('#dcInfo').innerHTML = html; }
 }
 
 // Translates Board Manager's segment.number/segment.multiplier into Oche's
@@ -8630,17 +8740,20 @@ function renderActivePlayerSection(s,p,i){
 // health readout AND the reset buttons both hidden until tapped, nothing
 // sitting permanently visible in the sidebar. Shared across every game.
 function renderCameraHelpTrigger(){
-  if(!state.settings.dartsCallerCameraMode) return '';
+  const single = usingSingleCam();
+  if(!state.settings.dartsCallerCameraMode && !single) return '';
   const h = state.boardManagerHealth;
   const isStale = h && (Date.now() - h.updatedAt > 5000);
   const hasWarning = h && (h.status==='Error' || (h.event && h.event.toLowerCase().includes('failed')) || h.running===false || h.connected===false);
-  const dotColor = !h ? 'var(--cream-dim)' : hasWarning ? 'var(--red)' : isStale ? 'var(--brass)' : 'var(--green)';
-  return `<div class="camera-help-wrap">
+  let dotColor = !h ? 'var(--cream-dim)' : hasWarning ? 'var(--red)' : isStale ? 'var(--brass)' : 'var(--green)';
+  if(single){ const lv = camSummary().level; dotColor = lv==='ok' ? 'var(--green)' : lv==='warn' ? 'var(--brass)' : lv==='bad' ? 'var(--red)' : 'var(--cream-dim)'; }
+  const takeoutBtn = (single && state.settings.dartsCallerCameraMode) ? `<div class="camera-help-trigger" style="opacity:1; margin-right:6px;" onclick="camManualTakeout()">Takeout</div>` : '';
+  return `<div style="display:inline-flex; align-items:center;">${takeoutBtn}<div class="camera-help-wrap">
     <div class="camera-help-trigger" onclick="state.boardHealthExpanded=!state.boardHealthExpanded; render();">
       <span class="camera-help-dot" style="background:${dotColor};"></span>Camera
     </div>
-    ${state.boardHealthExpanded ? renderCameraHelpPanel() : ''}
-  </div>`;
+    ${state.boardHealthExpanded && !single ? renderCameraHelpPanel() : ''}
+  </div></div>`;
 }
 function renderCameraHelpPanel(){
   const sm = camSummary();
