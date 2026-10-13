@@ -1092,7 +1092,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v8.5c SCAN';
+const BUILD_STAMP = 'v8.5d SCAN';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -3814,6 +3814,20 @@ function commitBoardThrowCore(c){
 
 /* ========================= THROW DISPATCH ========================= */
 // v8.5c: a fix entered from the number grid (no board position) is still sent, as a label only.
+// v8.5d: a visible banner so you can see a fix is armed, sent and saved (or why not).
+function syncScanBanner(){
+  let el = document.getElementById('scanBanner');
+  let msg = '';
+  if(scanFix && Date.now() - scanFix.t < 30000) msg = 'Fixing ' + scanFix.label + ': tap where the dart really landed';
+  else if(state.scanFixStatus && Date.now() - (state.scanFixAt || 0) < 6000) msg = state.scanFixStatus;
+  if(!msg){ if(el) el.style.display = 'none'; return; }
+  if(!el){
+    el = document.createElement('div'); el.id = 'scanBanner';
+    el.style.cssText = 'position:fixed; top:8px; left:50%; transform:translateX(-50%); z-index:80; background:var(--brass); color:#1c1c1c; font-weight:700; font-size:14px; padding:8px 16px; border-radius:20px; box-shadow:var(--shadow); pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg; el.style.display = 'block';
+}
 function scanLabel(num, segType){
   if(num==='B' || num===25) return segType==='bull' || segType==='double' ? 'DBULL' : 'BULL';
   return (segType==='triple'?'T':segType==='double'?'D':'S') + num;
@@ -4309,6 +4323,7 @@ function removeDartFromCurrentTurn(index){
   });
   if(s.turnHitPoints) s.turnHitPoints = s.turnHitPoints.slice(0, s.currentTurnDarts.length);
   if(armFix) scanFix = armFix;
+  else if(usingSingleCam() && state.settings.dartsCallerCameraMode){ state.scanFixStatus = 'No fix sent: that dart did not come from the camera'; state.scanFixAt = Date.now(); setTimeout(()=>{ try{ render(); }catch(e){} }, 6200); }
   render();
 }
 /* ========================= DART FIELD SCHEMA (pulldown taxonomy) ========================= */
@@ -6868,6 +6883,7 @@ function render(){
   if(state.screen==='active') trackTurnSnapshot();
   persistState();
   try{ syncDartCamPanel(); }catch(e){}
+  try{ syncScanBanner(); }catch(e){}
   maybeRunBotTurn();
   maybeRunCallShotBotTurn();
   autoFitScreens();
@@ -8610,13 +8626,13 @@ function handleCameraThrow(throwEntry){
 function scanSendFix(fix, c){
   const base = boardManagerBase(); if(!base) return;
   const hit = c.point ? {kind:'point', x: (c.point.x - BOARD_CX)/R_DOUBLE_OUT, y: -(c.point.y - BOARD_CY)/R_DOUBLE_OUT, label: c.label} : {kind:'segment', label: c.label};
-  state.scanFixStatus = 'Sending fix…'; 
+  state.scanFixStatus = 'Sending fix…'; state.scanFixAt = Date.now(); setTimeout(()=>{ try{ render(); }catch(e){} }, 6200);
   fetch(base + '/api/correction', {method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({id: fix.id, detected_label: fix.label, hit})})
     .then(r => r.json()).then(j => {
-      state.scanFixStatus = j && j.ok ? ('Fix saved (' + (j.outcome || 'ok') + ')') : ('Fix not saved: ' + ((j && j.error) || 'unknown'));
+      state.scanFixStatus = j && j.ok ? ('Fix saved (' + (j.outcome || 'ok') + ')') : ('Fix not saved: ' + ((j && j.error) || 'unknown')); state.scanFixAt = Date.now(); setTimeout(()=>{ try{ render(); }catch(e){} }, 6200);
       dbgLog('scan-fix', {id:fix.id, from:fix.label, to:c.label, res:j}); render();
-    }).catch(() => { state.scanFixStatus = 'Fix not saved: dartscan not reachable'; render(); });
+    }).catch(() => { state.scanFixStatus = 'Fix not saved: dartscan not reachable'; state.scanFixAt = Date.now(); setTimeout(()=>{ try{ render(); }catch(e){} }, 6200); render(); });
 }
 
 // Fallback for messy real-world throws (bounce-outs, no-scores) that never
