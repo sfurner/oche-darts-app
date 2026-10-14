@@ -1094,7 +1094,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v8.8 DRAG';
+const BUILD_STAMP = 'v8.9 DRAG';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -8727,7 +8727,21 @@ function handleCameraThrow(throwEntry){
       || segment.bed === 'Outside' || segment.multiplier === 0;
     if(isMiss){
       state.lastCameraHitLabel = 'Miss';
+      // v8.9: a miss gets a dot too (just outside the double ring, in the direction dartscan saw it), so the
+      // dot list stays in step with the darts and the dot can be dragged onto the board.
+      try{
+        const mp = boardManagerCoordsToPoint(throwEntry && throwEntry.coords);
+        if(mp){
+          const dx = mp.x-BOARD_CX, dy = mp.y-BOARD_CY, r = Math.hypot(dx,dy) || 1, rr = Math.max(r, R_DOUBLE_OUT+16), cl = Math.min(rr, R_DOUBLE_OUT+27);
+          state.pendingHitPoint = {x:BOARD_CX+dx/r*cl, y:BOARD_CY+dy/r*cl};
+        }
+      }catch(e){}
       recordMiss();
+      try{
+        if(usingSingleCam() && throwEntry && throwEntry.id && state.session && state.session.currentTurnDarts){
+          camTurnIds[state.session.currentTurnDarts.length-1] = {id: throwEntry.id, label: 'Miss'};
+        }
+      }catch(e){}
       return;
     }
     const mapped = mapBoardManagerSegmentToThrow(segment, throwEntry.coords);
