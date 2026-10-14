@@ -1094,7 +1094,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v8.9b DRAG';
+const BUILD_STAMP = 'v9.0 RINGS';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -8631,9 +8631,25 @@ function syncDartCamPanel(){
 // up-left direction for where 12's wedge actually sits — so the convention
 // is: 1.0 unit == R_DOUBLE_OUT pixels, +y == up (mirrors Oche's own polar()
 // convention of cy - r*cos(angle)).
+// Oche's drawn rings are not at real-board proportions, so a real radius is
+// stretched piecewise onto Oche's rings (and back for fixes sent to dartscan).
+const REAL_R_NODES = [0, 6.35, 15.9, 99, 107, 162, 170].map(v=>v/170);
+function _ocheRNodes(){ return [0, R_BULL_INNER, R_BULL_OUTER, R_TRIPLE_IN, R_TRIPLE_OUT, R_DOUBLE_IN, R_DOUBLE_OUT]; }
+function _pw(r, from, to){
+  if(r <= 0) return 0;
+  for(let i=1;i<from.length;i++){ if(r <= from[i]) return to[i-1] + (r-from[i-1])/(from[i]-from[i-1])*(to[i]-to[i-1]); }
+  const n = from.length-1; return to[n] + (r-from[n])*(to[n]-to[n-1])/(from[n]-from[n-1]);
+}
+function realToOcheR(rNorm){ return _pw(rNorm, REAL_R_NODES, _ocheRNodes()); }
+function ocheToRealR(rPx){ return _pw(rPx, _ocheRNodes(), REAL_R_NODES); }
 function boardManagerCoordsToPoint(coords){
   if(!coords || typeof coords.x !== 'number' || typeof coords.y !== 'number') return null;
-  return { x: BOARD_CX + coords.x * R_DOUBLE_OUT, y: BOARD_CY - coords.y * R_DOUBLE_OUT };
+  const r = Math.hypot(coords.x, coords.y) || 0, k = r ? realToOcheR(r)/r : 0;
+  return { x: BOARD_CX + coords.x * k, y: BOARD_CY - coords.y * k };
+}
+function ochePointToBoardManagerCoords(p){
+  const dx = p.x - BOARD_CX, dy = -(p.y - BOARD_CY), r = Math.hypot(dx, dy) || 0, k = r ? ocheToRealR(r)/r : 0;
+  return { x: dx*k, y: dy*k };
 }
 
 function mapBoardManagerSegmentToThrow(segment, coords){
@@ -8889,7 +8905,7 @@ let _dotDrag = null, _dotDragDirty = false;
 })();
 function scanSendFix(fix, c){
   const base = boardManagerBase(); if(!base) return;
-  const hit = c.point ? {kind:'point', x: (c.point.x - BOARD_CX)/R_DOUBLE_OUT, y: -(c.point.y - BOARD_CY)/R_DOUBLE_OUT, label: c.label} : {kind:'segment', label: c.label};
+  const hit = c.point ? Object.assign({kind:'point', label: c.label}, ochePointToBoardManagerCoords(c.point)) : {kind:'segment', label: c.label};
   state.scanFixStatus = 'Sending fix…'; state.scanFixAt = Date.now(); setTimeout(()=>{ try{ render(); }catch(e){} }, 6200);
   fetch(base + '/api/correction', {method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({id: fix.id, detected_label: fix.label, hit})})
