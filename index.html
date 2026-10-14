@@ -1094,7 +1094,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.0 RINGS';
+const BUILD_STAMP = 'v9.1 ZOOMFIX';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -8607,10 +8607,11 @@ function syncDartCamPanel(){
   const sm = camSummary();
   const connected = state.dartsCallerStatus === 'connected';
   const lg = (state.boardManagerHealth && state.boardManagerHealth.learning) || {};
-  const lgTxt = lg.corrections ? ('Fixes: ' + lg.corrections + ' · learned from ' + (lg.learned||0) + ' · tip height ' + (lg.tip_height_mm!=null ? lg.tip_height_mm + ' mm' : '—')) : 'No fixes yet. To fix a wrong dart: tap it in the dart list, then tap where it really landed on the board.';
+  const lgTxt = lg.corrections ? ('Fixes: ' + lg.corrections + ' · learned from ' + (lg.learned||0) + ' · tip height ' + (lg.tip_height_mm!=null ? lg.tip_height_mm + ' mm' : '—')) : 'No fixes yet. To fix a wrong dart: double-tap its dot (or press Zoom-fix) and drag the marker to where the dart enters the board.';
   const html = `<div class="cam-status ${sm.level}" style="margin:0 0 8px 0;"><div class="big"></div><div><div class="ct">${sm.text}</div><div class="cs">${sm.hint}</div></div></div>
     <div class="dc-msg">${lgTxt}${state.scanFixStatus ? '<br>' + state.scanFixStatus : ''}${state.scanLagSec!=null ? '<br>Last dart reached Oche ' + state.scanLagSec.toFixed(1) + ' s after dartscan sent it' : ''}</div>
     <div class="cam-menu-btns">
+      <div class="tiny-edit-btn" onclick="openZoomFix()">Zoom-fix last dart</div>
       <div class="tiny-edit-btn" onclick="camManualTakeout()">Takeout</div>
       ${connected ? '' : `<div class="tiny-edit-btn" onclick="connectBoardManager()">Connect</div>`}
       <div class="tiny-edit-btn" onclick="camResetScan()">Reset turn</div>
@@ -8838,7 +8839,7 @@ function x01FixDart(idx, hit){
   }
   // tell dartscan where it really was (it learns from this)
   try{
-    if(usingSingleCam() && camId && camId.id && hit.point){
+    if(usingSingleCam() && camId && camId.id && hit.point && !hit.noSend){
       scanSendFix({id:camId.id, label:camId.label}, {point:hit.point, label:hit.label});
     }
     if(camTurnIds[idx]) camTurnIds[idx] = {id:(camId&&camId.id)||undefined, label:hit.label};
@@ -8848,7 +8849,7 @@ function x01FixDart(idx, hit){
   setTimeout(()=>{ try{ render(); }catch(e){} }, 6200);
   return true;
 }
-let _dotDrag = null, _dotDragDirty = false;
+let _dotDrag = null, _dotDragDirty = false, _lastDotTap = null;
 (function(){
   const baseRender = render;
   render = function(){ if(_dotDrag){ _dotDragDirty = true; return; } return baseRender.apply(this, arguments); };
@@ -8898,11 +8899,212 @@ let _dotDrag = null, _dotDragDirty = false;
       try{ done = x01FixDart(d.idx, hit); }catch(e){ done = false; try{ console.error(e); }catch(_){} }
     }
     _dotDragDirty = false;
+    try{
+      if(!cancel && !d.moved){
+        const now = Date.now();
+        if(_lastDotTap && _lastDotTap.idx === d.idx && now - _lastDotTap.t < 450){ _lastDotTap = null; setTimeout(()=>{ try{ openZoomFix(d.idx); }catch(e){ console.error(e); } }, 0); }
+        else _lastDotTap = {idx: d.idx, t: now};
+      }
+    }catch(e){}
     try{ render(); }catch(e){}
   }
   document.addEventListener('pointerup', ev => finish(ev, false), true);
   document.addEventListener('pointercancel', ev => finish(ev, true), true);
 })();
+
+// ---------------------------------------------------------------------------
+// v9.1 ZOOM FIX: a pop-up with dartscan's saved picture of the dart, zoomed in, with the
+// board's wires drawn on it. Drag the marker to where the steel tip enters the board.
+// The click is sent to dartscan as a PIXEL (kind:'image'), so it is exact and in the
+// real board's geometry; dartscan answers with the true segment and Oche re-scores.
+// ---------------------------------------------------------------------------
+const ZF_NUMS = [20,1,18,4,13,6,10,15,2,17,3,19,7,16,8,11,14,9,12,5];
+function zfScore(x, y){
+  const r = Math.hypot(x, y);
+  if(r > 170) return {label:'Miss', margin: r-170, seg:'miss', num:null};
+  if(r < 6.35) return {label:'Bull (50)', margin: Math.min(6.35-r, 1e9), seg:'bull', num:'B'};
+  if(r < 15.9) return {label:'Outer Bull (25)', margin: Math.min(r-6.35, 15.9-r), seg:'single', num:'B'};
+  let a = (Math.atan2(x, y) * 180 / Math.PI + 9 + 360) % 360;
+  const i = Math.floor(a / 18), num = ZF_NUMS[i];
+  let seg = 'single';
+  if(r >= 99 && r < 107) seg = 'triple'; else if(r >= 162) seg = 'double';
+  const ringD = Math.min.apply(null, [15.9, 99, 107, 162, 170].map(b => Math.abs(r - b)));
+  const within = a - i*18;                               // degrees from the wedge's start edge
+  const wireD = Math.min(within, 18 - within) * Math.PI / 180 * r;
+  const word = seg==='triple' ? 'Triple' : seg==='double' ? 'Double' : 'Single';
+  return {label: word + ' ' + num, margin: Math.min(ringD, wireD), seg, num};
+}
+let _zf = null;
+function closeZoomFix(){
+  if(!_zf) return;
+  try{ window.removeEventListener('keydown', _zf.onKey, true); }catch(e){}
+  try{ _zf.root.remove(); }catch(e){}
+  _zf = null;
+}
+function openZoomFix(idx){
+  const s = state.session;
+  if(!usingSingleCam()){ alert('Zoom-fix needs the single-camera dartscan.'); return; }
+  const base = boardManagerBase(); if(!base) return;
+  if(!s || s.kind !== 'x01' || s.complete){ state.scanFixStatus = 'Zoom-fix works in X01 games for now'; state.scanFixAt = Date.now(); render(); return; }
+  const n = s.currentTurnDarts.length;
+  if(idx === undefined || idx === null) idx = n - 1;
+  if(idx < 0 || idx >= n){ state.scanFixStatus = 'No dart in this turn to fix'; state.scanFixAt = Date.now(); render(); return; }
+  const camId = camTurnIds[idx];
+  if(!camId || !camId.id){ state.scanFixStatus = 'That dart did not come from the camera'; state.scanFixAt = Date.now(); render(); return; }
+  closeZoomFix();
+  const root = document.createElement('div');
+  root.id = 'zoomfix';
+  root.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(5,9,18,.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px;color:#e8ecf5;font-family:inherit;touch-action:none;';
+  root.innerHTML = '<div id="zfTitle" style="font-size:18px;font-weight:700;letter-spacing:.04em">Loading the dart…</div>'
+    + '<canvas id="zfCv" style="background:#000;border:1px solid #3b4a6b;border-radius:8px;touch-action:none;cursor:crosshair"></canvas>'
+    + '<div id="zfRead" style="font-size:20px;font-weight:700;min-height:28px"></div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">'
+    + '<button id="zfM" style="font-size:20px;padding:10px 18px;border-radius:8px;border:1px solid #3b4a6b;background:#16213a;color:#e8ecf5">−</button>'
+    + '<button id="zfP" style="font-size:20px;padding:10px 18px;border-radius:8px;border:1px solid #3b4a6b;background:#16213a;color:#e8ecf5">+</button>'
+    + '<button id="zfReset" style="font-size:16px;padding:10px 16px;border-radius:8px;border:1px solid #3b4a6b;background:#16213a;color:#e8ecf5">Back to detected</button>'
+    + '<button id="zfSave" style="font-size:18px;font-weight:700;padding:10px 22px;border-radius:8px;border:0;background:#d9a441;color:#1a1204">Save</button>'
+    + '<button id="zfCancel" style="font-size:16px;padding:10px 16px;border-radius:8px;border:1px solid #3b4a6b;background:#16213a;color:#e8ecf5">Cancel</button>'
+    + '</div><div style="font-size:13px;opacity:.75;text-align:center;max-width:640px">Drag the cross to where the steel tip goes into the board. Drag the picture to move it, scroll or use +/− to zoom, arrow keys nudge. Yellow lines are the real board wires.</div>';
+  document.body.appendChild(root);
+  _zf = {root, idx, id: camId.id, label: camId.label, info: null, img: null, onKey: null};
+  const cv = root.querySelector('#zfCv'), ctx = cv.getContext('2d');
+  const title = root.querySelector('#zfTitle'), read = root.querySelector('#zfRead');
+  const size = Math.max(280, Math.min(Math.floor(window.innerWidth*0.94), Math.floor(window.innerHeight*0.62), 760));
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.style.width = size + 'px'; cv.style.height = size + 'px'; cv.width = Math.round(size*dpr); cv.height = Math.round(size*dpr);
+  root.querySelector('#zfCancel').onclick = closeZoomFix;
+  _zf.onKey = ev => {
+    if(!_zf) return;
+    if(ev.key === 'Escape'){ ev.preventDefault(); closeZoomFix(); return; }
+    if(ev.key === 'Enter'){ ev.preventDefault(); save(); return; }
+    const st = ev.shiftKey ? 1 : 0.25;
+    const mv = {ArrowLeft:[-st,0], ArrowRight:[st,0], ArrowUp:[0,-st], ArrowDown:[0,st]}[ev.key];
+    if(mv && v.ready){ ev.preventDefault(); v.mu += mv[0]; v.mv += mv[1]; draw(); }
+  };
+  window.addEventListener('keydown', _zf.onKey, true);
+
+  const v = {ready:false, cu:0, cv:0, Z:10, mu:0, mv:0, du:0, dv:0, H2i:null, I2m:null, W:1, Hh:1};
+  const m2i = (x, y) => { const M = v.H2i, w = M[2][0]*x + M[2][1]*y + M[2][2]; return [(M[0][0]*x + M[0][1]*y + M[0][2])/w, (M[1][0]*x + M[1][1]*y + M[1][2])/w]; };
+  const i2m = (u, w_) => { const M = v.I2m, w = M[2][0]*u + M[2][1]*w_ + M[2][2]; return [(M[0][0]*u + M[0][1]*w_ + M[0][2])/w, (M[1][0]*u + M[1][1]*w_ + M[1][2])/w]; };
+  const toScr = (u, w_) => [ (u - v.cu) * v.Z + size/2, (w_ - v.cv) * v.Z + size/2 ];
+  const toImg = (sx, sy) => [ (sx - size/2) / v.Z + v.cu, (sy - size/2) / v.Z + v.cv ];
+  function readout(){
+    const m = i2m(v.mu, v.mv), sc = zfScore(m[0], m[1]);
+    read.textContent = sc.label + (sc.seg==='miss' ? '' : '   ·   ' + sc.margin.toFixed(1) + ' mm from the nearest wire');
+    return sc;
+  }
+  function draw(){
+    if(!v.ready) return;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle = '#000'; ctx.fillRect(0,0,size,size);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(_zf.img, (0 - v.cu)*v.Z + size/2, (0 - v.cv)*v.Z + size/2, v.W*v.Z, v.Hh*v.Z);
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,235,60,.9)';
+    [6.35, 15.9, 99, 107, 162, 170].forEach(R => {
+      ctx.beginPath();
+      for(let a=0; a<=360; a+=1.5){
+        const t = a*Math.PI/180, p = m2i(R*Math.sin(t), R*Math.cos(t)), q = toScr(p[0], p[1]);
+        if(a===0) ctx.moveTo(q[0], q[1]); else ctx.lineTo(q[0], q[1]);
+      }
+      ctx.stroke();
+    });
+    for(let k=0;k<20;k++){
+      const t = (9 + 18*k)*Math.PI/180, a = m2i(15.9*Math.sin(t), 15.9*Math.cos(t)), b = m2i(170*Math.sin(t), 170*Math.cos(t));
+      const qa = toScr(a[0], a[1]), qb = toScr(b[0], b[1]);
+      ctx.beginPath(); ctx.moveTo(qa[0], qa[1]); ctx.lineTo(qb[0], qb[1]); ctx.stroke();
+    }
+    // where dartscan put it (small hollow square) and your marker (cross)
+    if(v.du || v.dv){ const q = toScr(v.du, v.dv); ctx.strokeStyle = 'rgba(255,80,80,.95)'; ctx.lineWidth = 2; ctx.strokeRect(q[0]-6, q[1]-6, 12, 12); }
+    const q = toScr(v.mu, v.mv);
+    ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+    ctx.beginPath(); ctx.moveTo(q[0]-16, q[1]); ctx.lineTo(q[0]+16, q[1]); ctx.moveTo(q[0], q[1]-16); ctx.lineTo(q[0], q[1]+16); ctx.stroke();
+    ctx.beginPath(); ctx.arc(q[0], q[1], 9, 0, 7); ctx.stroke();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = '#3dff7a';
+    ctx.beginPath(); ctx.moveTo(q[0]-16, q[1]); ctx.lineTo(q[0]+16, q[1]); ctx.moveTo(q[0], q[1]-16); ctx.lineTo(q[0], q[1]+16); ctx.stroke();
+    ctx.beginPath(); ctx.arc(q[0], q[1], 9, 0, 7); ctx.stroke();
+    readout();
+  }
+  function setZoom(z, ax, ay){
+    z = Math.max(3, Math.min(40, z));
+    if(ax === undefined){ ax = size/2; ay = size/2; }
+    const iu = toImg(ax, ay); v.Z = z; const j = toImg(ax, ay);
+    v.cu += iu[0] - j[0]; v.cv += iu[1] - j[1]; draw();
+  }
+  root.querySelector('#zfP').onclick = () => setZoom(v.Z*1.35);
+  root.querySelector('#zfM').onclick = () => setZoom(v.Z/1.35);
+  root.querySelector('#zfReset').onclick = () => { v.mu = v.du; v.mv = v.dv; draw(); };
+  cv.addEventListener('wheel', ev => { ev.preventDefault(); const r = cv.getBoundingClientRect(); setZoom(v.Z * (ev.deltaY < 0 ? 1.15 : 1/1.15), ev.clientX - r.left, ev.clientY - r.top); }, {passive:false});
+  let drag = null;
+  cv.addEventListener('pointerdown', ev => {
+    if(!v.ready) return;
+    const r = cv.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top, q = toScr(v.mu, v.mv);
+    const onMarker = Math.hypot(sx - q[0], sy - q[1]) < 26;
+    drag = {mode: onMarker ? 'marker' : 'pan', sx, sy, cu: v.cu, cv: v.cv, mu: v.mu, mv: v.mv, pid: ev.pointerId};
+    try{ cv.setPointerCapture(ev.pointerId); }catch(e){}
+    ev.preventDefault();
+  });
+  cv.addEventListener('pointermove', ev => {
+    if(!drag) return;
+    const r = cv.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top;
+    if(drag.mode === 'marker'){ const p = toImg(sx, sy); v.mu = p[0]; v.mv = p[1]; }
+    else { v.cu = drag.cu - (sx - drag.sx)/v.Z; v.cv = drag.cv - (sy - drag.sy)/v.Z; }
+    draw(); ev.preventDefault();
+  });
+  const up = () => { drag = null; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+
+  function save(){
+    if(!v.ready || v.saving) return;
+    v.saving = true;
+    const m = i2m(v.mu, v.mv), sc = zfScore(m[0], m[1]);
+    title.textContent = 'Saving…';
+    fetch(base + '/api/correction', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id: _zf.id, detected_label: _zf.label, hit: {kind:'image', u: v.mu, v: v.mv, label: sc.label}})})
+      .then(r => r.json()).then(j => {
+        if(!j || !j.ok){ v.saving = false; title.textContent = 'Not saved: ' + ((j && j.error) || 'unknown'); return; }
+        const seg = j.multiplier === 3 ? 'triple' : j.multiplier === 2 ? 'double' : 'single';
+        let hit;
+        if(j.segment === 'MISS' || !j.number) hit = {num:null, seg:'miss', label:'Miss'};
+        else if(j.number === 25) hit = j.multiplier === 2 ? {num:'B', seg:'bull', label:'Bull (50)'} : {num:'B', seg:'single', label:'Outer Bull (25)'};
+        else hit = {num: j.number, seg, label: fullDartLabel(j.number, seg)};
+        hit.point = boardManagerCoordsToPoint({x: j.x, y: j.y}); hit.noSend = true;
+        const idxNow = _zf ? _zf.idx : idx;
+        closeZoomFix();
+        let done = false;
+        try{ done = x01FixDart(idxNow, hit); }catch(e){ console.error(e); }
+        state.scanFixStatus = done ? ('Zoom fix saved: ' + hit.label + ' (dartscan: ' + (j.outcome || 'ok') + ')') : ('Saved to dartscan (' + hit.label + ') but the turn had already moved on, so the score is unchanged');
+        state.scanFixAt = Date.now(); setTimeout(()=>{ try{ render(); }catch(e){} }, 6200);
+        try{ dbgLog('scan-zoomfix', {id: camId.id, to: hit.label, res: j}); }catch(e){}
+        try{ render(); }catch(e){}
+      }).catch(() => { v.saving = false; title.textContent = 'Not saved: dartscan not reachable'; });
+  }
+  root.querySelector('#zfSave').onclick = save;
+
+  // load geometry then the picture
+  fetch(base + '/api/dart?id=' + encodeURIComponent(camId.id)).then(r => r.json()).then(info => {
+    if(!_zf || _zf.root !== root) return;
+    if(!info || info.error){ title.textContent = (info && info.error) || 'Could not load that dart'; return; }
+    _zf.info = info; v.H2i = info.H_mm2img; v.I2m = info.H_img2mm; v.W = info.w; v.Hh = info.h;
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if(!_zf || _zf.root !== root) return;
+      _zf.img = img;
+      const tp = info.tip_px;
+      let du, dv;
+      if(tp && tp.length === 2){ du = tp[0]; dv = tp[1]; }
+      else { const p = m2i(info.x, info.y); du = p[0]; dv = p[1]; }
+      // dartscan's reported position (after its height correction) is the better starting point
+      try{ const p = m2i(info.x, info.y); if(isFinite(p[0]) && isFinite(p[1])){ du = p[0]; dv = p[1]; } }catch(e){}
+      v.du = du; v.dv = dv; v.mu = du; v.mv = dv; v.cu = du; v.cv = dv;
+      v.Z = size / 70; v.ready = true;
+      title.textContent = 'Dart ' + (idx+1) + ': dartscan said ' + (info.segment || _zf.label);
+      draw();
+    };
+    img.onerror = () => { title.textContent = 'Could not load the picture'; };
+    img.src = base + '/api/dartimg?id=' + encodeURIComponent(camId.id) + '&t=' + Date.now();
+  }).catch(() => { title.textContent = 'dartscan not reachable'; });
+}
+
 function scanSendFix(fix, c){
   const base = boardManagerBase(); if(!base) return;
   const hit = c.point ? Object.assign({kind:'point', label: c.label}, ochePointToBoardManagerCoords(c.point)) : {kind:'segment', label: c.label};
