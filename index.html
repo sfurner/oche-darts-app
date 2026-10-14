@@ -1094,7 +1094,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v8.9 DRAG';
+const BUILD_STAMP = 'v8.9b DRAG';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -8609,7 +8609,7 @@ function syncDartCamPanel(){
   const lg = (state.boardManagerHealth && state.boardManagerHealth.learning) || {};
   const lgTxt = lg.corrections ? ('Fixes: ' + lg.corrections + ' · learned from ' + (lg.learned||0) + ' · tip height ' + (lg.tip_height_mm!=null ? lg.tip_height_mm + ' mm' : '—')) : 'No fixes yet. To fix a wrong dart: tap it in the dart list, then tap where it really landed on the board.';
   const html = `<div class="cam-status ${sm.level}" style="margin:0 0 8px 0;"><div class="big"></div><div><div class="ct">${sm.text}</div><div class="cs">${sm.hint}</div></div></div>
-    <div class="dc-msg">${lgTxt}${state.scanFixStatus ? '<br>' + state.scanFixStatus : ''}</div>
+    <div class="dc-msg">${lgTxt}${state.scanFixStatus ? '<br>' + state.scanFixStatus : ''}${state.scanLagSec!=null ? '<br>Last dart reached Oche ' + state.scanLagSec.toFixed(1) + ' s after dartscan sent it' : ''}</div>
     <div class="cam-menu-btns">
       <div class="tiny-edit-btn" onclick="camManualTakeout()">Takeout</div>
       ${connected ? '' : `<div class="tiny-edit-btn" onclick="connectBoardManager()">Connect</div>`}
@@ -8726,6 +8726,7 @@ function handleCameraThrow(throwEntry){
     const isMiss = !segment || segment.number === undefined || segment.number === null
       || segment.bed === 'Outside' || segment.multiplier === 0;
     if(isMiss){
+      try{ if(throwEntry && throwEntry.sent_at){ state.scanLagSec = Math.max(0, Date.now()/1000 - throwEntry.sent_at); state.scanLagAt = Date.now(); } }catch(e){}
       state.lastCameraHitLabel = 'Miss';
       // v8.9: a miss gets a dot too (just outside the double ring, in the direction dartscan saw it), so the
       // dot list stays in step with the darts and the dot can be dragged onto the board.
@@ -8744,6 +8745,7 @@ function handleCameraThrow(throwEntry){
       }catch(e){}
       return;
     }
+    try{ if(throwEntry && throwEntry.sent_at){ state.scanLagSec = Math.max(0, Date.now()/1000 - throwEntry.sent_at); state.scanLagAt = Date.now(); } }catch(e){}
     const mapped = mapBoardManagerSegmentToThrow(segment, throwEntry.coords);
     state.lastCameraHitLabel = mapped.label;
     commitBoardThrow(mapped);
