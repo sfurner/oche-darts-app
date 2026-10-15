@@ -1081,6 +1081,13 @@ const PRACTICES = [
 ];
 
 const AVATAR_COLORS = ['#CC9A3D','#3C7A56','#B23A3A','#7A8FCC','#B77AC7'];
+const RING_COLORS = ['#F4C542','#3E8EF7','#E5484D','#3DBF6A','#B76BF2','#FF8A3D','#2DD4BF','#F472B6'];
+function ringColorFor(pid){
+  const i = state.players.findIndex(x=>x.id===pid);
+  if(i < 0) return RING_COLORS[0];
+  const p = state.players[i];
+  return p.dartColor || RING_COLORS[i % RING_COLORS.length];
+}
 const PLAYER_EMOJIS = ['🎯','🔥','🐺','🦅','🍀','🐻','🦁','🐯','⚡','🃏','🦂','🐉','👑','🎲','🦊','🐝','🍺','🏆','🎪','🐗'];
 function pickPlayerEmoji(){
   const used = state.players.map(p=>p.emoji);
@@ -1094,7 +1101,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.1 ZOOMFIX';
+const BUILD_STAMP = 'v9.3 CAMTRAIN';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -3255,6 +3262,278 @@ function exitThrowAnalyzer(){
   render();
 }
 
+/* ========================= CAMERA TRAINING (v9.3) =========================
+   One dart per target. Aim into the glowing circle, tap where the dart REALLY is in the zoom
+   panel (or press "Looks right"), save. Every saved dart goes to dartscan as an exact truth
+   (kind:'point') with a note saying which exercise it came from. "pos" teaches dartscan; "angle"
+   (darts pushed in by hand at set tilts) is logged only and never learned from. */
+const CT_ZONE_MM = 26;
+function ctMmToPt(xmm, ymm){ return boardManagerCoordsToPoint({x:xmm/170, y:ymm/170}); }
+function ctPtToMm(p){ const c = ochePointToBoardManagerCoords(p); return {x:c.x*170, y:c.y*170}; }
+function ctWhere(xmm, ymm){ try{ return zfScore(xmm, ymm).label; }catch(e){ return ''; } }
+function ctPosPlan(){
+  const pts = [[0,0]];
+  [30,90,150,210,270,330].forEach(a=>pts.push([45,a]));
+  [0,60,120,180,240,300].forEach(a=>pts.push([85,a]));
+  [20,65,110,155,200,245,290,335].forEach(a=>pts.push([125,a]));
+  [90,210,330].forEach(a=>pts.push([155,a]));
+  const xy = pts.map(p=>{ const a = (p[1]||0)*Math.PI/180; return [p[0]*Math.cos(a), p[0]*Math.sin(a)]; });
+  const order = []; for(let k=0;k<xy.length;k++) order.push(xy[(k*7) % xy.length]);
+  return order.map((c,i)=>({id:'t'+(i+1), xmm:c[0], ymm:c[1], r:CT_ZONE_MM, filled:false, meta:{}}));
+}
+const CT_TILTS = [
+  {key:'straight', label:'Straight in',            dx:0,  dy:0,  deg:0},
+  {key:'up25',     label:'Flight UP a little',     dx:0,  dy:-1, deg:25},
+  {key:'down25',   label:'Flight DOWN a little',   dx:0,  dy:1,  deg:25},
+  {key:'left25',   label:'Flight LEFT a little',   dx:-1, dy:0,  deg:25},
+  {key:'right25',  label:'Flight RIGHT a little',  dx:1,  dy:0,  deg:25},
+  {key:'up50',     label:'Flight UP, steep',       dx:0,  dy:-1, deg:50},
+  {key:'down50',   label:'Flight DOWN, steep',     dx:0,  dy:1,  deg:50},
+  {key:'left50',   label:'Flight LEFT, steep',     dx:-1, dy:0,  deg:50},
+  {key:'right50',  label:'Flight RIGHT, steep',    dx:1,  dy:0,  deg:50},
+  {key:'upleft',   label:'Flight UP and LEFT',     dx:-0.7071, dy:-0.7071, deg:35},
+  {key:'upright',  label:'Flight UP and RIGHT',    dx:0.7071,  dy:-0.7071, deg:35},
+  {key:'downleft', label:'Flight DOWN and LEFT',   dx:-0.7071, dy:0.7071,  deg:35},
+  {key:'downright',label:'Flight DOWN and RIGHT',  dx:0.7071,  dy:0.7071,  deg:35},
+];
+function ctAnglePlan(){
+  const plan = [];
+  [['right side', 90, 0], ['left side', -90, 0]].forEach(z=>{
+    CT_TILTS.forEach(t=>plan.push({id:z[0].split(' ')[0]+'-'+t.key, xmm:z[1], ymm:z[2], r:30, filled:false, zoneName:z[0], tilt:t, meta:{tilt:t.key, deg:t.deg, zone:z[0], learn:false}}));
+  });
+  return plan;
+}
+function startCamTrain(mode){
+  if(!boardManagerBase()){ alert('Set up the camera first (the Camera tile on the home screen), then come back.'); return; }
+  state.camTrain = {mode: mode==='angle'?'angle':'pos', plan: mode==='angle'?ctAnglePlan():ctPosPlan(), idx:0, phase:'aim', cur:null, results:[], tip:null, note:'', pulledEarly:false, extrasAdded:false, startedAt:Date.now()};
+  state.screen = 'camTrainActive';
+  if(state.dartsCallerStatus !== 'connected') connectBoardManager();
+  render();
+}
+function exitCamTrain(){ state.camTrain = null; state.screen = 'practice'; render(); }
+function ctTarget(){ const ct = state.camTrain; return ct ? ct.plan[ct.idx] : null; }
+function ctDetLabel(te){
+  try{
+    const seg = te && te.segment;
+    if(!seg || seg.number===undefined || seg.number===null || seg.bed==='Outside' || seg.multiplier===0) return 'Miss';
+    return mapBoardManagerSegmentToThrow(seg, te.coords).label;
+  }catch(e){ return ''; }
+}
+function camTrainThrow(te){
+  const ct = state.camTrain; if(!ct || state.screen!=='camTrainActive') return;
+  const det = boardManagerCoordsToPoint(te && te.coords);
+  if(!det || !te.id) return;
+  if(ct.phase !== 'aim'){ ct.note = 'Another dart registered. One dart at a time: pull the dart in the board first.'; render(); return; }
+  ct.cur = {id:te.id, det, label:ctDetLabel(te), truth:null};
+  ct.phase = 'placed'; ct.note = ''; ct.pulledEarly = false;
+  try{ sndPlay('thud'); }catch(e){}
+  render();
+}
+function camTrainTap(evt){
+  const ct = state.camTrain; if(!ct || ct.phase!=='placed' || !ct.cur) return;
+  const pt = svgPointFromEvent(evt); if(!pt) return;
+  ct.cur.truth = {x:pt.x, y:pt.y}; ct.note = ''; render();
+}
+function camTrainSave(verified){
+  const ct = state.camTrain; if(!ct || ct.phase!=='placed' || !ct.cur) return;
+  const c = ct.cur, truthPt = verified ? c.det : c.truth;
+  if(!truthPt){ ct.note = 'Tap where the dart really is in the zoom panel, or press Looks right.'; render(); return; }
+  const dMm = ctPtToMm(c.det), tMm = ctPtToMm(truthPt);
+  const err = Math.hypot(dMm.x-tMm.x, dMm.y-tMm.y);
+  const tg = ctTarget();
+  // which still-open circle (if any) did the dart land in? the current one wins ties
+  let credited = null, best = 1e9;
+  ct.plan.forEach(t=>{
+    if(t.filled) return;
+    const d = Math.hypot(tMm.x-t.xmm, tMm.y-t.ymm);
+    if(d <= t.r){ const score = d - (t===tg ? 1000 : 0); if(score < best){ best = score; credited = t; } }
+  });
+  if(credited) credited.filled = true;
+  const row = {n: ct.results.length+1, id:c.id, mode:ct.mode, target:tg.id, credited: credited?credited.id:null, inZone: !!credited,
+    det_mm:{x:+dMm.x.toFixed(2), y:+dMm.y.toFixed(2)}, truth_mm:{x:+tMm.x.toFixed(2), y:+tMm.y.toFixed(2)}, err_mm:+err.toFixed(2),
+    verified: !!verified, detected_label:c.label, meta: tg.meta||{}, ts: Date.now()};
+  ct.results.push(row);
+  try{ localStorage.setItem('oche_camtrain_log', JSON.stringify(ct.results)); }catch(e){}
+  const base = boardManagerBase();
+  if(base){
+    const meta = Object.assign({app:'camtrain', round:ct.mode, target:tg.id, verified:!!verified, err_mm:row.err_mm}, tg.meta||{}, ct.mode==='pos' ? {learn:true} : {learn:false});
+    fetch(base + '/api/correction', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id:c.id, detected_label:c.label, hit:{kind:'point', x:tMm.x/170, y:tMm.y/170, label:ctWhere(tMm.x, tMm.y), source:'camtrain'}, meta})})
+      .then(r=>r.json()).then(j=>{ if(j && j.ok){ ct.tip = j.tip_height_mm; row.tip_after = j.tip_height_mm; row.outcome = j.outcome; render(); } else { row.send_error = (j && j.error) || 'unknown'; ct.note = 'Saved here, but dartscan did not take it: ' + row.send_error; render(); } })
+      .catch(()=>{ row.send_error = 'unreachable'; ct.note = 'Saved here, but dartscan could not be reached.'; render(); });
+  }
+  ct.last = {err:row.err_mm, inZone:!!credited, verified:!!verified};
+  ct.phase = 'pull';
+  if(ct.pulledEarly){ ct.pulledEarly = false; camTrainAdvance(); return; }
+  render();
+}
+function camTrainDiscard(){
+  const ct = state.camTrain; if(!ct || ct.phase!=='placed') return;
+  ct.cur = null; ct.phase = 'aim'; ct.note = 'Discarded. Pull that dart, then throw again.'; render();
+}
+function camTrainSkip(){ const ct = state.camTrain; if(ct && ct.phase==='pull') camTrainAdvance(); }
+function camTrainTakeout(){
+  const ct = state.camTrain; if(!ct) return;
+  if(ct.phase==='pull') camTrainAdvance();
+  else if(ct.phase==='placed'){ ct.pulledEarly = true; ct.note = 'Dart pulled. Tap where it was, then Save.'; render(); }
+}
+function ctNextOpen(){ const ct = state.camTrain; for(let i=0;i<ct.plan.length;i++){ if(!ct.plan[i].filled) return i; } return -1; }
+function ctAddExtras(){
+  const ct = state.camTrain; ct.extrasAdded = true;
+  if(ct.mode !== 'pos') return;
+  const by = {}; ct.results.forEach(r=>{ if(r.credited){ (by[r.credited] = by[r.credited] || []).push(r.err_mm); } });
+  const all = ct.results.map(r=>r.err_mm); if(!all.length) return;
+  const mean = all.reduce((a,b)=>a+b,0)/all.length;
+  const worst = Object.keys(by).map(id=>({id, e:by[id].reduce((a,b)=>a+b,0)/by[id].length})).filter(x=>x.e > Math.max(4, 1.3*mean)).sort((a,b)=>b.e-a.e).slice(0,4);
+  worst.forEach(w=>{
+    const t = ct.plan.find(x=>x.id===w.id); if(!t) return;
+    ct.plan.push({id:t.id+'x', xmm:t.xmm, ymm:t.ymm, r:t.r, filled:false, meta:{}, extra:true, why:'The dart here was off by '+w.e.toFixed(1)+' mm. One more here to see if it repeats.'});
+  });
+}
+function camTrainAdvance(){
+  const ct = state.camTrain; if(!ct) return;
+  ct.cur = null; ct.phase = 'aim'; ct.pulledEarly = false; ct.note = '';
+  let i = ctNextOpen();
+  if(i < 0 && !ct.extrasAdded){ ctAddExtras(); i = ctNextOpen(); }
+  if(i < 0){ state.screen = 'camTrainResults'; render(); return; }
+  ct.idx = i; render();
+}
+function ctStats(ct){
+  const e = ct.results.map(r=>r.err_mm), n = e.length;
+  const mean = a=>a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0;
+  const k = Math.max(1, Math.floor(n/3));
+  return {n, mean:mean(e), first:mean(e.slice(0,k)), last:mean(e.slice(n-k)), k, within3: n ? e.filter(x=>x<=3).length/n : 0, within5: n ? e.filter(x=>x<=5).length/n : 0};
+}
+function camTrainDownload(){
+  const ct = state.camTrain; if(!ct) return;
+  const blob = new Blob([JSON.stringify({exercise:ct.mode, build:BUILD_STAMP, started:ct.startedAt, tip_height_mm:ct.tip, results:ct.results}, null, 1)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'oche-camtrain-'+ct.mode+'-'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.json';
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} }, 500);
+}
+function ctWires(){
+  const cx = BOARD_CX, cy = BOARD_CY;
+  let s = [R_DOUBLE_OUT,R_DOUBLE_IN,R_TRIPLE_OUT,R_TRIPLE_IN,R_BULL_OUTER,R_BULL_INNER].map(r=>`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#8b99b5" stroke-width="0.9"/>`).join('');
+  s += `<circle cx="${cx}" cy="${cy}" r="${R_BEZEL}" fill="none" stroke="#4a5875" stroke-width="1"/>`;
+  for(let i=0;i<20;i++){
+    const a = -9 + i*18 + WEDGE_ROTATION, p1 = polar(cx,cy,R_BULL_OUTER,a), p2 = polar(cx,cy,R_DOUBLE_OUT,a);
+    s += `<line x1="${p1[0]}" y1="${p1[1]}" x2="${p2[0]}" y2="${p2[1]}" stroke="#8b99b5" stroke-width="0.9"/>`;
+  }
+  return s;
+}
+function ctZonePath(t){
+  const pts = []; for(let k=0;k<64;k++){ const a = k/64*2*Math.PI, p = ctMmToPt(t.xmm + t.r*Math.cos(a), t.ymm + t.r*Math.sin(a)); pts.push(p.x.toFixed(1)+','+p.y.toFixed(1)); }
+  return 'M'+pts.join(' L')+' Z';
+}
+function ctMarker(p, scale){
+  const k = scale || 1;
+  return `<circle cx="${p.x}" cy="${p.y}" r="${8*k}" fill="none" stroke="#10131a" stroke-width="${4.6*k}" style="pointer-events:none;"/><circle cx="${p.x}" cy="${p.y}" r="${8*k}" fill="none" stroke="#F4C542" stroke-width="${2.6*k}" style="pointer-events:none;"/><circle cx="${p.x}" cy="${p.y}" r="${1.7*k}" fill="#F4C542" style="pointer-events:none;"/>`;
+}
+function ctTruthMark(p, scale){
+  const k = scale || 1, L = 12*k;
+  return `<g style="pointer-events:none;"><line x1="${p.x-L}" y1="${p.y}" x2="${p.x+L}" y2="${p.y}" stroke="#10131a" stroke-width="${4*k}"/><line x1="${p.x}" y1="${p.y-L}" x2="${p.x}" y2="${p.y+L}" stroke="#10131a" stroke-width="${4*k}"/><line x1="${p.x-L}" y1="${p.y}" x2="${p.x+L}" y2="${p.y}" stroke="#FF2EC4" stroke-width="${1.8*k}"/><line x1="${p.x}" y1="${p.y-L}" x2="${p.x}" y2="${p.y+L}" stroke="#FF2EC4" stroke-width="${1.8*k}"/></g>`;
+}
+function ctBoardSVG(ct, tg){
+  const canvas = BOARD_CANVAS;
+  let labels = '';
+  for(let i=0;i<20;i++){ const a = -9 + i*18 + WEDGE_ROTATION, lp = polar(BOARD_CX,BOARD_CY,R_BEZEL-14,a+9); labels += `<text x="${lp[0]}" y="${lp[1]}" fill="#aab6cf" font-family="Oswald,sans-serif" font-size="17" font-weight="600" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${BOARD_ORDER[i]}</text>`; }
+  const done = ct.plan.filter(t=>t.filled && !t.extra).map(t=>`<path d="${ctZonePath(t)}" fill="rgba(61,191,106,0.10)" stroke="rgba(61,191,106,0.45)" stroke-width="1" style="pointer-events:none;"/>`).join('');
+  const zone = tg ? `<path d="${ctZonePath(tg)}" fill="rgba(255,46,196,0.20)" stroke="#FF2EC4" stroke-width="2.4" style="pointer-events:none;"><animate attributeName="fill-opacity" values="0.6;1;0.6" dur="1.4s" repeatCount="indefinite"/></path>` : '';
+  const mk = ct.cur ? ctMarker(ct.cur.det) + (ct.cur.truth ? ctTruthMark(ct.cur.truth) : '') : '';
+  return `<svg viewBox="0 0 ${canvas} ${canvas}" class="dartboard-svg" onclick="camTrainTap(event)" style="cursor:crosshair;width:100%;height:auto;display:block;"><rect x="0" y="0" width="${canvas}" height="${canvas}" fill="transparent"/>${ctWires()}${labels}${done}${zone}${mk}</svg>`;
+}
+function ctZoomSVG(ct){
+  const c = ct.cur.det, H = 32;
+  return `<svg viewBox="${c.x-H} ${c.y-H} ${2*H} ${2*H}" onclick="camTrainTap(event)" style="cursor:crosshair;width:100%;height:auto;display:block;background:#0b1220;border:1px solid #3b4a6b;border-radius:8px;touch-action:none;"><rect x="${c.x-H}" y="${c.y-H}" width="${2*H}" height="${2*H}" fill="#0b1220"/>${ctWires().replace(/stroke-width="0.9"/g,'stroke-width="0.5"')}${ctMarker(c, 0.42)}${ct.cur.truth ? ctTruthMark(ct.cur.truth, 0.42) : ''}</svg>`;
+}
+function ctTiltSVG(t){
+  const len = t.deg ? 12 + t.deg*0.62 : 0, fx = 75 + t.dx*len, fy = 75 + t.dy*len;
+  let flight;
+  if(!t.deg){
+    flight = [45,135,225,315].map(a=>`<path d="M75 75 L81 71 L91 72 L90 75 L91 78 L81 79 Z" fill="#E5484D" stroke="#10131a" stroke-width="1" transform="rotate(${a} 75 75)"/>`).join('');
+  } else {
+    const ang = Math.atan2(t.dy, t.dx)*180/Math.PI;
+    flight = `<line x1="75" y1="75" x2="${fx}" y2="${fy}" stroke="#10131a" stroke-width="6" stroke-linecap="round"/><line x1="75" y1="75" x2="${fx}" y2="${fy}" stroke="#aab6cf" stroke-width="3" stroke-linecap="round"/>`
+      + `<g transform="translate(${fx} ${fy}) rotate(${ang})"><path d="M0 0 L9 -9 L21 -9 L18 0 L21 9 L9 9 Z" fill="#E5484D" stroke="#10131a" stroke-width="1.2"/></g>`;
+  }
+  return `<svg viewBox="0 0 150 150" style="width:150px;height:150px;flex:none;"><circle cx="75" cy="75" r="68" fill="#1d2740" stroke="#4a5875"/><line x1="75" y1="12" x2="75" y2="138" stroke="#3b4a6b" stroke-dasharray="3 4"/><line x1="12" y1="75" x2="138" y2="75" stroke="#3b4a6b" stroke-dasharray="3 4"/>${flight}<circle cx="75" cy="75" r="3.2" fill="#F4C542" stroke="#10131a"/><text x="75" y="11" fill="#aab6cf" font-size="9" text-anchor="middle">UP</text><text x="75" y="147" fill="#aab6cf" font-size="9" text-anchor="middle">DOWN</text><text x="6" y="78" fill="#aab6cf" font-size="9">LEFT</text><text x="144" y="78" fill="#aab6cf" font-size="9" text-anchor="end">RIGHT</text></svg>`;
+}
+function ctTiltText(t){
+  if(!t.deg) return 'Push it in straight, square to the board, so the flight sits directly behind the tip.';
+  const cm = Math.round(10*Math.sin(t.deg*Math.PI/180)), parts = [];
+  if(t.dy) parts.push(`${t.dx&&t.dy ? Math.round(cm*0.71) : cm} cm ${t.dy<0?'above':'below'}`);
+  if(t.dx) parts.push(`${t.dx&&t.dy ? Math.round(cm*0.71) : cm} cm to the ${t.dx<0?'left':'right'} of`);
+  return `Tilt it about ${t.deg}° from straight. As you face the board, the flight should end up about ${parts.join(' and ')} the tip (a thumb is about 2 cm wide).` + (t.dx>0 ? ' Right is the side the camera is on.' : '');
+}
+function renderCamTrainActive(){
+  const ct = state.camTrain; if(!ct) return renderPracticeTab();
+  const tg = ctTarget(), st = ctStats(ct);
+  const conn = state.dartsCallerStatus === 'connected';
+  const filled = ct.plan.filter(t=>t.filled).length, total = ct.plan.length;
+  const isAngle = ct.mode === 'angle';
+  const where = tg ? ctWhere(tg.xmm, tg.ymm) : '';
+  let head = '', body = '';
+  if(ct.phase === 'aim' && tg){
+    head = isAngle ? `Push ONE dart in by hand: ${tg.tilt.label}` : (tg.extra ? 'One more dart into the glowing circle' : 'Throw ONE dart into the glowing circle');
+    body = isAngle
+      ? `<div style="display:flex;gap:14px;align-items:center;">${ctTiltSVG(tg.tilt)}<div style="font-size:14px;line-height:1.5;color:var(--cream-dim);">${ctTiltText(tg.tilt)}<br><br>The tip goes inside the glowing circle (${tg.zoneName}). Push it in by hand, don't throw.</div></div>`
+      : `<div style="font-size:14px;line-height:1.5;color:var(--cream-dim);">Aim around <b style="color:var(--cream);">${where}</b>. Anywhere inside the circle counts, it is about 5 cm across.${tg.why?`<br><br><b style="color:var(--brass);">${tg.why}</b>`:''}</div>`;
+  } else if(ct.phase === 'placed'){
+    head = 'Mark where the dart really is';
+    const dif = ct.cur && ct.cur.truth ? Math.hypot(ctPtToMm(ct.cur.det).x-ctPtToMm(ct.cur.truth).x, ctPtToMm(ct.cur.det).y-ctPtToMm(ct.cur.truth).y) : null;
+    body = `<div style="font-size:14px;line-height:1.5;color:var(--cream-dim);">Tap the exact spot where the steel enters the board in the zoom panel. If the gold ring is already right, press <b style="color:var(--cream);">Looks right</b>.${dif!==null?`<br><br>Your mark is <b style="color:var(--cream);">${dif.toFixed(1)} mm</b> from the camera's spot.`:''}</div>`;
+  } else if(ct.phase === 'pull'){
+    head = ct.last ? `Saved. The camera was off by ${ct.last.err.toFixed(1)} mm` : 'Saved';
+    body = `<div style="font-size:14px;line-height:1.5;color:var(--cream-dim);">${ct.last && !ct.last.inZone ? '<b style="color:var(--brass);">That one landed outside the glowing circle, so the circle stays lit.</b><br><br>' : ''}Pull the dart. The next circle appears when the camera sees it come out.</div>`;
+  }
+  const zoom = ct.cur ? ctZoomSVG(ct) : `<div style="background:#0b1220;border:1px dashed #3b4a6b;border-radius:8px;padding:50px 14px;text-align:center;color:var(--cream-dim);font-size:14px;">${ct.phase==='aim'?'Waiting for your dart…':''}</div>`;
+  const buttons = ct.phase==='placed'
+    ? `<div style="display:flex;gap:8px;margin-top:8px;"><button class="btn btn-secondary" style="flex:1;" onclick="camTrainSave(true)">Looks right</button><button class="btn btn-primary" style="flex:1;" ${ct.cur&&ct.cur.truth?'':'disabled'} onclick="camTrainSave(false)">Save my mark</button></div><div class="tiny-edit-btn" style="margin-top:8px;" onclick="camTrainDiscard()">Discard this dart</div>`
+    : ct.phase==='pull' ? `<button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="camTrainSkip()">Next target now</button>` : '';
+  const trend = st.n >= 3 ? `Average miss so far ${st.mean.toFixed(1)} mm${st.n>=6?` · first ${st.k}: ${st.first.toFixed(1)} → last ${st.k}: ${st.last.toFixed(1)}`:''}` : 'Averages appear after a few darts';
+  return `<div class="topbar"><div class="iconbtn" onclick="exitCamTrain()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${isAngle?'Camera Angles':'Camera Training'}</h1><div style="min-width:38px; text-align:right;">${renderCameraHelpTrigger()}</div></div>
+  <div class="content" style="padding-top:6px;">
+    <div style="display:flex; gap:16px; flex-wrap:wrap; justify-content:center; align-items:flex-start;">
+      <div style="flex:2 1 420px; max-width:min(760px, 84vh); min-width:280px;">${ctBoardSVG(ct, ct.phase==='aim'||ct.phase==='pull' ? tg : tg)}</div>
+      <div style="flex:1 1 300px; max-width:420px; min-width:260px;">
+        <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--cream-dim);">Dart ${Math.min(filled+1,total)} of ${total} · ${filled} done · ${trend}</div>
+        <div style="height:6px;background:#1d2740;border-radius:3px;margin:6px 0 10px;"><div style="height:6px;width:${Math.round(100*filled/Math.max(1,total))}%;background:var(--brass);border-radius:3px;"></div></div>
+        <div style="font-size:20px;font-weight:800;color:var(--cream);margin-bottom:8px;">${head}</div>
+        ${body}
+        <div style="margin-top:12px;">${zoom}</div>
+        ${buttons}
+        ${ct.note?`<div style="margin-top:8px;color:var(--brass);font-size:13px;">${ct.note}</div>`:''}
+        <div style="margin-top:10px;font-size:12px;color:var(--cream-dim);">${conn?'Camera connected':'<span style="color:#E5484D;">Camera not connected</span> <span class="tiny-edit-btn" style="display:inline-block;margin-left:6px;" onclick="connectBoardManager()">Connect</span>'}${ct.tip!==null?` · tip height ${Number(ct.tip).toFixed(1)} mm`:''}</div>
+      </div>
+    </div>
+  </div>`;
+}
+function renderCamTrainResults(){
+  const ct = state.camTrain; if(!ct) return renderPracticeTab();
+  const st = ctStats(ct), isAngle = ct.mode==='angle';
+  const worst = ct.results.slice().sort((a,b)=>b.err_mm-a.err_mm).slice(0,5);
+  const W = 520, H = 150, mx = Math.max(10, ...ct.results.map(r=>r.err_mm));
+  const px = i=>10 + i*(W-20)/Math.max(1,ct.results.length-1), py = v=>H-10-(v/mx)*(H-20);
+  const line = ct.results.map((r,i)=>(i?'L':'M')+px(i).toFixed(1)+' '+py(r.err_mm).toFixed(1)).join(' ');
+  const ma = ct.results.map((r,i)=>{ const a = ct.results.slice(Math.max(0,i-4), i+1); return a.reduce((s,x)=>s+x.err_mm,0)/a.length; });
+  const maLine = ma.map((v,i)=>(i?'L':'M')+px(i).toFixed(1)+' '+py(v).toFixed(1)).join(' ');
+  return `<div class="topbar"><div class="iconbtn" onclick="exitCamTrain()">&#8592;</div><h1 style="color:var(--brass); font-size:19px;">${isAngle?'Angles done':'Training done'}</h1><div style="width:38px;"></div></div>
+  <div class="content">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+      <div class="panel-player-card" style="flex:1;min-width:120px;text-align:center;"><div class="pp-name">DARTS</div><div class="pp-stat">${st.n}</div></div>
+      <div class="panel-player-card" style="flex:1;min-width:120px;text-align:center;"><div class="pp-name">AVERAGE MISS</div><div class="pp-stat">${st.mean.toFixed(1)} mm</div></div>
+      <div class="panel-player-card" style="flex:1;min-width:120px;text-align:center;"><div class="pp-name">FIRST ${st.k}</div><div class="pp-stat">${st.first.toFixed(1)} mm</div></div>
+      <div class="panel-player-card" style="flex:1;min-width:120px;text-align:center;border-color:var(--green);"><div class="pp-name">LAST ${st.k}</div><div class="pp-stat" style="color:var(--green);">${st.last.toFixed(1)} mm</div></div>
+    </div>
+    <div class="rule-block"><h4>${Math.round(st.within3*100)}% within 3 mm, ${Math.round(st.within5*100)}% within 5 mm</h4><p>Gold line: each dart's miss. Pink: running average of five. ${isAngle?'Angle darts are logged only; the camera did not learn from them.':'Tip height learned: '+(ct.tip!==null?Number(ct.tip).toFixed(1)+' mm':'n/a')+'.'}</p>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:760px;height:auto;display:block;background:#0b1220;border-radius:8px;"><path d="${line}" fill="none" stroke="#F4C542" stroke-width="1.5" opacity=".8"/><path d="${maLine}" fill="none" stroke="#FF2EC4" stroke-width="2.4"/></svg></div>
+    <div class="rule-block"><h4>Biggest misses</h4><p>${worst.map(r=>`#${r.n}: ${r.err_mm.toFixed(1)} mm${r.meta&&r.meta.tilt?' ('+r.meta.zone+', '+r.meta.tilt+')':''}`).join('<br>')}</p></div>
+    <button class="btn btn-primary btn-full" style="margin-top:6px;" onclick="camTrainDownload()">Download the data (send it to Claude)</button>
+    ${isAngle?'':`<button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="startCamTrain('angle')">Start the angle round (26 pushed darts)</button>`}
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="startCamTrain('${ct.mode}')">Run it again</button>
+    <button class="btn btn-secondary btn-full" style="margin-top:8px;" onclick="exitCamTrain()">Done</button>
+  </div>`;
+}
+
 /* ========================= PINPOINT ========================= */
 // A deliberately bare-bones practice mode: pick one exact point anywhere on
 // the board (not tied to a number or ring), then throw at it for as long as
@@ -3593,15 +3872,23 @@ function renderDartboardSVG(pending, targetHighlight, hitPoint, ownerLabels, mis
   const _ss = state.session;
   const dragOk = !!(_ss && _ss.kind==='x01' && !_ss.complete && hitPoint && hitPoint===_ss.turnHitPoints
                     && hitPointsArr.length>0 && hitPointsArr.length===_ss.currentTurnDarts.length && !pending);
+  // v9.2: ring marker. The CENTRE is the exact hit point; the ring is the player's colour and leaves the wires visible.
+  const _ringPid = _ss && _ss.participants && _ss.currentIdx!=null && _ss.participants[_ss.currentIdx] ? _ss.participants[_ss.currentIdx].playerId : (_ss && _ss.playerId);
+  const ringCol = ringColorFor(_ringPid);
+  const ringGlyph = (pt, fresh) => {
+    const pulse = fresh ? '<circle cx="'+pt.x+'" cy="'+pt.y+'" r="8" fill="none" stroke="'+ringCol+'" stroke-width="2"><animate attributeName="r" values="8;22" dur="0.7s" fill="freeze"/><animate attributeName="opacity" values="0.9;0" dur="0.7s" fill="freeze"/></circle>' : '';
+    return pulse
+      + '<circle cx="'+pt.x+'" cy="'+pt.y+'" r="8" fill="none" stroke="#10131a" stroke-width="4.6" style="pointer-events:none;"/>'
+      + '<circle cx="'+pt.x+'" cy="'+pt.y+'" r="8" fill="none" stroke="'+ringCol+'" stroke-width="2.6" style="pointer-events:none;"/>'
+      + '<circle cx="'+pt.x+'" cy="'+pt.y+'" r="1.7" fill="#10131a" style="pointer-events:none;"/>'
+      + '<circle cx="'+pt.x+'" cy="'+pt.y+'" r="0.7" fill="#fff" style="pointer-events:none;"/>';
+  };
   const hitMarker = hitPointsArr.map((pt,i)=>{
     const isFreshCameraHit = state.freshCameraDot && i===hitPointsArr.length-1;
     if(dragOk){
-      return `<g class="dart-dot" data-dart-dot="${i}" style="cursor:grab;touch-action:none;"><circle cx="${pt.x}" cy="${pt.y}" r="22" fill="rgba(255,255,255,0.001)"/><circle cx="${pt.x}" cy="${pt.y}" r="8" fill="#FFFFFF" stroke="#F4C542" stroke-width="2.5"/><circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a"/></g>`;
+      return `<g class="dart-dot" data-dart-dot="${i}" style="cursor:grab;touch-action:none;"><circle cx="${pt.x}" cy="${pt.y}" r="22" fill="rgba(255,255,255,0.001)"/>${ringGlyph(pt, isFreshCameraHit)}</g>`;
     }
-    const outerCircle = isFreshCameraHit
-      ? `<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#3DBF6A"><animate attributeName="fill" values="#3DBF6A;#3DBF6A;#FFFFFF" keyTimes="0;0.55;1" dur="1.8s" fill="freeze"/></circle>`
-      : `<circle cx="${pt.x}" cy="${pt.y}" r="7" fill="#FFFFFF" stroke="#1a1a1a" stroke-width="2" style="pointer-events:none;"/>`;
-    return outerCircle + `<circle cx="${pt.x}" cy="${pt.y}" r="2.5" fill="#1a1a1a" style="pointer-events:none;"/>`;
+    return ringGlyph(pt, isFreshCameraHit);
   }).join('');
   const needsWideMargin = false; // Killer rings sit on the number labels, so the board keeps its standard size
   const missOuterEdge = rBezel + 22;
@@ -5712,6 +5999,12 @@ function setPlayerEmoji(id, emoji){
   state.emojiPickerPlayerId = null;
   render();
 }
+function setPlayerDartColor(id, c){
+  const p = state.players.find(x=>x.id===id);
+  if(!p) return;
+  if(c) p.dartColor = c; else delete p.dartColor;
+  render();
+}
 function randomizePlayerEmoji(id){
   const p = state.players.find(x=>x.id===id);
   if(!p) return;
@@ -6965,6 +7258,8 @@ function render(){
     case 'throwAnalyzerSetup': html = renderThrowAnalyzerSetup(); break;
     case 'throwAnalyzer': html = renderThrowAnalyzer(); break;
     case 'pinpointActive': html = renderPinpointActive(); break;
+    case 'camTrainActive': html = renderCamTrainActive(); break;
+    case 'camTrainResults': html = renderCamTrainResults(); break;
     case 'proRoutine': html = renderProRoutine(); break;
     case 'closeoutTrainerSetup': html = renderCloseoutTrainerSetup(); break;
     case 'closeoutTrainerActive': html = renderCloseoutTrainerActive(); break;
@@ -7164,6 +7459,8 @@ const PRACTICE_TILES = [
   ['Pro Routine','Six-phase session, about 130 darts','startProRoutine()'],
   ['Throw Analyzer','Throw at a dot, get one suggestion',"state.screen='throwAnalyzerSetup'; render();"],
   ['Pinpoint','Pick a spot, build a heat map','startPinpoint()'],
+  ['Camera Training','Teach the camera: one dart per circle, tap where it landed',"startCamTrain('pos')"],
+  ['Camera Angles','Push darts in at set tilts to see how angle fools the camera',"startCamTrain('angle')"],
   ['Section Trainer','Drill one section of the board','openSectionSetup()'],
   ['Blackout','Throw without seeing the score','openBlackoutSetup()'],
 ];
@@ -7480,6 +7777,11 @@ function renderEmojiPickerModal(playerId){
       <p style="color:var(--cream-dim); font-size:13px; margin-bottom:12px;">For ${p.name}</p>
       <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:14px;">
         ${PLAYER_EMOJIS.map(e=>`<div class="num-btn ${p.emoji===e?'recommended':''}" style="font-size:22px; cursor:pointer;" onclick="setPlayerEmoji('${p.id}','${e}')">${e}</div>`).join('')}
+      </div>
+      <p style="color:var(--cream-dim); font-size:13px; margin:4px 0 8px;">Dart marker colour</p>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; align-items:center;">
+        ${RING_COLORS.map(c=>`<div style="width:30px;height:30px;border-radius:50%;background:${c};cursor:pointer;border:3px solid ${ringColorFor(p.id)===c?'#fff':'transparent'};box-sizing:border-box;" onclick="setPlayerDartColor('${p.id}','${c}')"></div>`).join('')}
+        <span class="chip ${p.dartColor?'':'selected'}" style="cursor:pointer;flex:none;width:auto;padding:6px 14px;" onclick="setPlayerDartColor('${p.id}',null)">Auto</span>
       </div>
       <div class="btn-row">
         <button class="btn btn-secondary" onclick="randomizePlayerEmoji('${p.id}')">Random</button>
@@ -8732,6 +9034,7 @@ warEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.war);
 let camTurnIds = [];
 let scanFix = null;      // {id, label, t}: a camera dart the player just cleared, waiting for the real hit
 function handleCameraThrow(throwEntry){
+  if(state.camTrain && state.screen==='camTrainActive'){ camTrainThrow(throwEntry); return; }
   if(!state.settings.dartsCallerCameraMode) return;
   try{ const s0 = state.session; if(!s0 || !s0.currentTurnDarts || s0.currentTurnDarts.length === 0) camTurnIds = []; }catch(e){}
   const segment = throwEntry && throwEntry.segment;
@@ -9129,6 +9432,7 @@ const DARTSCALLER_FINISH_GAME_FNS = {
   war:finishWarGame,
 };
 function forceEndCurrentTurnFromTakeout(){
+  if(state.camTrain && state.screen==='camTrainActive'){ camTrainTakeout(); return; }
   if(!state.settings.dartsCallerCameraMode) return;
   // Practice modes (Pro Routine, Closeout Trainer) don't use state.session
   // at all, so they need their own, much simpler version of the same
