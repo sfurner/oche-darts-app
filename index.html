@@ -863,10 +863,11 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 .page-top{ display:flex; align-items:center; justify-content:space-between; padding:16px 18px 10px 18px; gap:12px; }
 .page-top-left{ display:flex; align-items:center; gap:12px; }
 .page-top h1{ font-size:24px; color:var(--cream); }
-.gtb-sq{ width:44px; height:44px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--brass); display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; }
+.gtb-sq{ width:34px; height:34px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--brass); display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; }
 .gtb-btn{ height:44px; padding:0 16px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--cream); display:flex; align-items:center; gap:8px; font-family:'Inter',sans-serif; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
 .gtb-btn svg{ color:var(--brass); }
-.gtb-sq.cam-ic svg{ display:block; }
+.gtb-sq svg{ display:block; width:18px; height:18px; }
+.game-header-row .gtb-left{ gap:6px !important; }
 .gtb-sq.lv-ok{ color:var(--green); border-color:var(--green); }
 .gtb-sq.lv-warn{ color:#e8b923; border-color:#e8b923; }
 .gtb-sq.lv-bad{ color:var(--red); border-color:var(--red); }
@@ -880,7 +881,7 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 .cam-pop .btn{ white-space:nowrap; }
 .cam-pop .cp-hint{ font-size:13px; color:var(--cream-dim); margin-bottom:10px; }
 #sndLockBar{ position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:90; background:var(--brass); color:#111; font-weight:700; padding:12px 20px; border-radius:999px; box-shadow:var(--shadow); display:none; cursor:pointer; font-family:'Inter',sans-serif; font-size:15px; }
-.hub-head-right .gtb-sq{ width:36px; height:36px; }
+
 
 .game-header-row .gtb-left{ display:flex; align-items:center; gap:10px; }
 .game-header-row .gtb-right{ display:flex; align-items:center; gap:10px; justify-self:end; }
@@ -1117,7 +1118,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.4 TOPBAR';
+const BUILD_STAMP = 'v9.4c TOPBAR';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -1298,20 +1299,21 @@ function syncSpeakerPanel(force){
    One audio file per voice, built on the Mac from the recorded clips (make-oche-callerpack.py):
    voices/<voice>/caller.mp3 plus caller.json  {clips:{ "n_60":[startSec, lengthSec], ... }}.
    Oche loads and decodes it once, then plays pieces of it by offset. Nothing is spoken if the pack is missing. */
-let _callerPack = null, _callerLoading = null, _callerErr = '', _callerEnd = 0;
+let _callerPack = null, _callerLoading = null, _callerErr = '', _callerEnd = 0, _callerWhy = '';
 function callerVoiceId(){ return (state.settings && state.settings.callerVoice) || 'alan'; }
 // v8.7: Alan is baked into this file (make-oche-callerpack.py fills the oche-alan-pack tag at the end of the page).
 function callerEmbedded(id){
   try{
+    if(id !== 'alan') return null;
     const el = document.getElementById('oche-alan-pack');
-    if(!el || id !== 'alan') return null;
+    if(!el){ _callerWhy = 'Alan pack tag missing from this page'; return null; }
     const txt = (el.textContent || '').trim();
-    if(txt.length < 1000) return null;
+    if(txt.length < 1000){ _callerWhy = 'Alan pack is empty in this page (' + txt.length + ' bytes)'; return null; }
     const obj = JSON.parse(txt);
     const bin = atob(obj.mp3), ab = new ArrayBuffer(bin.length), u8 = new Uint8Array(ab);
     for(let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    return new Promise((res, rej) => { const c = sndCtx(); if(!c) return rej(new Error('no audio on this device')); c.decodeAudioData(ab, b => res({meta:{voice:obj.voice, clips:obj.clips}, buf:b}), () => rej(new Error('could not decode the built-in voice'))); });
-  }catch(e){ return null; }
+    return new Promise((res, rej) => { const c = sndCtx(); if(!c) return rej(new Error('no audio on this device')); c.decodeAudioData(ab, b => res({meta:{voice:obj.voice, clips:obj.clips}, buf:b}), () => rej(new Error('could not decode the baked-in Alan audio'))); });
+  }catch(e){ _callerWhy = 'Alan pack failed to read: ' + String((e && e.message) || e); return null; }
 }
 function callerLoad(){
   if(_callerPack) return Promise.resolve(_callerPack);
@@ -1328,7 +1330,7 @@ function callerLoad(){
     .then(meta => fetch('voices/' + id + '/' + (meta.file || 'caller.mp3')).then(r => { if(!r.ok) throw new Error('caller.mp3 not found'); return r.arrayBuffer(); })
       .then(ab => new Promise((res, rej) => { const c = sndCtx(); if(!c) return rej(new Error('no audio on this device')); c.decodeAudioData(ab, b => res({meta, buf:b}), () => rej(new Error('could not decode caller.mp3'))); })))
     .then(pk => { _callerPack = pk; _callerErr = ''; return pk; })
-    .catch(e => { _callerErr = String((e && e.message) || e); _callerLoading = null; return null; });
+    .catch(e => { _callerErr = String((e && e.message) || e) + (_callerWhy ? ' [' + _callerWhy + ']' : ''); _callerLoading = null; return null; });
   _callerLoading = p;
   return p;
 }
