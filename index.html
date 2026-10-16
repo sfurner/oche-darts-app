@@ -866,6 +866,22 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 .gtb-sq{ width:44px; height:44px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--brass); display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; }
 .gtb-btn{ height:44px; padding:0 16px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--cream); display:flex; align-items:center; gap:8px; font-family:'Inter',sans-serif; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
 .gtb-btn svg{ color:var(--brass); }
+.gtb-sq.cam-ic svg{ display:block; }
+.gtb-sq.lv-ok{ color:var(--green); border-color:var(--green); }
+.gtb-sq.lv-warn{ color:#e8b923; border-color:#e8b923; }
+.gtb-sq.lv-bad{ color:var(--red); border-color:var(--red); }
+.gtb-sq.lv-off{ color:var(--cream-dim); border-color:var(--cream-dim); }
+.gtb-sq.snd-locked{ color:var(--red); border-color:var(--red); }
+.cam-pop{ position:fixed; top:64px; left:10px; width:min(300px, calc(100vw - 20px)); background:var(--felt); border:1px solid var(--felt-lighter); border-radius:12px; padding:12px; box-shadow:var(--shadow); z-index:70; text-align:left; }
+.cam-pop .cp-word{ font-family:'Oswald',sans-serif; font-size:22px; letter-spacing:0.04em; margin-bottom:2px; }
+.cam-pop .cp-word.lv-ok{ color:var(--green); } .cam-pop .cp-word.lv-warn{ color:#e8b923; } .cam-pop .cp-word.lv-bad{ color:var(--red); } .cam-pop .cp-word.lv-off{ color:var(--cream-dim); }
+.cam-pop .cam-menu-btns{ display:flex; flex-wrap:wrap; gap:8px; }
+.cam-pop .cam-menu-btns .tiny-edit-btn{ flex:none; min-width:auto; overflow:visible; text-overflow:clip; white-space:nowrap; padding:10px 14px; font-size:13px; }
+.cam-pop .btn{ white-space:nowrap; }
+.cam-pop .cp-hint{ font-size:13px; color:var(--cream-dim); margin-bottom:10px; }
+#sndLockBar{ position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:90; background:var(--brass); color:#111; font-weight:700; padding:12px 20px; border-radius:999px; box-shadow:var(--shadow); display:none; cursor:pointer; font-family:'Inter',sans-serif; font-size:15px; }
+.hub-head-right .gtb-sq{ width:36px; height:36px; }
+
 .game-header-row .gtb-left{ display:flex; align-items:center; gap:10px; }
 .game-header-row .gtb-right{ display:flex; align-items:center; gap:10px; justify-self:end; }
 .game-header-row .gtb-right .camera-help-panel{ left:auto; right:0; }
@@ -1101,7 +1117,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.3b CAMTRAIN';
+const BUILD_STAMP = 'v9.4 TOPBAR';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -1252,8 +1268,17 @@ function volRow(key, label, def){
   return `<div class="vol-row"><span class="vol-lab">${label}</span><input type="range" min="0" max="100" value="${v}" data-vol="${key}" aria-label="${label} volume" oninput="onVolInput('${key}', this.value)" onchange="onVolDone('${key}')"><span class="vol-val" data-vol-val="${key}">${v}%</span></div>`;
 }
 const SPEAKER_ICON_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 010 7"/><path d="M18.5 5.5a9 9 0 010 13"/></svg>';
+const SPEAKER_MUTED_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>';
+function soundMuted(){ return sndVol('volCaller',0.9) <= 0.001 && sndVol('volSfx',0.8) <= 0.001; }
+function soundLocked(){
+  try{
+    if(soundMuted()) return false;
+    const c = sndCtx(); return !!c && c.state !== 'running';
+  }catch(e){ return false; }
+}
 function renderHeaderVolume(){
-  return `<div class="gtb-vol" role="button" tabindex="0" aria-label="Sound" title="Sound" onclick="toggleSpeakerPanel()">${SPEAKER_ICON_SVG}</div>`;
+  const cls = 'gtb-sq spk-ic' + (soundLocked() ? ' snd-locked' : '');
+  return `<button class="${cls}" id="spkIconBtn" aria-label="Sound" title="Sound" onclick="toggleSpeakerPanel()">${soundMuted() ? SPEAKER_MUTED_SVG : SPEAKER_ICON_SVG}</button>`;
 }
 function renderVolumeBlock(){
   return `<div class="vol-block">${volRow('volCaller','Caller',0.9)}${volRow('volSfx','Sound effects',0.8)}<div class="cam-menu-btns" style="margin-top:8px;"><div class="tiny-edit-btn" onclick="callerTest()">Test</div></div><div class="info-note" style="margin:6px 0 0 0;" data-caller-status>${callerStatusText()}</div></div>`;
@@ -1308,7 +1333,7 @@ function callerLoad(){
   return p;
 }
 function callerStatusText(){
-  if(_callerPack) return 'Caller voice: ' + callerVoiceId() + ' (ready)';
+  if(_callerPack) return 'Caller voice: ' + callerVoiceId() + ' (ready)' + (soundLocked() ? '. Sound is locked: tap the screen once.' : '');
   if(_callerErr) return 'Caller voice not found (' + _callerErr + '). Run make-oche-callerpack.py on the Mac to build Alan into Oche.';
   return 'Caller voice: not loaded yet';
 }
@@ -5476,12 +5501,13 @@ function renderGameTopBar(s, title){
   return `<div class="game-header-row">
     <div class="gtb-left">
       <button class="gtb-sq" title="Home" aria-label="Home" onclick="requestHome()">${HOME_ICON_SVG}</button>
-      <button class="gtb-btn" onclick="openGameMenu()">${MENU_ICON_SVG}Menu</button>
+      <button class="gtb-sq" title="Menu" aria-label="Menu" onclick="openGameMenu()">${MENU_ICON_SVG}</button>
+      ${renderCamIcon()}
+      ${renderHeaderVolume()}
     </div>
     <div class="gtb-mid"><div class="game-title-center">${title}</div>${sub}</div>
     <div class="gtb-right">
-      ${renderHeaderVolume()}
-      ${renderCameraHelpTrigger()}
+      ${renderTakeoutBtn()}
     </div>
   </div>`;
 }
@@ -5651,8 +5677,24 @@ function renderRestartConfirm(s){
 }
 
 /* ---- Tips and rules ---- */
-function openTips(){ state.tipsOpen=true; state.tipsTab='tips'; state.gameMenuOpen=false; render(); }
+function openTips(tab){ state.tipsOpen=true; state.tipsTab=tab||'rules'; state.gameMenuOpen=false; render(); }
 function closeTips(){ state.tipsOpen=false; render(); }
+
+const RULES_TEXT = {
+  '301': {goal:'Count down from 301 to exactly zero.', score:'Each dart takes its value off your score. A double counts twice the number, a triple counts three times. You throw three darts a turn. If a turn would take you below zero (or leave you on 1 with a double out), it is a bust and your score goes back to where it was at the start of that turn.', win:'Reach exactly zero with your last dart. With double out, that last dart must be a double (the bull counts as a double).'},
+  '501': {goal:'Count down from 501 to exactly zero.', score:'Each dart takes its value off your score. A double counts twice the number, a triple counts three times. You throw three darts a turn. If a turn would take you below zero (or leave you on 1 with a double out), it is a bust and your score goes back to where it was at the start of that turn.', win:'Reach exactly zero with your last dart. With double out, that last dart must be a double (the bull counts as a double).'},
+  cricket: {goal:'Close the numbers 20, 19, 18, 17, 16, 15 and the bull before your opponents do.', score:'Three marks close a number: a single is one mark, a double is two, a triple is three. Once you have closed a number and an opponent has not, every extra hit scores that number\'s points for you. Once everyone has closed a number, it is dead and scores nothing.', win:'Close all seven numbers while your points are equal to or higher than every opponent.'},
+  atc: {goal:'Hit 1, then 2, then 3, all the way up to 20 in order.', score:'You only move on when you hit your current number. Throw three darts a turn at that number. Depending on the game options, a double or triple may move you ahead more than one number.', win:'The first player to finish the last number wins.'},
+  shanghai: {goal:'Score the most points over the rounds. Round 1 is the 1s, round 2 is the 2s, and so on.', score:'Only darts in that round\'s number count. A single scores the number, a double twice, a triple three times. Darts anywhere else score nothing.', win:'Highest total after the last round wins. If you hit a single, a double and a triple of the round\'s number in one turn, that is a Shanghai and you win on the spot.'},
+  baseball: {goal:'Score the most runs over nine innings. Inning 1 is the 1s, inning 2 is the 2s, up to inning 9.', score:'Only darts in that inning\'s number count. A single is one run, a double two runs, a triple three runs. Each inning is one turn of three darts.', win:'The most runs after nine innings wins.'},
+  highscore: {goal:'Score as many points as you can.', score:'Each dart adds its value to your total. Doubles and triples count as normal. Each turn is three darts.', win:'The highest total after the set number of rounds wins.'},
+  countup: {goal:'Build the highest total you can over a set number of turns.', score:'Each dart adds its value to your total (doubles and triples count). There is no counting down and no finishing.', win:'Highest total wins. Playing alone, try to beat your own best.'},
+  halveit: {goal:'Hit the target in every round and keep your score high.', score:'Each round has a target. Every dart that hits it adds its points. If all three darts miss the target, your whole score is cut in half.', win:'The highest score after the last round wins.'},
+  killer: {goal:'Be the last player with lives left.', score:'Everyone has a number and a set number of lives. First, hit the double of your own number to become a killer. Once you are a killer, hitting an opponent\'s number takes a life from them.', win:'When everyone else is out of lives, you win.'},
+  callshot: {goal:'Call a target, hit it, and make the others match you.', score:'On your turn, call a target and try to hit it with your darts. If you miss, the turn just passes on. If you hit it, each other player gets the same number of darts to hit the same target. Anyone who fails gets a letter.', win:'A player who spells the whole word is out. The last player left wins.'},
+  personalbest: {goal:'Beat your own best round.', score:'Each round is three darts, and every dart adds its value (doubles and triples count). Your first round sets your best. After that, every round tries to beat it.', win:'Depends on the mode you picked: no winner (just chase your best), highest single round, or highest average.'},
+  war: {goal:'Claim sections of the board by landing darts in them.', score:'There are no points. Wherever a dart lands, that section turns to your color, even if another player owned it. If Steal-Back Lock is on, a section you lose and win back is locked to you.', win:'The game ends when every section has been claimed. The player holding the most sections wins.'}
+};
 function rulesIdForSession(s){
   const MAP = {cricket:'cricket', atc:'atc', shanghai:'shanghai', baseball:'baseball', halveit:'halveit', killer:'killer', callshot:'callshot', war:'war', personalbest:'personalbest'};
   if(s.kind==='x01') return s.startScore===301?'301':'501';
@@ -5660,9 +5702,9 @@ function rulesIdForSession(s){
   return MAP[s.kind] || null;
 }
 function renderTipsModal(s){
-  const tab = state.tipsTab || 'tips';
+  const tab = state.tipsTab === 'checkout' ? 'checkout' : 'rules';
   const isX01 = s.kind==='x01';
-  const tabs = [['tips','Tips'],['rules','Rules']].concat(isX01 ? [['checkout','Checkout table']] : []);
+  const tabs = [['rules','Rules']].concat(isX01 ? [['checkout','Checkout table']] : []);
   let body = '';
   if(tab==='tips'){
     let tipsHtml = '';
@@ -5673,7 +5715,9 @@ function renderTipsModal(s){
       ${hint ? `<div class="tips-card"><h4>THIS TURN</h4><p>${hint}</p></div>` : ''}
       ${(!tipsHtml && !hint) ? `<div class="tips-card"><p>No tips for this game right now. Check the Rules tab for how it works.</p></div>` : ''}`;
   } else if(tab==='rules'){
-    const g = GAMES.find(x=>x.id===rulesIdForSession(s));
+    const rid = rulesIdForSession(s);
+    const g0 = GAMES.find(x=>x.id===rid);
+    const g = g0 ? (RULES_TEXT[rid] || g0) : null;
     if(g){
       body = `<div class="tips-card"><h4>GOAL</h4><p>${g.goal}</p></div>
         <div class="tips-card"><h4>HOW TO SCORE</h4><p>${g.score}</p></div>
@@ -5725,7 +5769,7 @@ function renderHub(){
   return `<div class="hub">
     <div class="hub-head">
       <div class="hub-brand"><span class="dot"></span>OCHE</div>
-      <div class="hub-head-right"><span>${BUILD_STAMP}</span><span id="diagStamp" style="opacity:.5; font-size:11px;"></span>
+      <div class="hub-head-right">${renderCamIcon()}${renderHeaderVolume()}<span>${BUILD_STAMP}</span><span id="diagStamp" style="opacity:.5; font-size:11px;"></span>
         <div class="hub-pill" onclick="toggleFullscreen()" title="Full screen">&#9974; ${state.isFullscreen?'Exit full screen':'Full screen'}</div>
       </div>
     </div>
@@ -7422,7 +7466,7 @@ function settingsBack(){
 }
 function topbar(title){
   return `<div class="page-top">
-    <div class="page-top-left"><button class="gtb-sq" title="Home" aria-label="Home" onclick="goHubHome()">${HOME_ICON_SVG}</button><h1>${title}</h1></div>
+    <div class="page-top-left"><button class="gtb-sq" title="Home" aria-label="Home" onclick="goHubHome()">${HOME_ICON_SVG}</button>${renderCamIcon()}${renderHeaderVolume()}<h1>${title}</h1></div>
     <div class="iconbtn" onclick="openContextualSettings()">&#9881;</div>
   </div>`;
 }
@@ -8930,7 +8974,7 @@ function syncDartCamPanel(){
       <div class="tiny-edit-btn" onclick="openZoomFix()">Zoom-fix last dart</div>
       <div class="tiny-edit-btn" onclick="camManualTakeout()">Takeout</div>
       ${connected ? '' : `<div class="tiny-edit-btn" onclick="connectBoardManager()">Connect</div>`}
-      <div class="tiny-edit-btn" onclick="camResetScan()">Reset turn</div>
+      <div class="tiny-edit-btn" onclick="camSoftReset()">Soft reset</div>
       <div class="tiny-edit-btn" onclick="state.boardHealthExpanded=false; render();">Close</div>
     </div>`;
   if(html !== _dcLastHtml){ _dcLastHtml = html; box.querySelector('#dcInfo').innerHTML = html; }
@@ -9048,6 +9092,7 @@ warEndTurn = wrapEndTurnForCamera(ORIGINAL_END_TURN_FNS.war);
 let camTurnIds = [];
 let scanFix = null;      // {id, label, t}: a camera dart the player just cleared, waiting for the real hit
 function handleCameraThrow(throwEntry){
+  try{ _lastActive = Date.now(); _idleFired = false; }catch(e){}
   if(state.camTrain && state.screen==='camTrainActive'){ camTrainThrow(throwEntry); return; }
   if(!state.settings.dartsCallerCameraMode) return;
   try{ const s0 = state.session; if(!s0 || !s0.currentTurnDarts || s0.currentTurnDarts.length === 0) camTurnIds = []; }catch(e){}
@@ -9616,29 +9661,99 @@ function renderActivePlayerSection(s,p,i){
 // The whole Cameras story now lives behind one pulldown in the header —
 // health readout AND the reset buttons both hidden until tapped, nothing
 // sitting permanently visible in the sidebar. Shared across every game.
+const CAM_ICON_SVG = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/></svg>';
+let _camResetUntil = 0, _camResetMin = 0;
+// Plain status for the camera icon and menu: Ready, Calibrating, Resetting, Cannot connect.
+function camStatusWord(){
+  const sm = camSummary();
+  if(Date.now() < _camResetUntil && !(sm.level === 'ok' && Date.now() > _camResetMin)) return {word:'Resetting', level:'warn', hint:'Give it a moment. The camera is restarting.'};
+  if(sm.level === 'ok') return {word:'Ready', level:'ok', hint:'Throw a dart.'};
+  if(/getting ready|connecting|waiting/i.test(sm.text)) return {word:'Calibrating', level:'warn', hint:'Keep the board empty and stay still for a moment.'};
+  return {word:'Cannot connect', level: sm.level === 'off' ? 'off' : 'bad', hint: sm.hint};
+}
+function camCameraOn(){ return usingSingleCam() || !!state.settings.dartsCallerCameraMode; }
+function renderTakeoutBtn(){
+  if(!(usingSingleCam() && state.settings.dartsCallerCameraMode)) return '';
+  return `<button class="gtb-btn" onclick="camManualTakeout()">Takeout</button>`;
+}
+function renderCamIcon(){
+  if(!camCameraOn()) return '';
+  const st = camStatusWord();
+  return `<button class="gtb-sq cam-ic lv-${st.level}" id="camIconBtn" title="Camera: ${st.word}" aria-label="Camera" onclick="state.boardHealthExpanded=!state.boardHealthExpanded; render();">${CAM_ICON_SVG}</button>${(state.boardHealthExpanded && !usingSingleCam()) ? renderCameraHelpPanel() : ''}`;
+}
+// Kept for the practice screens that still call it.
 function renderCameraHelpTrigger(){
-  const single = usingSingleCam();
-  if(!state.settings.dartsCallerCameraMode && !single) return '';
-  const h = state.boardManagerHealth;
-  const isStale = h && (Date.now() - h.updatedAt > 5000);
-  const hasWarning = h && (h.status==='Error' || (h.event && h.event.toLowerCase().includes('failed')) || h.running===false || h.connected===false);
-  let dotColor = !h ? 'var(--cream-dim)' : hasWarning ? 'var(--red)' : isStale ? 'var(--brass)' : 'var(--green)';
-  if(single){ const lv = camSummary().level; dotColor = lv==='ok' ? 'var(--green)' : lv==='warn' ? 'var(--brass)' : lv==='bad' ? 'var(--red)' : 'var(--cream-dim)'; }
-  const takeoutBtn = (single && state.settings.dartsCallerCameraMode) ? `<div class="camera-help-trigger" style="opacity:1; margin-right:6px;" onclick="camManualTakeout()">Takeout</div>` : '';
-  return `<div style="display:inline-flex; align-items:center;">${takeoutBtn}<div class="camera-help-wrap">
-    <div class="camera-help-trigger" onclick="state.boardHealthExpanded=!state.boardHealthExpanded; render();">
-      <span class="camera-help-dot" style="background:${dotColor};"></span>Camera
-    </div>
-    ${state.boardHealthExpanded && !single ? renderCameraHelpPanel() : ''}
-  </div></div>`;
+  if(!camCameraOn()) return '';
+  return `<div style="display:inline-flex; align-items:center; gap:8px;">${renderTakeoutBtn()}${renderCamIcon()}</div>`;
 }
 function renderCameraHelpPanel(){
-  const sm = camSummary();
-  return `<div class="camera-help-panel">
-    <div class="camera-help-stats"><b>${sm.text}</b><br>${sm.hint}</div>
-    <div class="cam-menu-btns">${camOpenLink()}</div>
+  const st = camStatusWord();
+  return `<div class="cam-pop" id="camPop">
+    <div class="cp-word lv-${st.level}" id="camPopWord">${st.word}</div>
+    <div class="cp-hint" id="camPopHint">${st.hint}</div>
+    <div class="cam-menu-btns">
+      <div class="tiny-edit-btn" onclick="camSoftReset()">Soft reset</div>
+      <div class="tiny-edit-btn danger" onclick="camHardReset()">Hard reset</div>
+      ${camOpenLink().replace('Open camera software','Open Board Manager')}
+      <div class="tiny-edit-btn" onclick="state.boardHealthExpanded=false; render();">Close</div>
+    </div>
   </div>`;
 }
+function camSoftReset(){
+  camResetScan(); _camResetMin = Date.now() + 2500; _camResetUntil = Date.now() + 12000; camRefreshUI();
+}
+// Hard restart of the Board Manager service through the launcher helper (port 9090).
+function hardRestartBoardManager(){
+  const launcher = boardManagerLauncherBase();
+  if(!launcher) return;
+  fetch(launcher + '/api/board-manager/hard-restart', { method:'POST' }).catch(()=>{});
+}
+function camHardReset(){
+  hardRestartBoardManager(); _camResetMin = Date.now() + 8000; _camResetUntil = Date.now() + 45000; camRefreshUI();
+  setTimeout(()=>{ try{ if(state.dartsCallerStatus !== 'connected') connectBoardManager(); }catch(e){} }, 20000);
+}
+function camRefreshUI(){
+  try{
+    const st = camStatusWord();
+    const b = document.getElementById('camIconBtn');
+    if(b){ b.className = 'gtb-sq cam-ic lv-' + st.level; b.title = 'Camera: ' + st.word; }
+    const w = document.getElementById('camPopWord'); if(w){ w.className = 'cp-word lv-' + st.level; w.textContent = st.word; }
+    const h = document.getElementById('camPopHint'); if(h) h.textContent = st.hint;
+    const sp = document.getElementById('spkIconBtn');
+    if(sp){ const lk = soundLocked(); sp.classList.toggle('snd-locked', lk); }
+    const bar = document.getElementById('sndLockBar');
+    if(bar){ bar.style.display = (soundLocked() && state.settings.callerOn !== false) ? 'block' : 'none'; }
+  }catch(e){}
+}
+/* ---- Sound unlock: browsers keep sound off until the first tap ---- */
+(function(){
+  const bar = document.createElement('div'); bar.id = 'sndLockBar'; bar.textContent = 'Tap the screen once to turn on sound';
+  const add = ()=>{ if(!document.getElementById('sndLockBar')) document.body.appendChild(bar); };
+  if(document.body) add(); else document.addEventListener('DOMContentLoaded', add);
+  const unlock = ()=>{ try{ const c = sndCtx(); if(c && c.state !== 'running') c.resume().then(()=>{ camRefreshUI(); callerRefreshStatus(); }).catch(()=>{}); }catch(e){} };
+  ['pointerdown','touchstart','keydown','click'].forEach(ev=>document.addEventListener(ev, unlock, {passive:true, capture:true}));
+  try{ const c = sndCtx(); if(c){ c.onstatechange = ()=>{ camRefreshUI(); callerRefreshStatus(); }; c.resume && c.resume().catch(()=>{}); } }catch(e){}
+  setInterval(camRefreshUI, 1000);
+})();
+/* ---- Idle restart: after 30+ minutes untouched, restart Board Manager once on return ---- */
+const IDLE_MS = 30*60*1000;
+let _lastActive = Date.now(), _lastSaved = 0, _idleFired = false, _tickAt = Date.now();
+try{ const v = parseInt(localStorage.getItem('oche-last-active')||'0',10); if(v) _lastActive = v; }catch(e){}
+function idleRestartMaybe(){
+  if(_idleFired) return;
+  if(Date.now() - _lastActive < IDLE_MS) return;
+  _idleFired = true;
+  if(state.settings.dartsCallerCameraMode && !usingSingleCam() && boardManagerLauncherBase()){ camHardReset(); }
+}
+function markActive(){
+  idleRestartMaybe();
+  const now = Date.now(); _lastActive = now; _idleFired = false;
+  if(now - _lastSaved > 5000){ _lastSaved = now; try{ localStorage.setItem('oche-last-active', String(now)); }catch(e){} }
+}
+['pointerdown','touchstart','keydown'].forEach(ev=>document.addEventListener(ev, markActive, {passive:true, capture:true}));
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') idleRestartMaybe(); });
+setInterval(()=>{ const now = Date.now(); if(now - _tickAt > 60000) idleRestartMaybe(); _tickAt = now; }, 5000);
+setTimeout(idleRestartMaybe, 3000);
 function renderEditTurnRow(s){
   const canReturn = s.turnHistory && s.turnHistory.length>0 && !state.returnedToPreviousPlayer;
   return `<div class="home-base">
@@ -10725,7 +10840,8 @@ function renderGameMenu(s){
       <h3>Menu</h3>
       <button class="btn btn-primary btn-full" onclick="closeGameMenu()">Back to game</button>
       ${renderVolumeBlock()}
-      <button class="btn btn-secondary btn-full" onclick="openTips()">Tips and rules</button>
+      <button class="btn btn-secondary btn-full" onclick="openTips()">Rules</button>
+      ${s.kind==='x01' ? `<button class="btn btn-secondary btn-full" onclick="openTips('checkout')">Checkout table</button>` : ''}
       ${(s._launch && !s._launch.custom && s._launch.gameId) ? `<button class="btn btn-secondary btn-full" onclick="openLiveOptions()">Game options</button>` : ''}
       <button class="btn btn-secondary btn-full" onclick="openSettingsFromGameMenu()">All settings</button>
       ${s.kind==='custom' && s.cfg.winCondition==='manual' ? `<button class="btn btn-secondary btn-full" onclick="state.gameMenuOpen=false; endCustomGameManually(state.session); finishCustomGame(state.session); render();">End game now and tally score</button>` : ''}
