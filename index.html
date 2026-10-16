@@ -406,6 +406,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 }
 .chip.selected{background:rgba(204,154,61,0.18); border-color:var(--brass); color:var(--brass);}
 .chip-wrap{display:flex; flex-wrap:wrap; gap:6px;}
+.chip.on{background:rgba(204,154,61,0.18); border-color:var(--brass); color:var(--brass);}
 .checkout-options{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 18px 8px 18px; }
 .checkout-options-label{ font-size:12px; color:var(--cream-dim); text-transform:uppercase; letter-spacing:0.05em; margin-right:2px; }
 .checkout-options .chip{ font-family:'JetBrains Mono',monospace; font-size:12px; }
@@ -866,6 +867,14 @@ a.linklike{color:var(--brass); cursor:pointer; text-decoration:underline; font-s
 .gtb-sq{ width:34px; height:34px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--brass); display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; }
 .gtb-btn{ height:44px; padding:0 16px; flex:none; border-radius:12px; border:1px solid var(--brass); background:var(--felt); color:var(--cream); display:flex; align-items:center; gap:8px; font-family:'Inter',sans-serif; font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
 .gtb-btn svg{ color:var(--brass); }
+.ce-head,.ce-row{ display:grid; grid-template-columns: 1.5fr 1fr 1fr; gap:10px; align-items:center; }
+.ce-head{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--cream-dim); letter-spacing:0.08em; text-transform:uppercase; padding-bottom:4px; }
+.ce-row{ padding:9px 0; border-top:1px solid var(--felt-lighter); }
+.ce-name{ font-size:15px; color:var(--cream); }
+.ce-cell{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.ce-lab{ font-size:12px; color:var(--cream-dim); } .ce-lab.dim{ opacity:.55; }
+.ce-timing{ margin-top:12px; }
+
 .gtb-sq svg{ display:block; width:18px; height:18px; }
 .game-header-row .gtb-left{ gap:6px !important; }
 .gtb-sq.lv-ok{ color:var(--green); border-color:var(--green); }
@@ -1118,7 +1127,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.4f TOPBAR';
+const BUILD_STAMP = 'v9.5 CALLER';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -1233,9 +1242,10 @@ function sndNoise(c){
   for(let i=0;i<n;i++) d[i] = Math.random()*2-1;
   return (_acNoise = b);
 }
-function sndPlay(kind){
+function sndPlay(kind, force){
   try{
     const lvl = sndLevel(); if(lvl <= 0.001) return;
+    if(!force && typeof sfxEnabled === 'function' && !sfxEnabled(kind)) return;
     const now = Date.now(); if(_sndLast[kind] && now - _sndLast[kind] < 80) return; _sndLast[kind] = now;
     const c = sndCtx(); if(!c) return; if(c.state==='suspended') c.resume();
     const t = c.currentTime, out = c.createGain(); out.gain.value = lvl; out.connect(c.destination);
@@ -1263,7 +1273,7 @@ function onVolInput(key, val){
   document.querySelectorAll('input[data-vol="'+key+'"]').forEach(e=>{ if(e.value!==String(val)) e.value = val; });
   persistState();
 }
-function onVolDone(key){ if(key==='volCaller') callerSay(['n_60']); else sndPlay('thud'); }
+function onVolDone(key){ if(key==='volCaller') callerSay(['n_60'], true); else sndPlay('thud', true); }
 function volRow(key, label, def){
   const v = Math.round(sndVol(key, def)*100);
   return `<div class="vol-row"><span class="vol-lab">${label}</span><input type="range" min="0" max="100" value="${v}" data-vol="${key}" aria-label="${label} volume" oninput="onVolInput('${key}', this.value)" onchange="onVolDone('${key}')"><span class="vol-val" data-vol-val="${key}">${v}%</span></div>`;
@@ -1352,10 +1362,10 @@ function callerKeepAlive(c){
     _callerKeep = src;
   }catch(e){}
 }
-function callerSay(names){
+function callerSay(names, force){
   try{
     if(_callerMute) return;
-    const lvl = sndVol('volCaller', 0.9); if(lvl <= 0.001 || (state.settings && state.settings.callerOn === false)) return;
+    const lvl = sndVol('volCaller', 0.9); if(lvl <= 0.001 || (!force && state.settings && state.settings.callerOn === false)) return;
     const list = (names || []).filter(Boolean);
     callerLoad().then(pk => {
       callerRefreshStatus();
@@ -1364,7 +1374,7 @@ function callerSay(names){
       callerKeepAlive(c);
       const out = c.createGain(); out.gain.value = lvl; out.connect(c.destination);
       // A short lead-in lets a sleeping TV/HDMI speaker wake up before the first word, so "Single" keeps its S.
-      let t = Math.max(c.currentTime + 0.15, _callerEnd);
+      let t = Math.max(c.currentTime + (state.settings.callerAfterThud ? 0.55 : 0.30), _callerEnd);
       if(t - c.currentTime > 8) t = c.currentTime + 0.05;            // never let old calls pile up
       list.forEach(n => {
         const e = pk.meta.clips[n]; if(!e) return;
@@ -1375,7 +1385,7 @@ function callerSay(names){
     });
   }catch(e){}
 }
-function callerTest(){ sndPlay('thud'); callerSay(['rq_40']); setTimeout(()=>sndPlay('ding'), 1900); }
+function callerTest(){ sndPlay('thud', true); callerSay(['rq_40'], true); setTimeout(()=>sndPlay('ding', true), 1900); }
 ['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev, ()=>{ if(!_callerPack && !_callerLoading) callerLoad(); }, {passive:true, once:false}));
 // What Alan says in X01 (the rules we agreed): the total after the third dart, "No score" on a bust,
 // "Game shot!" on a win, and "You require N" when the next turn starts and a finish is possible.
@@ -1386,24 +1396,30 @@ function callerDartClip(num, seg){
 function callerTurnTotal(s){ return s.currentTurnDarts.reduce((a,d)=>a+(d.value||0),0); }
 // After every dart: what landed ("Triple twenty"). After the third: the turn total. Bust: "No score". Win: "Game shot!".
 function callerAfterX01(s, res, num, seg){
-  const calls = [callerDartClip(num, seg)];
+  const calls = [];
+  if(callerEvtOn('dart','v')) calls.push(callerDartClip(num, seg));
   if(res && res.turnOver){
-    if(res.bust) calls.push('noscore');
-    else if(res.win) calls.push('gameshot');
-    else { const t = callerTurnTotal(s); calls.push(t > 0 ? 'n_' + t : 'noscore'); }
+    if(res.bust){ if(callerEvtOn('bust','v')) calls.push('noscore'); }
+    else if(res.win){ if(callerEvtOn('win','v')) calls.push('gameshot'); }
+    else {
+      const t = callerTurnTotal(s);
+      if(t > 0){ if(callerEvtOn('total','v')) calls.push('n_' + t); }
+      else if(callerEvtOn('miss','v')) calls.push('noscore');
+    }
   }
-  callerSay(calls);
+  if(calls.length) callerSay(calls);
 }
 function callerMissX01(s){
-  const calls = ['noscore'];
-  if(s.currentTurnDarts.length >= 3){ const t = callerTurnTotal(s); if(t > 0) calls.push('n_' + t); }
-  callerSay(calls);
+  const calls = [];
+  if(callerEvtOn('miss','v')) calls.push('noscore');
+  if(s.currentTurnDarts.length >= 3){ const t = callerTurnTotal(s); if(t > 0 && callerEvtOn('total','v')) calls.push('n_' + t); }
+  if(calls.length) callerSay(calls);
 }
 function callerRequireForTurnStart(s){
   if(!s || s.kind !== 'x01' || s.complete) return;
   const p = x01Current(s); if(!p || p.finished) return;
   const left = p.score;
-  if(left >= 2 && left <= 170 && rankedCheckout(left, 3, s.outRule)) callerSay(['rq_' + left]);
+  if(left >= 2 && left <= 170 && rankedCheckout(left, 3, s.outRule) && callerEvtOn('require','v')) callerSay(['rq_' + left]);
 }
 
 /* ========================= STATE ========================= */
@@ -3366,7 +3382,7 @@ function camTrainThrow(te){
   if(ct.phase !== 'aim'){ ct.note = 'Another dart registered. One dart at a time: pull the dart in the board first.'; render(); return; }
   ct.cur = {id:te.id, det, label:ctDetLabel(te), truth:null};
   ct.phase = 'placed'; ct.note = ''; ct.pulledEarly = false;
-  try{ sndPlay('thud'); }catch(e){}
+  try{ sndPlay('thud', true); }catch(e){}
   render();
 }
 function camTrainTap(evt){
@@ -8130,8 +8146,69 @@ const SETTINGS_PAGES = [
   {id:'lobby',    name:'Lobby and status',  note:'Privacy and your status'},
   {id:'about',    name:'About and data',    note:'Version, backup, saved game'},
 ];
+
+/* ---- Caller and sound events: what is said / played, per game ---- */
+const CALLER_EVENTS = [
+  {id:'dart',    label:'Each dart lands',            v:'Call the dart',   s:'Thud'},
+  {id:'total',   label:'Turn total after 3rd dart',  v:'Say the total'},
+  {id:'turnend', label:'Turn ends',                  s:'Swoosh'},
+  {id:'miss',    label:'Miss (no score)',            v:'Say no score'},
+  {id:'bust',    label:'Bust',                       v:'Say no score'},
+  {id:'win',     label:'Game shot (win)',            v:'Say game shot'},
+  {id:'require', label:'You require N',              v:'Say the finish'},
+  {id:'takeout', label:'Takeout (darts removed)',    s:'Ding'}
+];
+const CALLER_SCOPES = [['all','All games (default)'],['x01','301 and 501'],['cricket','Cricket'],['atc','Around the Clock'],['shanghai','Shanghai'],['baseball','Baseball'],['highscore','High Score'],['countup','Count Up'],['halveit','Halve It'],['killer','Killer'],['callshot','Call Your Shot'],['personalbest','Personal Best'],['war','War'],['custom','Custom games']];
+let _callerScope = 'all';
+function callerEvtCfg(){ const c = state.settings.callerEvents; return (c && typeof c === 'object') ? c : (state.settings.callerEvents = {all:{}, games:{}}); }
+function callerEvtValue(scope, evt, ch){
+  const c = callerEvtCfg();
+  if(scope !== 'all' && c.games && c.games[scope] && c.games[scope][evt] && typeof c.games[scope][evt][ch] === 'boolean') return c.games[scope][evt][ch];
+  if(c.all && c.all[evt] && typeof c.all[evt][ch] === 'boolean') return c.all[evt][ch];
+  return true;
+}
+function callerEvtOn(evt, ch){
+  try{ const k = state.session && state.session.kind; return callerEvtValue(k || 'all', evt, ch); }catch(e){ return true; }
+}
+function sfxEnabled(kind){
+  const ev = {thud:'dart', swoosh:'turnend', ding:'takeout'}[kind];
+  return ev ? callerEvtOn(ev, 's') : true;
+}
+function callerToggleEvt(evt, ch){
+  const c = callerEvtCfg(), cur = callerEvtValue(_callerScope, evt, ch);
+  const tgt = _callerScope === 'all' ? (c.all = c.all || {}) : ((c.games = c.games || {})[_callerScope] = c.games[_callerScope] || {});
+  tgt[evt] = tgt[evt] || {}; tgt[evt][ch] = !cur;
+  persistState(); render();
+}
+function callerResetScope(){
+  const c = callerEvtCfg();
+  if(_callerScope === 'all'){ c.all = {}; c.games = {}; state.settings.callerAfterThud = false; }
+  else if(c.games) delete c.games[_callerScope];
+  persistState(); render();
+}
+function callerScopeHasOverride(k){ const g = callerEvtCfg().games; return !!(g && g[k] && Object.keys(g[k]).length); }
+function renderCallerEvents(){
+  const sc = _callerScope, voiceGame = (sc === 'all' || sc === 'x01');
+  const sw = (evt, ch) => `<button class="sw ${callerEvtValue(sc, evt, ch) ? 'on' : ''}" aria-label="${evt} ${ch==='v'?'voice':'sound'}" onclick="callerToggleEvt('${evt}','${ch}')"></button>`;
+  const rows = CALLER_EVENTS.map(e => `<div class="ce-row"><div class="ce-name">${e.label}</div>
+      <div class="ce-cell">${e.v ? (voiceGame ? `<span class="ce-lab">${e.v}</span>${sw(e.id,'v')}` : '<span class="ce-lab dim">no voice yet</span>') : ''}</div>
+      <div class="ce-cell">${e.s ? `<span class="ce-lab">${e.s}</span>${sw(e.id,'s')}` : ''}</div></div>`).join('');
+  return `<div class="ce-card">
+    <div class="priv-row" style="border-top:none; padding-top:0;"><div><div class="pl">Call scores out loud</div><div class="pd">Master switch for the caller voice.</div></div><button class="sw ${state.settings.callerOn!==false?'on':''}" aria-label="Caller on" onclick="setSetting('callerOn', ${state.settings.callerOn===false}); persistState();"></button></div>
+    <div class="ce-scope"><span class="field-label">Edit settings for</span>
+      <select class="input" aria-label="Caller settings for" onchange="_callerScope=this.value; render();">${CALLER_SCOPES.map(([k,n])=>`<option value="${k}" ${sc===k?'selected':''}>${n}${callerScopeHasOverride(k)?' • custom':''}</option>`).join('')}</select>
+    </div>
+    <p class="info-note" style="margin:6px 0 8px 0;">${sc==='all' ? 'These apply to every game unless a game below has its own.' : 'Only what you change here is special for this game. The rest follows All games.'}</p>
+    <div class="ce-head"><span></span><span>Voice</span><span>Sound</span></div>
+    ${rows}
+    <div class="ce-timing"><span class="field-label">Dart call timing</span>
+      <div class="chip-wrap"><button class="chip ${!state.settings.callerAfterThud?'on':''}" onclick="state.settings.callerAfterThud=false; persistState(); render();">With the thud</button><button class="chip ${state.settings.callerAfterThud?'on':''}" onclick="state.settings.callerAfterThud=true; persistState(); render();">After the thud</button></div></div>
+    <div class="cam-menu-btns" style="margin-top:10px;"><div class="tiny-edit-btn" onclick="callerTest()">Test</div><div class="tiny-edit-btn" onclick="callerResetScope()">${sc==='all'?'Reset all to defaults':'Use the default for this game'}</div></div>
+  </div>`;
+}
 function settingsPageSound(){
-  return `<div class="sh-card">${renderVolumeBlock()}<p class="info-note" style="margin:0;">Caller is the spoken score. Sound effects are the thud, swoosh and ding. The speaker button at the top of a game opens the same two sliders.</p></div>`;
+  return `<div class="sh-card">${renderVolumeBlock()}<p class="info-note" style="margin:0;">Caller is the spoken score. Sound effects are the thud, swoosh and ding. The speaker button at the top of a game opens the same two sliders.</p></div>
+  <div class="sh-card" style="margin-top:12px;">${renderCallerEvents()}</div>`;
 }
 function setSettingsPage(id){ state.settingsPage = id; render(); }
 function renderSettingsHub(){
