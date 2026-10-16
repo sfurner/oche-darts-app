@@ -449,6 +449,10 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .eor-choice-desc{ font-size:12px; color:var(--cream-dim); margin-top:2px; line-height:1.4; }
 .prow-drag{ color:var(--felt-lighter); font-size:16px; cursor:grab; padding:0 2px; touch-action:none; }
 .prow-avatar{ width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; cursor:pointer; color:#1a1206; }
+.prow-tag{ font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:1px 6px; border-radius:8px; border:1px solid var(--cream-dim); color:var(--cream-dim); margin-left:4px; vertical-align:middle; }
+.prow-tag.on{ border-color:#3ecf8e; color:#3ecf8e; }
+.player-row-unified.selected .prow-tag{ color:#1c1410; border-color:#1c1410; }
+.acct-form{ display:flex; flex-direction:column; gap:8px; padding:10px; margin:4px 0 8px; border:1px solid var(--cream-dim); border-radius:12px; }
 .prow-name{ font-family:'Inter',sans-serif; font-weight:600; font-size:13px; color:var(--cream); flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
 .prow-tag{ font-family:'JetBrains Mono',monospace; font-size:9px; padding:2px 7px; border-radius:20px; text-transform:uppercase; letter-spacing:0.04em; flex-shrink:0; }
 .prow-tag.perm{ background:rgba(204,154,61,0.15); color:var(--brass); }
@@ -1127,7 +1131,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.5 CALLER';
+const BUILD_STAMP = 'v9.6a ACCOUNTS';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -2141,6 +2145,7 @@ function warApplyDart(s, num, segType){
   }
   const prevOwner = s.sections[key];
   const rec = {label, key, prevOwner, hitTarget:true, heldAdded:null, lockedNow:false};
+  if(prevOwner!==s.currentIdx && prevOwner!==null && prevOwner!==undefined) rec.stolenFrom = prevOwner;
   if(prevOwner!==s.currentIdx){
     s.sections[key] = s.currentIdx;
     // Steal-back lock: take a section from someone, and if you held it before and lost it,
@@ -5170,6 +5175,7 @@ function saveGameResults(){
   const r = state.pendingGameReview;
   if(!r) return;
   state.history.unshift(r.historyEntry);
+  try{ acctRecordResult(r.historyEntry); }catch(e){}
   if(r.extra && r.extra.sectionSummary) state.sectionSessions.push(r.extra.sectionSummary);
   if(r.extra && r.extra.precisionSummary) state.precisionSessions.push(r.extra.precisionSummary);
   state.savedGames.push({id:nextId(), gameType:r.gameType, players:r.players.slice(), winner:r.historyEntry.winner, savedAt:Date.now()});
@@ -6225,7 +6231,7 @@ function renderUnifiedPlayerRow(p, opts){
   opts = opts || {};
   const idx = state.players.indexOf(p);
   const darts = totalDartsThrown(p.id);
-  const nameLabel = p.isBot ? `${p.name}<sup class="prow-botlvl">${p.botRating}</sup>` : p.name;
+  const nameLabel = p.isBot ? `${p.name}<sup class="prow-botlvl">${p.botRating}</sup>` : p.name + (p.acct ? (p.acct.role==='visitor' ? ' <span class="prow-tag">visitor</span>' : ' <span class="prow-tag on">online</span>') : '');
   const selectable = !!opts.showCheckbox;
   const selected = selectable && state.selectedPlayerIds.includes(p.id);
   const pColor = playerColor(p,idx);
@@ -8352,7 +8358,7 @@ function settingsPageDefaults(){
 }
 /* ---- Lobby and status ---- */
 function settingsPageLobby(){
-  return `${renderLobbyAccountCard()}${renderPrivacyCard()}`;
+  return `${renderLobbyAccountCard()}${renderAcctCard()}${renderPrivacyCard()}`;
 }
 /* ---- About and data ---- */
 function exportOcheData(){
@@ -8588,6 +8594,7 @@ async function lobbyStart(){
     state.lobby.me = me; state.lobby.err='';
     await lobbyPushShared(true);
     await lobbySync();
+    await acctSync();
     if(!lobbyTimer) lobbyTimer = setInterval(()=>{ if(!document.hidden) lobbySync(); }, 15000);
   }catch(e){ state.lobby.err = e.message; render(); }
 }
@@ -8766,6 +8773,199 @@ function renderLobbyAccountCard(){
       <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySignOut()">Sign out</button></div>
     </div>`;
 }
+/* ========================= ACCOUNTS: online players (Phase A) =========================
+   A board signs in with its email (above). Each player on it can get their own username
+   and 4-digit PIN. The PIN is checked in the database (login function), never stored here.
+   p.acct = { id (online player id), username, role: 'home' | 'visitor' } marks a linked player. */
+const ACCT_QUEUE_KEY = 'oche-acct-queue';
+state.acct = { form:null, pid:null, err:'', note:'', busy:false, f:{user:'', pin:'', pin2:''} };
+function acctReady(){ return lobbySignedIn() && !!lobbyMyId(); }
+function acctMsg(e){ const m=(e&&e.message)||'Something went wrong'; return /failed to fetch|networkerror|load failed/i.test(m) ? 'Could not reach the online service. Check the internet and try again.' : m; }
+function acctSetF(k,v){ state.acct.f[k]=v; }
+function acctOpen(form, pid){
+  const A=state.acct; const same = A.form===form && (A.pid||null)===(pid||null);
+  A.form = same ? null : form; A.pid = pid||null; A.err=''; A.note=''; A.f={user:'',pin:'',pin2:''}; render();
+}
+function acctVisitClick(){ if(!acctReady()){ openLobbySettings(); return; } acctOpen('visit', null); }
+function acctBoardOk(){
+  const me=lobbyMyId(); if(!me) return false;
+  if(!state.settings.acctBoardId){ state.settings.acctBoardId = me; persistState(); }
+  return state.settings.acctBoardId===me;
+}
+async function acctSubmitCreate(){
+  const A=state.acct, p=state.players.find(x=>x.id===A.pid); if(!p||A.busy) return;
+  const user=(A.f.user||'').trim().toLowerCase(), pin=A.f.pin||'', pin2=A.f.pin2||'';
+  if(!/^[a-z0-9_]{3,20}$/.test(user)){ A.err='Username: 3 to 20 letters, numbers or underscores.'; render(); return; }
+  if(!/^\d{4}$/.test(pin)){ A.err='The PIN must be exactly 4 digits.'; render(); return; }
+  if(pin!==pin2){ A.err='The two PINs do not match.'; render(); return; }
+  if(!acctBoardOk()){ A.err='This device was set up with a different board account.'; render(); return; }
+  A.busy=true; A.err=''; render();
+  try{
+    let rec = await sb('/rest/v1/rpc/create_home_player', { method:'POST', body:{ p_username:user, p_name:p.name, p_pin:pin, p_emoji:p.emoji||'', p_color:p.color||'#3d8bff' } });
+    if(Array.isArray(rec)) rec=rec[0];
+    p.acct = { id:rec.id, username:rec.username, role:'home' };
+    A.form=null; A.f={user:'',pin:'',pin2:''}; A.note = p.name+' now has an online login: '+rec.username+'.';
+    persistState(); acctFlushQueue();
+  }catch(e){ A.err=acctMsg(e); }
+  A.busy=false; render();
+}
+async function acctSubmitVisit(){
+  const A=state.acct; if(A.busy) return;
+  const user=(A.f.user||'').trim().toLowerCase(), pin=A.f.pin||'';
+  if(!user || !/^\d{4}$/.test(pin)){ A.err='Enter your username and your 4-digit PIN.'; render(); return; }
+  if(!acctBoardOk()){ A.err='This device was set up with a different board account.'; render(); return; }
+  A.busy=true; A.err=''; render();
+  try{
+    let rows = await sb('/rest/v1/rpc/player_login', { method:'POST', body:{ p_username:user, p_pin:pin } });
+    const r = Array.isArray(rows) ? rows[0] : rows;
+    if(!r || !r.id) throw new Error('Login failed');
+    let p = state.players.find(x=>x.acct && x.acct.id===r.id);
+    if(!p){
+      p = { id:nextId(), name:r.display_name, isGuest:false, createdAt:Date.now(), emoji:r.emoji||pickPlayerEmoji() };
+      if(r.color) p.color = r.color;
+      state.players.push(p);
+    }
+    p.acct = { id:r.id, username:r.username, role:r.role };
+    A.form=null; A.f={user:'',pin:'',pin2:''};
+    A.note = r.role==='home' ? 'Welcome back, '+p.name+'.' : p.name+' is now on this board.';
+    persistState(); acctFlushQueue();
+  }catch(e){ A.err=acctMsg(e); }
+  A.busy=false; render();
+}
+async function acctLeave(pid){
+  const p=state.players.find(x=>x.id===pid); if(!p||!p.acct||p.acct.role!=='visitor') return;
+  if(!confirm('Take '+p.name+' off this board? Their stats stay with their own account.')) return;
+  const A=state.acct; A.err=''; A.note='';
+  try{
+    await sb('/rest/v1/rpc/remove_visitor', { method:'POST', body:{ p_player:p.acct.id } });
+    state.players = state.players.filter(x=>x.id!==pid);
+    state.selectedPlayerIds = state.selectedPlayerIds.filter(x=>x!==pid);
+    A.note = p.name+' was taken off this board.'; persistState();
+  }catch(e){ A.err=acctMsg(e); }
+  render();
+}
+async function acctDeleteLogin(pid){
+  const p=state.players.find(x=>x.id===pid); if(!p||!p.acct||p.acct.role!=='home') return;
+  if(!confirm('Delete the online login for '+p.name+'? Their online stats and themes are erased. The player and games on this device stay.')) return;
+  const A=state.acct; A.err=''; A.note='';
+  try{
+    await sb('/rest/v1/rpc/delete_home_player', { method:'POST', body:{ p_player:p.acct.id } });
+    delete p.acct; A.note='The online login for '+p.name+' was deleted.'; persistState();
+  }catch(e){ A.err=acctMsg(e); }
+  render();
+}
+async function acctSync(){
+  if(!acctReady() || !acctBoardOk()) return;
+  try{
+    const [bp, pl] = await Promise.all([
+      sb('/rest/v1/board_players?select=player_id,role'),
+      sb('/rest/v1/players?select=id,username,display_name,emoji,color,home_board'),
+    ]);
+    if(!Array.isArray(bp) || !Array.isArray(pl)) return;
+    const role={}; bp.forEach(x=>{ role[x.player_id]=x.role; });
+    const info={}; pl.forEach(x=>{ info[x.id]=x; });
+    let changed=false;
+    // Players removed online: visitors leave this board, home logins become plain local players.
+    // Skipped when the list comes back empty, so a hiccup can never wipe the local list.
+    if(bp.length){
+      state.players = state.players.filter(p=>{
+        if(!p.acct) return true;
+        if(role[p.acct.id]){ if(p.acct.role!==role[p.acct.id]){ p.acct.role=role[p.acct.id]; changed=true; } return true; }
+        changed=true;
+        if(p.acct.role==='visitor') return false;
+        delete p.acct; return true;
+      });
+    }
+    // Players that exist online for this board but not on this device (new device, reinstall).
+    bp.forEach(x=>{
+      if(state.players.some(p=>p.acct && p.acct.id===x.player_id)) return;
+      const i=info[x.player_id]; if(!i) return;
+      const np={ id:nextId(), name:i.display_name, isGuest:false, createdAt:Date.now(), emoji:i.emoji||pickPlayerEmoji(), acct:{ id:i.id, username:i.username, role:x.role } };
+      if(i.color) np.color=i.color;
+      state.players.push(np); changed=true;
+    });
+    if(changed){ persistState(); if(state.screen==='home' || state.screen==='settingsHub') render(); }
+    acctFlushQueue();
+  }catch(e){}
+}
+/* ---- game results go online for linked players ---- */
+function acctQueueLoad(){ try{ return JSON.parse(localStorage.getItem(ACCT_QUEUE_KEY)||'[]')||[]; }catch(e){ return []; } }
+function acctQueueSave(q){ try{ localStorage.setItem(ACCT_QUEUE_KEY, JSON.stringify(q.slice(-200))); }catch(e){} }
+function acctRecordResult(entry){
+  if(!entry || !entry.participantIds) return;
+  const rows=[];
+  entry.participantIds.forEach(pid=>{
+    const p=state.players.find(x=>x.id===pid);
+    if(!p || !p.acct) return;
+    rows.push({ player_id:p.acct.id, game_id:String(entry.type||'game'), played_at:new Date(entry.createdAt||Date.now()).toISOString(),
+      won: !!(entry.winner && entry.winner===p.name),
+      detail:{ name:entry.name||'', result:entry.detail||'', darts:(entry.throwCounts&&entry.throwCounts[pid])||0 } });
+  });
+  if(!rows.length) return;
+  acctQueueSave(acctQueueLoad().concat(rows));
+  acctFlushQueue();
+}
+let _acctFlushing=false;
+async function acctFlushQueue(){
+  if(_acctFlushing || !acctReady() || !acctBoardOk()) return;
+  let q=acctQueueLoad(); if(!q.length) return;
+  _acctFlushing=true;
+  try{
+    const board=lobbyMyId();
+    try{
+      await sb('/rest/v1/game_results', { method:'POST', headers:{ Prefer:'return=minimal' }, body:q.map(r=>Object.assign({board_id:board}, r)) });
+      q=[];
+    }catch(e){
+      if(!(e.status>=400 && e.status<500 && e.status!==401)) throw e;
+      const keep=[];   // a bad row (for example a removed player) must not block the others
+      for(const r of q){
+        try{ await sb('/rest/v1/game_results', { method:'POST', headers:{ Prefer:'return=minimal' }, body:Object.assign({board_id:board}, r) }); }
+        catch(e2){ if(!(e2.status>=400 && e2.status<500 && e2.status!==401)) keep.push(r); }
+      }
+      q=keep;
+    }
+    acctQueueSave(q);
+  }catch(e){}
+  _acctFlushing=false;
+}
+function renderAcctVisitForm(){
+  const A=state.acct;
+  return `<div class="acct-form"><div class="lb-sub">Log in with your own username and PIN. You stay on this board until you leave it or the board owner removes you.</div>
+    <input class="input" placeholder="Username" autocapitalize="none" autocomplete="off" value="${lobbyEsc(A.f.user)}" oninput="acctSetF('user', this.value)">
+    <input class="input" placeholder="4-digit PIN" type="password" inputmode="numeric" maxlength="4" autocomplete="off" value="${lobbyEsc(A.f.pin)}" oninput="acctSetF('pin', this.value)" onkeydown="if(event.key==='Enter')acctSubmitVisit()">
+    ${A.err ? `<div class="lb-err">${lobbyEsc(A.err)}</div>` : ''}
+    <div class="btn-row"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" ${A.busy?'disabled':''} onclick="acctSubmitVisit()">${A.busy?'Checking...':'Log in'}</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="acctOpen('visit', null)">Cancel</button></div></div>`;
+}
+function renderAcctCard(){
+  const A=state.acct;
+  if(!acctReady()) return `<div class="sh-card"><span class="field-label">Online logins for players</span><p class="info-note" style="margin:0;">Sign in above first. Then each player can get their own username and PIN, so their stats follow them to any board.</p></div>`;
+  if(!acctBoardOk()) return `<div class="sh-card"><span class="field-label">Online logins for players</span><p class="info-note" style="margin:0;">This device was set up with a different board account, so player logins are paused. Sign in with the original email.</p></div>`;
+  const real=state.players.filter(p=>!p.isBot && !p.isGuest);
+  const row=p=>{
+    const a=p.acct; const open = A.form==='create' && A.pid===p.id;
+    const tag = !a ? '<span class="lb-sub">Local only</span>' : (a.role==='visitor' ? '<span class="prow-tag">visitor</span>' : '<span class="prow-tag on">online</span>');
+    const sub = a ? '@'+lobbyEsc(a.username) : 'No online login yet';
+    const btn = !a ? `<button class="lb-btn p" onclick="acctOpen('create','${p.id}')">${open?'Cancel':'Give online login'}</button>`
+      : a.role==='visitor' ? `<button class="lb-btn" onclick="acctLeave('${p.id}')">Leave this board</button>`
+      : `<button class="lb-btn" onclick="acctDeleteLogin('${p.id}')">Delete login</button>`;
+    return `<div class="lb-row"><div class="lb-av">${lobbyEsc(p.emoji||initials(p.name))}</div><div style="flex:1; min-width:0;"><div class="lb-name">${lobbyEsc(p.name)} ${tag}</div><div class="lb-sub">${sub}</div></div>${btn}</div>
+    ${open ? `<div class="acct-form"><div class="lb-sub">Pick a username (letters, numbers, underscore) and a 4-digit PIN for ${lobbyEsc(p.name)}. The username is theirs across every board.</div>
+      <input class="input" placeholder="Username" autocapitalize="none" autocomplete="off" value="${lobbyEsc(A.f.user)}" oninput="acctSetF('user', this.value)">
+      <input class="input" placeholder="4-digit PIN" type="password" inputmode="numeric" maxlength="4" autocomplete="off" value="${lobbyEsc(A.f.pin)}" oninput="acctSetF('pin', this.value)">
+      <input class="input" placeholder="PIN again" type="password" inputmode="numeric" maxlength="4" autocomplete="off" value="${lobbyEsc(A.f.pin2)}" oninput="acctSetF('pin2', this.value)" onkeydown="if(event.key==='Enter')acctSubmitCreate()">
+      ${A.err ? `<div class="lb-err">${lobbyEsc(A.err)}</div>` : ''}
+      <div class="btn-row"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" ${A.busy?'disabled':''} onclick="acctSubmitCreate()">${A.busy?'Saving...':'Create login'}</button></div></div>` : ''}`;
+  };
+  return `<div class="sh-card">
+    <span class="field-label">Players on this board</span>
+    <p class="info-note" style="margin:0;">A player with an online login keeps their stats online and can log in on any other board with the same username and PIN.</p>
+    ${real.map(row).join('') || '<p class="info-note">No players yet. Add one on the Players tab.</p>'}
+    ${A.note ? `<div class="lb-note">${lobbyEsc(A.note)}</div>` : ''}
+    ${A.err && A.form!=='create' && A.form!=='visit' ? `<div class="lb-err">${lobbyEsc(A.err)}</div>` : ''}
+    <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="acctOpen('visit', null)">I already have an account</button></div>
+    ${A.form==='visit' ? renderAcctVisitForm() : ''}
+  </div>`;
+}
 async function lobbyInit(){
   sbLoad();
   // Returning from the emailed link: the session arrives in the address hash.
@@ -8780,7 +8980,7 @@ async function lobbyInit(){
   render();
 }
 setTimeout(lobbyInit, 0);
-window.addEventListener('focus', ()=>{ if(lobbySignedIn() && lobbyMyId()) lobbySync(); });
+window.addEventListener('focus', ()=>{ if(lobbySignedIn() && lobbyMyId()){ lobbySync(); acctFlushQueue(); } });
 
 /* ========================= BOARD MANAGER LIVE INTEGRATION =========================
    Talks directly to Autodarts' own Board Manager (the actual camera/vision
@@ -9827,6 +10027,29 @@ function camRefreshUI(){
   try{ const c = sndCtx(); if(c){ c.onstatechange = ()=>{ camRefreshUI(); callerRefreshStatus(); }; c.resume && c.resume().catch(()=>{}); } }catch(e){}
   setInterval(camRefreshUI, 1000);
 })();
+
+/* ---- Tap anywhere off the camera menu to close it ---- */
+document.addEventListener('pointerdown', (ev)=>{
+  try{
+    if(!state.boardHealthExpanded) return;
+    const t = ev.target;
+    if(t && t.closest && (t.closest('#camPop') || t.closest('#dcPanel') || t.closest('#camIconBtn'))) return;
+    state.boardHealthExpanded = false; render();
+  }catch(e){}
+}, true);
+/* ---- Quiet camera reset at the start of every game ---- */
+function camAutoReset(){
+  try{
+    if(!camCameraOn() || state.dartsCallerStatus !== 'connected') return;
+    setTimeout(()=>{ try{ camResetScan(); }catch(e){} }, 400);
+  }catch(e){}
+}
+(function(){
+  ['launchGame','relaunchFrom'].forEach(n=>{
+    const f = window[n]; if(typeof f !== 'function') return;
+    window[n] = function(){ const r = f.apply(this, arguments); camAutoReset(); return r; };
+  });
+})();
 /* ---- Idle restart: after 30+ minutes untouched, restart Board Manager once on return ---- */
 const IDLE_MS = 30*60*1000;
 let _lastActive = Date.now(), _lastSaved = 0, _idleFired = false, _tickAt = Date.now();
@@ -10167,7 +10390,7 @@ function renderWarPlayerBoxes(s){
       const d = darts[idx];
       if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
       const rowClass = d.hitTarget===true ? ' hit-target' : (d.hitTarget===false ? ' miss' : '');
-      return `<div class="turn-dart-row${rowClass}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val"></div></div>`;
+      return `<div class="turn-dart-row${rowClass}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}${(d.stolenFrom!=null && s.participants[d.stolenFrom]) ? ` <span style="color:var(--brass); font-size:12px;">&middot; stolen from ${plainPlayerName(s.participants[d.stolenFrom].playerId)}</span>` : ''}</div><div class="turn-dart-val"></div></div>`;
     }).join('') : '';
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
       <div class="ps-header">
@@ -12930,6 +13153,9 @@ function renderPlayerManager(){
       <input class="input" id="newManagedPlayerName" placeholder="Player name" onkeydown="if(event.key==='Enter')addManagedPlayer()">
       <button class="btn btn-secondary" style="flex:none; padding:10px 16px;" onclick="addManagedPlayer()">Add</button>
     </div>` : ''}
+    <button class="btn btn-secondary btn-full" style="margin-bottom:10px;" onclick="acctVisitClick()">I already have an account</button>
+    ${state.acct.form==='visit' && acctReady() ? renderAcctVisitForm() : ''}
+    ${state.acct.note && state.screen==='home' ? `<div class="lb-note" style="margin-bottom:8px;">${lobbyEsc(state.acct.note)}</div>` : ''}
     <div class="player-list">
       ${state.players.map(p=>renderUnifiedPlayerRow(p, {
         dragListGetter:'getManagementPlayerOrder', dragListSetter:'setManagementPlayerOrder',
