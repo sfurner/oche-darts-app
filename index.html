@@ -1118,7 +1118,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.4c TOPBAR';
+const BUILD_STAMP = 'v9.4e TOPBAR';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -1300,7 +1300,8 @@ function syncSpeakerPanel(force){
    voices/<voice>/caller.mp3 plus caller.json  {clips:{ "n_60":[startSec, lengthSec], ... }}.
    Oche loads and decodes it once, then plays pieces of it by offset. Nothing is spoken if the pack is missing. */
 let _callerPack = null, _callerLoading = null, _callerErr = '', _callerEnd = 0, _callerWhy = '';
-function callerVoiceId(){ return (state.settings && state.settings.callerVoice) || 'alan'; }
+// Alan is the only voice and it is baked into this page; ignore any old saved voice name from earlier versions.
+function callerVoiceId(){ return 'alan'; }
 // v8.7: Alan is baked into this file (make-oche-callerpack.py fills the oche-alan-pack tag at the end of the page).
 function callerEmbedded(id){
   try{
@@ -5771,7 +5772,7 @@ function renderHub(){
   return `<div class="hub">
     <div class="hub-head">
       <div class="hub-brand"><span class="dot"></span>OCHE</div>
-      <div class="hub-head-right">${renderCamIcon()}${renderHeaderVolume()}<span>${BUILD_STAMP}</span><span id="diagStamp" style="opacity:.5; font-size:11px;"></span>
+      <div class="hub-head-right">${renderCamIcon()}${renderHeaderVolume()}<span>${BUILD_STAMP}</span>
         <div class="hub-pill" onclick="toggleFullscreen()" title="Full screen">&#9974; ${state.isFullscreen?'Exit full screen':'Full screen'}</div>
       </div>
     </div>
