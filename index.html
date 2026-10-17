@@ -1131,7 +1131,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.6a ACCOUNTS';
+const BUILD_STAMP = 'v9.6b BOATS';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -8358,7 +8358,7 @@ function settingsPageDefaults(){
 }
 /* ---- Lobby and status ---- */
 function settingsPageLobby(){
-  return `${renderLobbyAccountCard()}${renderAcctCard()}${renderPrivacyCard()}`;
+  return `${renderLobbyAccountCard()}${renderLobbyStatusCard()}${renderPrivacyCard()}`;
 }
 /* ---- About and data ---- */
 function exportOcheData(){
@@ -8521,7 +8521,7 @@ const SB_KEY = 'sb_publishable_9CMNZ_Dpv5t62UVQnykjTA_a0fR04GA';
 const SB_SESSION_KEY = 'oche-sb-session';
 let sbSession = null;
 let lobbyTimer = null;
-state.lobby = { me:null, profiles:{}, friendships:[], matches:[], err:'', busy:false, lastSync:0, auth:{stage:'email', email:'', msg:'', err:''}, challengeFor:null };
+state.lobby = { me:null, profiles:{}, friends:[], inbox:[], friendships:[], matches:[], err:'', busy:false, lastSync:0, auth:{stage:'email', email:'', msg:'', err:''}, challengeFor:null };
 
 function lobbyEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function sbLoad(){ try{ sbSession = JSON.parse(localStorage.getItem(SB_SESSION_KEY)||'null'); }catch(e){ sbSession=null; } }
@@ -8552,7 +8552,7 @@ async function sb(path, opts){ await sbFresh(); return sbRaw(path, opts); }
 function lobbySignedIn(){ return !!(sbSession && sbSession.access_token); }
 function lobbySignedOut(){
   sbSession = null; sbSave();
-  state.lobby.me = null; state.lobby.profiles = {}; state.lobby.friendships = []; state.lobby.matches = [];
+  state.lobby.me = null; state.lobby.profiles = {}; state.lobby.friends = []; state.lobby.inbox = [];
   if(lobbyTimer){ clearInterval(lobbyTimer); lobbyTimer = null; }
 }
 function lobbyRedirect(){ return location.origin + location.pathname; }
@@ -8562,7 +8562,7 @@ async function lobbySendCode(){
   a.err=''; a.msg='Sending...'; render();
   try{
     await sbRaw('/auth/v1/otp?redirect_to=' + encodeURIComponent(lobbyRedirect()), { method:'POST', auth:false, body:{ email, create_user:true } });
-    a.stage='code'; a.msg='Check your email. Tap the link in it on this device, or type the code if the email shows one.'; a.err='';
+    a.stage='code'; a.msg='Check your email and tap the link on this device. That finishes registering this board.'; a.err='';
   }catch(e){ a.msg=''; a.err = e.message + (e.status===429 ? ' (the free email limit is a few per hour, wait a bit)' : ''); }
   render();
 }
@@ -8581,9 +8581,7 @@ async function lobbySignOut(){
   lobbySignedOut(); render();
 }
 function lobbyDefaultName(){
-  const p = state.players.find(x=>x.id===state.settings.lobbyPlayerId) || state.players.find(x=>!x.isBot && !x.isGuest);
-  if(p) return p.name;
-  const em = sbSession && sbSession.user && sbSession.user.email; return em ? em.split('@')[0] : 'Player';
+  return 'My board';
 }
 async function lobbyStart(){
   if(!lobbySignedIn()) return;
@@ -8601,17 +8599,25 @@ async function lobbyStart(){
 function lobbyVisible(){
   return state.screen==='home' && (state.navTab==='hub') || (state.screen==='settingsHub' && state.settingsPage==='lobby');
 }
+/* Players are the ones with friends and a status. The lobby shows the friends of ONE linked player on this
+   board (the "playing as" player). Challenges are delivered to the board the other player is on. */
+function lobbyAs(){
+  const linked = state.players.filter(p=>p.acct);
+  return linked.find(p=>p.id===state.settings.lobbyPlayerId) || linked[0] || null;
+}
+async function lobbyTouch(p){ try{ if(p && p.acct) await sb('/rest/v1/rpc/player_touch', { method:'POST', body:{ p_me:p.acct.id } }); }catch(e){} }
 async function lobbySync(){
   if(!lobbySignedIn() || state.lobby.busy) return;
   state.lobby.busy = true;
   try{
-    const [profs, fr, ms] = await Promise.all([
+    const as = lobbyAs();
+    const [profs, inbox, friends] = await Promise.all([
       sb('/rest/v1/profiles?select=*'),
-      sb('/rest/v1/friendships?select=*'),
-      sb('/rest/v1/match_requests?select=*&order=created_at.desc&limit=30'),
+      sb('/rest/v1/rpc/board_inbox', { method:'POST', body:{} }),
+      as ? sb('/rest/v1/rpc/player_friends', { method:'POST', body:{ p_me:as.acct.id } }) : Promise.resolve([]),
     ]);
     const map = {}; (profs||[]).forEach(p=>{ map[p.id]=p; });
-    state.lobby.profiles = map; state.lobby.friendships = fr||[]; state.lobby.matches = ms||[];
+    state.lobby.profiles = map; state.lobby.inbox = inbox||[]; state.lobby.friends = friends||[];
     if(state.lobby.me && map[state.lobby.me.id]) state.lobby.me = map[state.lobby.me.id];
     state.lobby.err=''; state.lobby.lastSync = Date.now();
   }catch(e){ state.lobby.err = (e && e.message) || 'Could not reach the lobby'; }
@@ -8621,7 +8627,7 @@ async function lobbySync(){
 function lobbyMyId(){ return state.lobby.me && state.lobby.me.id; }
 function lobbyShared(){
   const pr = privacyPrefs(); const out = {};
-  const p = state.players.find(x=>x.id===state.settings.lobbyPlayerId);
+  const p = lobbyAs();
   if(!p) return out;
   if(pr.wins){ const st = playerStatsFor(p.id); out.wins = st.wins; out.losses = Math.max(0, st.gamesPlayed - st.wins); }
   if(pr.darts){
@@ -8631,46 +8637,54 @@ function lobbyShared(){
   return out;   // the three-dart average is not stored by Oche yet, so it is not shared
 }
 async function lobbyPushShared(quiet){
-  if(!lobbySignedIn() || !lobbyMyId()) return;
-  try{ await sb('/rest/v1/profiles?id=eq.'+lobbyMyId(), { method:'PATCH', body:{ shared: lobbyShared(), updated_at:new Date().toISOString() } }); }
+  const as = lobbyAs();
+  if(!lobbySignedIn() || !lobbyMyId() || !as) return;
+  try{ await sb('/rest/v1/rpc/player_set_shared', { method:'POST', body:{ p_me:as.acct.id, p_shared:lobbyShared() } }); }
   catch(e){ if(!quiet){ state.lobby.err = e.message; render(); } }
 }
 async function lobbyAct(fn){
   let err = '';
   state.lobby.note = '';
-  try{ await fn(); }catch(e){ err = (e && e.message) || 'Something went wrong'; }
+  try{ await fn(); }catch(e){ err = acctMsg(e); }
   state.lobby.busy = false;
   await lobbySync();
   if(err) state.lobby.err = err;
   render();
 }
 function lobbySetField(k,v){ state.lobby.auth[k]=v; }
+function lobbyRpc(name, body){ return sb('/rest/v1/rpc/'+name, { method:'POST', body }); }
 function lobbyAddFriend(){
-  const el = document.getElementById('lobbyCode'); const code = ((el&&el.value)||'').trim();
-  if(!code) return;
-  lobbyAct(async()=>{ const name = await sb('/rest/v1/rpc/request_friend', { method:'POST', body:{ p_code:code } }); state.lobby.note = 'Request sent to '+name+'.'; });
+  const el = document.getElementById('lobbyCode'); const code = ((el&&el.value)||'').trim(); const as = lobbyAs();
+  if(!code || !as) return;
+  lobbyAct(async()=>{ const name = await lobbyRpc('player_request_friend', { p_me:as.acct.id, p_code:code }); state.lobby.note = 'Request sent to '+name+'.'; });
 }
-function lobbyAcceptFriend(id){ lobbyAct(()=>sb('/rest/v1/friendships?id=eq.'+id, { method:'PATCH', body:{ status:'accepted' } })); }
-function lobbyDropFriend(id){ if(confirm('Remove this friend or request?')) lobbyAct(()=>sb('/rest/v1/friendships?id=eq.'+id, { method:'DELETE' })); }
+function lobbyAcceptFriend(id){ const as=lobbyAs(); if(as) lobbyAct(()=>lobbyRpc('player_accept_friend', { p_me:as.acct.id, p_friendship:id })); }
+function lobbyDropFriend(id){ const as=lobbyAs(); if(as && confirm('Remove this friend or request?')) lobbyAct(()=>lobbyRpc('player_drop_friend', { p_me:as.acct.id, p_friendship:id })); }
 function lobbyChallenge(fid){ state.lobby.challengeFor = state.lobby.challengeFor===fid ? null : fid; render(); }
 function lobbySendMatch(fid, game){
-  state.lobby.challengeFor = null;
-  lobbyAct(async()=>{ await sb('/rest/v1/match_requests', { method:'POST', body:{ from_id:lobbyMyId(), to_id:fid, game } }); state.lobby.note='Match request sent.'; });
+  const as=lobbyAs(); state.lobby.challengeFor = null; if(!as) return;
+  lobbyAct(async()=>{ await lobbyRpc('player_challenge', { p_me:as.acct.id, p_friend:fid, p_game:game }); state.lobby.note='Challenge sent. It shows up on the board they are on.'; });
 }
-function lobbyAnswerMatch(id, status){ lobbyAct(()=>sb('/rest/v1/match_requests?id=eq.'+id, { method:'PATCH', body:{ status } })); }
-function lobbyClearMatch(id){ lobbyAct(()=>sb('/rest/v1/match_requests?id=eq.'+id, { method:'DELETE' })); }
+function lobbyAnswerMatch(id, toId, status){ lobbyAct(()=>lobbyRpc('player_answer_match', { p_me:toId, p_match:id, p_status:status })); }
+function lobbyClearMatch(id, meId){ lobbyAct(()=>lobbyRpc('player_clear_match', { p_me:meId, p_match:id })); }
 function lobbyToggleCollapsed(){ state.settings.lobbyCollapsed = !state.settings.lobbyCollapsed; persistState(); render(); }
 function openLobbySettings(){ state.settingsReturnTo = {screen:'home', navTab:'hub'}; state.settingsPage='lobby'; state.screen='settingsHub'; render(); }
-function lobbySaveName(){ const el=document.getElementById('lobbyName'); const v=((el&&el.value)||'').trim(); if(!v) return; lobbyAct(()=>sb('/rest/v1/profiles?id=eq.'+lobbyMyId(), { method:'PATCH', body:{ name:v.slice(0,40) } })); }
-function lobbySetPlayer(id){ state.settings.lobbyPlayerId = id; persistState(); render(); lobbyPushShared(); }
+function lobbySaveName(){
+  const el=document.getElementById('lobbyName'); const v=((el&&el.value)||'').trim(); if(!v) return;
+  state.settings.boardNamed = true; persistState();
+  lobbyAct(()=>sb('/rest/v1/profiles?id=eq.'+lobbyMyId(), { method:'PATCH', body:{ name:v.slice(0,40) } }));
+}
+function lobbySetPlayer(id){ state.settings.lobbyPlayerId = id; persistState(); render(); lobbyTouch(lobbyAs()).then(()=>{ lobbySync(); lobbyPushShared(true); }); }
 function lobbySetStatus(text, withTime){
+  const as=lobbyAs(); if(!as) return;
   const t = document.getElementById('lobbyBack'); let backAt = null;
   if(withTime && t && t.value){
     const [h,m] = t.value.split(':').map(Number); const d = new Date(); d.setHours(h, m, 0, 0);
     if(d.getTime() < Date.now()) d.setDate(d.getDate()+1);
     backAt = d.toISOString();
   }
-  lobbyAct(()=>sb('/rest/v1/profiles?id=eq.'+lobbyMyId(), { method:'PATCH', body:{ status:text, back_at:backAt, updated_at:new Date().toISOString() } }));
+  state.lobby.myStatus = { id:as.acct.id, status:text, back_at:backAt };
+  lobbyAct(()=>lobbyRpc('player_set_status', { p_me:as.acct.id, p_status:text, p_back_at:backAt }));
 }
 function lobbyStatusText(p){
   if(!p) return '';
@@ -8688,89 +8702,98 @@ function lobbyShareText(p){
   return bits.join(' · ');
 }
 function lobbyLists(){
-  const L = state.lobby, me = lobbyMyId();
-  const friends = [], incoming = [], outgoing = [];
-  L.friendships.forEach(f=>{
-    const other = f.requester===me ? f.addressee : f.requester;
-    const p = L.profiles[other] || { id:other, name:'Player' };
-    if(f.status==='accepted') friends.push({ f, p });
-    else if(f.addressee===me) incoming.push({ f, p });
-    else outgoing.push({ f, p });
-  });
-  const mIn = L.matches.filter(m=>m.to_id===me && m.status==='pending');
-  const mOut = L.matches.filter(m=>m.from_id===me && m.status!=='pending' && m.status!=='cancelled');
+  const L = state.lobby;
+  const friends = (L.friends||[]).filter(f=>f.kind==='friend');
+  const incoming = (L.friends||[]).filter(f=>f.kind==='incoming');
+  const outgoing = (L.friends||[]).filter(f=>f.kind==='outgoing');
+  const here = id => state.players.some(p=>p.acct && p.acct.id===id);
+  const mIn = (L.inbox||[]).filter(m=>!m.mine && m.status==='pending' && here(m.to_id));
+  const mOut = (L.inbox||[]).filter(m=>m.mine && m.status!=='pending' && here(m.from_id));
   return { friends, incoming, outgoing, mIn, mOut };
 }
 function lobbyCount(){ if(!lobbySignedIn() || !lobbyMyId()) return 0; const l = lobbyLists(); return l.incoming.length + l.mIn.length + l.mOut.length; }
-function lobbyNameOf(id){ const p = state.lobby.profiles[id]; return lobbyEsc(p ? p.name : 'A friend'); }
+function lobbyAvatar(p){ return `<div class="lb-av">${lobbyEsc(p.emoji || (p.display_name||p.name||'?').trim().charAt(0).toUpperCase())}</div>`; }
 function renderLobbyBlock(){
   const collapsed = !!state.settings.lobbyCollapsed;
   const n = lobbyCount();
   const head = `<div class="lb-head" onclick="lobbyToggleCollapsed()"><div><b>LOBBY</b>${n?`<span class="lb-badge">${n}</span>`:''}</div><span style="color:var(--cream-dim);">${collapsed?'&#9662; Show':'&#9652; Hide'}</span></div>`;
   if(collapsed) return `<div class="lobby-block">${head}</div>`;
   if(!lobbySignedIn()){
-    return `<div class="lobby-block">${head}<div class="lb-note">Sign in to add friends, set your status and send match requests.</div><div><button class="lb-btn p" onclick="openLobbySettings()">Sign in</button></div></div>`;
+    return `<div class="lobby-block">${head}<div class="lb-note">Register this board to play friends on other boards.</div><div><button class="lb-btn p" onclick="openLobbySettings()">Register this board</button></div></div>`;
   }
   if(!lobbyMyId()){
     return `<div class="lobby-block">${head}<div class="lb-note">${state.lobby.err ? '<span class="lb-err">'+lobbyEsc(state.lobby.err)+'</span>' : 'Connecting to the lobby...'}</div></div>`;
   }
-  const L = state.lobby, ls = lobbyLists();
-  const av = p => `<div class="lb-av">${lobbyEsc((p.name||'?').trim().charAt(0).toUpperCase())}</div>`;
-  const friendRow = ({f,p}) => `<div class="lb-row">${av(p)}<div style="flex:1; min-width:0;"><div class="lb-name">${lobbyEsc(p.name)}</div><div class="lb-sub">${lobbyEsc([lobbyStatusText(p), lobbyShareText(p)].filter(Boolean).join(' · ') || 'No status')}</div></div><button class="lb-btn p" onclick="lobbyChallenge('${p.id}')">Challenge</button></div>
-    ${L.challengeFor===p.id ? `<div class="lb-row" style="gap:6px; flex-wrap:wrap;"><span class="lb-sub">Ask ${lobbyEsc(p.name)} for:</span>${['501','301','Cricket'].map(g=>`<button class="lb-btn" onclick="lobbySendMatch('${p.id}','${g}')">${g}</button>`).join('')}</div>` : ''}`;
+  const as = lobbyAs();
+  if(!as){
+    return `<div class="lobby-block">${head}<div class="lb-note">The lobby is for players with an online login. Open a player on the Players tab and tap <b>Give online login</b>.</div></div>`;
+  }
+  const L = state.lobby, ls = lobbyLists(), linked = state.players.filter(p=>p.acct);
+  const mine = (L.myStatus && L.myStatus.id===as.acct.id) ? L.myStatus : null;
+  const myStat = lobbyStatusText(mine || as.acct) || 'No status set';
+  const friendRow = f => `<div class="lb-row">${lobbyAvatar(f)}<div style="flex:1; min-width:0;"><div class="lb-name">${lobbyEsc(f.display_name)}</div><div class="lb-sub">${lobbyEsc([lobbyStatusText(f), lobbyShareText(f)].filter(Boolean).join(' · ') || 'No status')}</div></div><button class="lb-btn p" onclick="lobbyChallenge('${f.other_id}')">Challenge</button><button class="lb-btn" onclick="lobbyDropFriend('${f.friendship_id}')">&#215;</button></div>
+    ${L.challengeFor===f.other_id ? `<div class="lb-row" style="gap:6px; flex-wrap:wrap;"><span class="lb-sub">Ask ${lobbyEsc(f.display_name)} for:</span>${['501','301','Cricket'].map(g=>`<button class="lb-btn" onclick="lobbySendMatch('${f.other_id}','${g}')">${g}</button>`).join('')}</div>` : ''}`;
   return `<div class="lobby-block">${head}
-    <div class="lb-row">${av(L.me)}<div style="flex:1; min-width:0;"><div class="lb-name">${lobbyEsc(L.me.name)} <span class="lb-sub">(you)</span></div><div class="lb-sub">${lobbyEsc(lobbyStatusText(L.me) || 'No status set')}</div></div><button class="lb-btn" onclick="openLobbySettings()">Edit</button></div>
-    ${ls.incoming.map(({f,p})=>`<div class="lb-row">${av(p)}<div style="flex:1;"><div class="lb-name">${lobbyEsc(p.name)}</div><div class="lb-sub">wants to be friends</div></div><button class="lb-btn p" onclick="lobbyAcceptFriend('${f.id}')">Accept</button><button class="lb-btn" onclick="lobbyDropFriend('${f.id}')">No</button></div>`).join('')}
-    ${ls.mIn.map(m=>`<div class="lb-row"><div style="flex:1;"><div class="lb-name">${lobbyNameOf(m.from_id)}</div><div class="lb-sub">wants a game of ${lobbyEsc(m.game)}</div></div><button class="lb-btn p" onclick="lobbyAnswerMatch('${m.id}','accepted')">Accept</button><button class="lb-btn" onclick="lobbyAnswerMatch('${m.id}','declined')">No</button></div>`).join('')}
-    ${ls.mOut.map(m=>`<div class="lb-row"><div style="flex:1;"><div class="lb-name">${lobbyNameOf(m.to_id)}</div><div class="lb-sub">${m.status==='accepted'?'said yes to':'said no to'} your ${lobbyEsc(m.game)} request</div></div><button class="lb-btn" onclick="lobbyClearMatch('${m.id}')">OK</button></div>`).join('')}
+    ${linked.length>1 ? `<div class="lb-note">Playing as</div><div class="chip-wrap">${linked.map(p=>`<span class="chip ${p.id===as.id?'selected':''}" onclick="lobbySetPlayer('${p.id}')">${lobbyEsc(p.name)}</span>`).join('')}</div>` : ''}
+    <div class="lb-row">${lobbyAvatar({emoji:as.emoji, name:as.name})}<div style="flex:1; min-width:0;"><div class="lb-name">${lobbyEsc(as.name)} <span class="lb-sub">(you)</span></div><div class="lb-sub">${lobbyEsc(myStat)}</div></div><button class="lb-btn" onclick="openLobbySettings()">Edit</button></div>
+    ${ls.incoming.map(f=>`<div class="lb-row">${lobbyAvatar(f)}<div style="flex:1;"><div class="lb-name">${lobbyEsc(f.display_name)}</div><div class="lb-sub">wants to be friends</div></div><button class="lb-btn p" onclick="lobbyAcceptFriend('${f.friendship_id}')">Accept</button><button class="lb-btn" onclick="lobbyDropFriend('${f.friendship_id}')">Decline</button></div>`).join('')}
+    ${ls.mIn.map(m=>`<div class="lb-row"><div style="flex:1;"><div class="lb-name">${lobbyEsc(m.from_name)}</div><div class="lb-sub">challenges ${lobbyEsc(m.to_name)} to ${lobbyEsc(m.game)}</div></div><button class="lb-btn p" onclick="lobbyAnswerMatch('${m.match_id}','${m.to_id}','accepted')">Accept</button><button class="lb-btn" onclick="lobbyAnswerMatch('${m.match_id}','${m.to_id}','declined')">Decline</button></div>`).join('')}
+    ${ls.mOut.map(m=>`<div class="lb-row"><div style="flex:1;"><div class="lb-name">${lobbyEsc(m.to_name)}</div><div class="lb-sub">${m.status==='accepted'?'said yes to':'said no to'} your ${lobbyEsc(m.game)} challenge</div></div><button class="lb-btn" onclick="lobbyClearMatch('${m.match_id}','${m.from_id}')">OK</button></div>`).join('')}
     ${ls.friends.length ? ls.friends.map(friendRow).join('') : '<div class="lb-note">No friends yet. Share your code, or add theirs below.</div>'}
-    ${ls.outgoing.length ? `<div class="lb-note">Waiting on: ${ls.outgoing.map(o=>lobbyEsc(o.p.name)).join(', ')}</div>` : ''}
+    ${ls.outgoing.length ? `<div class="lb-note">Waiting on: ${ls.outgoing.map(o=>lobbyEsc(o.display_name)).join(', ')}</div>` : ''}
     <div class="lb-add"><input class="input" id="lobbyCode" maxlength="6" placeholder="Friend code" onkeydown="if(event.key==='Enter')lobbyAddFriend()"><button class="lb-btn p" onclick="lobbyAddFriend()">Add</button></div>
     ${L.err ? `<div class="lb-err">${lobbyEsc(L.err)}</div>` : (L.note ? `<div class="lb-note">${lobbyEsc(L.note)}</div>` : '')}
-    <div class="lb-note">Your code: <b style="color:var(--brass); letter-spacing:0.12em;">${lobbyEsc(L.me.code)}</b>. Requests tell a friend you want a match; live scoring between two boards is not in this version.</div>
+    <div class="lb-note">${lobbyEsc(as.name)}'s friend code: <b style="color:var(--brass); letter-spacing:0.12em;">${lobbyEsc((as.acct&&as.acct.code)||'...')}</b>. A challenge goes to the board your friend is on. Playing live between boards is not in this version.</div>
   </div>`;
 }
 function renderLobbyAccountCard(){
   const L = state.lobby, a = L.auth;
   if(!lobbySignedIn()){
     return `<div class="sh-card">
-      <span class="field-label">Sign in to the lobby</span>
+      <span class="field-label">Register this board</span>
       ${a.stage==='code' ? `
         <p class="info-note" style="margin:0;">${lobbyEsc(a.msg)}</p>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;"><input class="input" style="max-width:240px; letter-spacing:0.2em;" placeholder="Code" value="${lobbyEsc(a.code||'')}" oninput="lobbySetField('code', this.value)" onkeydown="if(event.key==='Enter')lobbyVerifyCode()"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="lobbyVerifyCode()">Sign in</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="state.lobby.auth.stage='email'; state.lobby.auth.err=''; render();">Use another email</button></div>`
+        <div class="lb-sub">Only if the email shows a code instead of a link, type it here.</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;"><input class="input" style="max-width:240px; letter-spacing:0.2em;" placeholder="Code" value="${lobbyEsc(a.code||'')}" oninput="lobbySetField('code', this.value)" onkeydown="if(event.key==='Enter')lobbyVerifyCode()"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="lobbyVerifyCode()">Finish</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="state.lobby.auth.stage='email'; state.lobby.auth.msg=''; render();">Back</button></div>`
       : `
-        <p class="info-note" style="margin:0;">Enter your email and we send a sign-in link. No password.</p>
+        <p class="info-note" style="margin:0;">Registering puts this board on Oche so players on it can add friends and challenge other boards. Enter an email address. We send one link: tap it on this device and the board is registered. No password.</p>
         <div style="display:flex; gap:8px; flex-wrap:wrap;"><input class="input" style="max-width:320px;" type="email" placeholder="you@example.com" value="${lobbyEsc(a.email||'')}" oninput="lobbySetField('email', this.value)" onkeydown="if(event.key==='Enter')lobbySendCode()"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="lobbySendCode()">Send link</button></div>
         ${a.msg ? `<p class="info-note" style="margin:0;">${lobbyEsc(a.msg)}</p>` : ''}`}
       ${a.err ? `<div class="lb-err">${lobbyEsc(a.err)}</div>` : ''}
     </div>`;
   }
   if(!lobbyMyId()){
-    return `<div class="sh-card"><span class="field-label">Lobby</span><p class="info-note" style="margin:0;">${L.err ? lobbyEsc(L.err) : 'Connecting...'}</p><div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbyStart()">Try again</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySignOut()">Sign out</button></div></div>`;
+    return `<div class="sh-card"><span class="field-label">This board</span><p class="info-note" style="margin:0;">${L.err ? lobbyEsc(L.err) : 'Connecting...'}</p><div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbyStart()">Try again</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySignOut()">Sign out</button></div></div>`;
   }
-  const me = L.me, mine = state.players.filter(p=>!p.isBot);
-  const cur = state.settings.lobbyPlayerId;
-  const backVal = me.back_at && new Date(me.back_at).getTime()>Date.now() ? new Date(me.back_at).toTimeString().slice(0,5) : '';
+  const me = L.me, needName = !state.settings.boardNamed;
   return `<div class="sh-card">
-      <span class="field-label">You in the lobby</span>
-      <div class="lb-sub">Signed in as ${lobbyEsc((sbSession.user&&sbSession.user.email)||'')}</div>
-      <div class="lb-sub">Your friend code</div><div class="lb-code">${lobbyEsc(me.code)}</div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;"><input class="input" id="lobbyName" style="max-width:260px;" value="${lobbyEsc(me.name)}" maxlength="40"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySaveName()">Save name</button></div>
-      <div><span class="field-label">Which player on this device is you</span>
-        <div class="chip-wrap">${mine.map(p=>`<span class="chip ${cur===p.id?'selected':''}" onclick="lobbySetPlayer('${p.id}')">${lobbyEsc(p.name)}</span>`).join('') || '<span class="info-note">Add a player first.</span>'}</div>
-        <p class="info-note">Used for the stats you choose to share below.</p></div>
-    </div>
-    <div class="sh-card">
-      <span class="field-label">Your status</span>
-      <div class="chip-wrap">${['Available','In a game','Away'].map(t=>`<span class="chip ${me.status===t&&!backVal?'selected':''}" onclick="lobbySetStatus('${t}', false)">${t}</span>`).join('')}</div>
+      <span class="field-label">This board is registered</span>
+      <div class="lb-sub">${lobbyEsc((sbSession.user&&sbSession.user.email)||'')}</div>
+      <div><span class="field-label">${needName ? 'Name your board' : 'Board name'}</span>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;"><input class="input" id="lobbyName" style="max-width:260px;" value="${lobbyEsc(needName ? '' : me.name)}" placeholder="For example: Scott's garage" maxlength="40"><button class="btn btn-${needName?'primary':'secondary'}" style="flex:none; padding:8px 16px;" onclick="lobbySaveName()">${needName?'Save board name':'Save'}</button></div></div>
+      <p class="info-note" style="margin:0;">The board is what other boards see. Players are separate: each player gets their own username and PIN from their page on the Players tab.</p>
+    </div>`;
+}
+function renderLobbyStatusCard(){
+  const L = state.lobby, as = lobbyAs();
+  if(!lobbySignedIn() || !lobbyMyId()) return '';
+  if(!as) return `<div class="sh-card"><span class="field-label">Player status</span><p class="info-note" style="margin:0;">Give a player an online login on the Players tab. Then they can set a status here and friends can see it.</p></div>`;
+  const linked = state.players.filter(p=>p.acct);
+  const cur = (L.myStatus && L.myStatus.id===as.acct.id) ? L.myStatus : as.acct;
+  const backVal = cur.back_at && new Date(cur.back_at).getTime()>Date.now() ? new Date(cur.back_at).toTimeString().slice(0,5) : '';
+  return `<div class="sh-card">
+      <span class="field-label">Status for</span>
+      <div class="chip-wrap">${linked.map(p=>`<span class="chip ${p.id===as.id?'selected':''}" onclick="lobbySetPlayer('${p.id}')">${lobbyEsc(p.name)}</span>`).join('')}</div>
+      <div class="lb-sub">Friend code</div><div class="lb-code">${lobbyEsc((as.acct&&as.acct.code)||'...')}</div>
+      <div class="chip-wrap">${['Available','In a game','Away'].map(t=>`<span class="chip ${cur.status===t&&!backVal?'selected':''}" onclick="lobbySetStatus('${t}', false)">${t}</span>`).join('')}</div>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><span class="lb-sub">Back at</span><input class="input" id="lobbyBack" type="time" value="${backVal}" style="max-width:150px;"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySetStatus('Away', true)">Set</button></div>
-      <p class="info-note" style="margin:0;">Friends see the time in their own time zone.</p>
+      <p class="info-note" style="margin:0;">Only this player's friends see the status. Setting it also tells Oche this player is on this board, so challenges come here.</p>
       ${L.err ? `<div class="lb-err">${lobbyEsc(L.err)}</div>` : ''}
     </div>
     <div class="sh-card">
       <span class="field-label">Lobby display</span>
       <div class="checkbox-row"><input type="checkbox" ${state.settings.lobbyCollapsed?'':'checked'} onchange="lobbyToggleCollapsed()"> Show the lobby block on Home</div>
-      <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="lobbySignOut()">Sign out</button></div>
+      <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="if(confirm('Unregister this board on this device? Players keep their stats online.')) lobbySignOut()">Unregister this board</button></div>
     </div>`;
 }
 /* ========================= ACCOUNTS: online players (Phase A) =========================
@@ -8803,9 +8826,9 @@ async function acctSubmitCreate(){
   try{
     let rec = await sb('/rest/v1/rpc/create_home_player', { method:'POST', body:{ p_username:user, p_name:p.name, p_pin:pin, p_emoji:p.emoji||'', p_color:p.color||'#3d8bff' } });
     if(Array.isArray(rec)) rec=rec[0];
-    p.acct = { id:rec.id, username:rec.username, role:'home' };
+    p.acct = { id:rec.id, username:rec.username, role:'home', code:rec.code };
     A.form=null; A.f={user:'',pin:'',pin2:''}; A.note = p.name+' now has an online login: '+rec.username+'.';
-    persistState(); acctFlushQueue();
+    persistState(); acctFlushQueue(); lobbyPushShared(true); lobbySync();
   }catch(e){ A.err=acctMsg(e); }
   A.busy=false; render();
 }
@@ -8825,10 +8848,10 @@ async function acctSubmitVisit(){
       if(r.color) p.color = r.color;
       state.players.push(p);
     }
-    p.acct = { id:r.id, username:r.username, role:r.role };
+    p.acct = { id:r.id, username:r.username, role:r.role, code:r.code };
     A.form=null; A.f={user:'',pin:'',pin2:''};
     A.note = r.role==='home' ? 'Welcome back, '+p.name+'.' : p.name+' is now on this board.';
-    persistState(); acctFlushQueue();
+    persistState(); acctFlushQueue(); state.settings.lobbyPlayerId = p.id; lobbySync(); lobbyPushShared(true);
   }catch(e){ A.err=acctMsg(e); }
   A.busy=false; render();
 }
@@ -8859,7 +8882,7 @@ async function acctSync(){
   try{
     const [bp, pl] = await Promise.all([
       sb('/rest/v1/board_players?select=player_id,role'),
-      sb('/rest/v1/players?select=id,username,display_name,emoji,color,home_board'),
+      sb('/rest/v1/players?select=id,username,display_name,emoji,color,home_board,code,status,back_at'),
     ]);
     if(!Array.isArray(bp) || !Array.isArray(pl)) return;
     const role={}; bp.forEach(x=>{ role[x.player_id]=x.role; });
@@ -8870,7 +8893,11 @@ async function acctSync(){
     if(bp.length){
       state.players = state.players.filter(p=>{
         if(!p.acct) return true;
-        if(role[p.acct.id]){ if(p.acct.role!==role[p.acct.id]){ p.acct.role=role[p.acct.id]; changed=true; } return true; }
+        if(role[p.acct.id]){
+          if(p.acct.role!==role[p.acct.id]){ p.acct.role=role[p.acct.id]; changed=true; }
+          const i=info[p.acct.id]; if(i){ if(p.acct.code!==i.code){ p.acct.code=i.code; changed=true; } p.acct.status=i.status||''; p.acct.back_at=i.back_at||null; }
+          return true;
+        }
         changed=true;
         if(p.acct.role==='visitor') return false;
         delete p.acct; return true;
@@ -8880,11 +8907,11 @@ async function acctSync(){
     bp.forEach(x=>{
       if(state.players.some(p=>p.acct && p.acct.id===x.player_id)) return;
       const i=info[x.player_id]; if(!i) return;
-      const np={ id:nextId(), name:i.display_name, isGuest:false, createdAt:Date.now(), emoji:i.emoji||pickPlayerEmoji(), acct:{ id:i.id, username:i.username, role:x.role } };
+      const np={ id:nextId(), name:i.display_name, isGuest:false, createdAt:Date.now(), emoji:i.emoji||pickPlayerEmoji(), acct:{ id:i.id, username:i.username, role:x.role, code:i.code } };
       if(i.color) np.color=i.color;
       state.players.push(np); changed=true;
     });
-    if(changed){ persistState(); if(state.screen==='home' || state.screen==='settingsHub') render(); }
+    if(changed){ persistState(); lobbySync(); if(state.screen==='home' || state.screen==='settingsHub') render(); }
     acctFlushQueue();
   }catch(e){}
 }
@@ -8936,35 +8963,31 @@ function renderAcctVisitForm(){
     ${A.err ? `<div class="lb-err">${lobbyEsc(A.err)}</div>` : ''}
     <div class="btn-row"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" ${A.busy?'disabled':''} onclick="acctSubmitVisit()">${A.busy?'Checking...':'Log in'}</button><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="acctOpen('visit', null)">Cancel</button></div></div>`;
 }
-function renderAcctCard(){
-  const A=state.acct;
-  if(!acctReady()) return `<div class="sh-card"><span class="field-label">Online logins for players</span><p class="info-note" style="margin:0;">Sign in above first. Then each player can get their own username and PIN, so their stats follow them to any board.</p></div>`;
-  if(!acctBoardOk()) return `<div class="sh-card"><span class="field-label">Online logins for players</span><p class="info-note" style="margin:0;">This device was set up with a different board account, so player logins are paused. Sign in with the original email.</p></div>`;
-  const real=state.players.filter(p=>!p.isBot && !p.isGuest);
-  const row=p=>{
-    const a=p.acct; const open = A.form==='create' && A.pid===p.id;
-    const tag = !a ? '<span class="lb-sub">Local only</span>' : (a.role==='visitor' ? '<span class="prow-tag">visitor</span>' : '<span class="prow-tag on">online</span>');
-    const sub = a ? '@'+lobbyEsc(a.username) : 'No online login yet';
-    const btn = !a ? `<button class="lb-btn p" onclick="acctOpen('create','${p.id}')">${open?'Cancel':'Give online login'}</button>`
-      : a.role==='visitor' ? `<button class="lb-btn" onclick="acctLeave('${p.id}')">Leave this board</button>`
-      : `<button class="lb-btn" onclick="acctDeleteLogin('${p.id}')">Delete login</button>`;
-    return `<div class="lb-row"><div class="lb-av">${lobbyEsc(p.emoji||initials(p.name))}</div><div style="flex:1; min-width:0;"><div class="lb-name">${lobbyEsc(p.name)} ${tag}</div><div class="lb-sub">${sub}</div></div>${btn}</div>
-    ${open ? `<div class="acct-form"><div class="lb-sub">Pick a username (letters, numbers, underscore) and a 4-digit PIN for ${lobbyEsc(p.name)}. The username is theirs across every board.</div>
-      <input class="input" placeholder="Username" autocapitalize="none" autocomplete="off" value="${lobbyEsc(A.f.user)}" oninput="acctSetF('user', this.value)">
-      <input class="input" placeholder="4-digit PIN" type="password" inputmode="numeric" maxlength="4" autocomplete="off" value="${lobbyEsc(A.f.pin)}" oninput="acctSetF('pin', this.value)">
-      <input class="input" placeholder="PIN again" type="password" inputmode="numeric" maxlength="4" autocomplete="off" value="${lobbyEsc(A.f.pin2)}" oninput="acctSetF('pin2', this.value)" onkeydown="if(event.key==='Enter')acctSubmitCreate()">
-      ${A.err ? `<div class="lb-err">${lobbyEsc(A.err)}</div>` : ''}
-      <div class="btn-row"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" ${A.busy?'disabled':''} onclick="acctSubmitCreate()">${A.busy?'Saving...':'Create login'}</button></div></div>` : ''}`;
-  };
-  return `<div class="sh-card">
-    <span class="field-label">Players on this board</span>
-    <p class="info-note" style="margin:0;">A player with an online login keeps their stats online and can log in on any other board with the same username and PIN.</p>
-    ${real.map(row).join('') || '<p class="info-note">No players yet. Add one on the Players tab.</p>'}
-    ${A.note ? `<div class="lb-note">${lobbyEsc(A.note)}</div>` : ''}
-    ${A.err && A.form!=='create' && A.form!=='visit' ? `<div class="lb-err">${lobbyEsc(A.err)}</div>` : ''}
-    <div class="btn-row"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="acctOpen('visit', null)">I already have an account</button></div>
-    ${A.form==='visit' ? renderAcctVisitForm() : ''}
-  </div>`;
+function renderAcctPlayerSection(p){
+  const A=state.acct, a=p.acct;
+  if(!lobbySignedIn() || !lobbyMyId()){
+    return `<div class="rule-block"><span class="field-label">Online login</span><p class="info-note" style="margin:0;">Register this board first (Settings, then Lobby and status). Then this player can get a username and PIN, so their stats follow them to any board.</p><div class="btn-row" style="margin-top:8px;"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="openLobbySettings()">Register this board</button></div></div>`;
+  }
+  if(!acctBoardOk()) return `<div class="rule-block"><span class="field-label">Online login</span><p class="info-note" style="margin:0;">This device was registered with a different email, so player logins are paused. Sign in with the original email.</p></div>`;
+  const open = A.form==='create' && A.pid===p.id;
+  let body;
+  if(!a){
+    body = `<p class="info-note" style="margin:0;">Not online yet. A username and PIN keep this player's stats online and let them play on any board.</p>
+      <div class="btn-row" style="margin-top:8px;"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" onclick="acctOpen('create','${p.id}')">${open?'Cancel':'Create username and PIN'}</button></div>
+      ${open ? `<div class="acct-form"><div class="lb-sub">Pick a username (letters, numbers, underscore) and a 4-digit PIN. The username is theirs on every board.</div>
+        <input class="input" placeholder="Username" autocapitalize="none" autocomplete="off" value="${lobbyEsc(A.f.user)}" oninput="acctSetF('user', this.value)">
+        <input class="input" placeholder="4-digit PIN" type="password" inputmode="numeric" maxlength="4" autocomplete="off" value="${lobbyEsc(A.f.pin)}" oninput="acctSetF('pin', this.value)">
+        <input class="input" placeholder="PIN again" type="password" inputmode="numeric" maxlength="4" autocomplete="off" value="${lobbyEsc(A.f.pin2)}" oninput="acctSetF('pin2', this.value)" onkeydown="if(event.key==='Enter')acctSubmitCreate()">
+        ${A.err ? `<div class="lb-err">${lobbyEsc(A.err)}</div>` : ''}
+        <div class="btn-row"><button class="btn btn-primary" style="flex:none; padding:8px 16px;" ${A.busy?'disabled':''} onclick="acctSubmitCreate()">${A.busy?'Saving...':'Create'}</button></div></div>` : ''}`;
+  } else if(a.role==='visitor'){
+    body = `<p class="info-note" style="margin:0;"><span class="prow-tag">visitor</span> Logged in as <b>@${lobbyEsc(a.username)}</b>. Stats go to their own account. They stay on this board until they leave.</p>
+      <div class="btn-row" style="margin-top:8px;"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="acctLeave('${p.id}')">Leave this board</button></div>`;
+  } else {
+    body = `<p class="info-note" style="margin:0;"><span class="prow-tag on">online</span> Username <b>@${lobbyEsc(a.username)}</b>. Friend code <b style="color:var(--brass); letter-spacing:0.1em;">${lobbyEsc(a.code||'...')}</b>. On this board they are always loaded, no PIN needed. On another board they log in with the username and PIN.</p>
+      <div class="btn-row" style="margin-top:8px;"><button class="btn btn-secondary" style="flex:none; padding:8px 16px;" onclick="acctDeleteLogin('${p.id}')">Delete online login</button></div>`;
+  }
+  return `<div class="rule-block"><span class="field-label">Online login</span>${body}${A.note ? `<div class="lb-note">${lobbyEsc(A.note)}</div>` : ''}${A.err && !open ? `<div class="lb-err">${lobbyEsc(A.err)}</div>` : ''}</div>`;
 }
 async function lobbyInit(){
   sbLoad();
@@ -13286,6 +13309,7 @@ function renderPlayerDetail(){
       ` : `<h2 style="color:var(--brass); font-size:22px; cursor:pointer;" onclick="startEditPlayerName('${p.id}')">${p.name} &#9998;</h2>`}
       ${p.isBot ? `<span class="badge live" style="margin-top:8px; display:inline-block;">Bot Opponent</span>` : `<span class="badge ${p.isGuest?'soon':'live'}" style="cursor:pointer; margin-top:8px; display:inline-block;" onclick="togglePlayerPermanence('${p.id}')">${p.isGuest?'Guest &middot; tap to make permanent':'Permanent &middot; tap to make guest'}</span>`}
     </div>
+    ${(!p.isBot && !p.isGuest) ? renderAcctPlayerSection(p) : ''}
     ${p.isBot ? `
     <div class="rule-block">
       <span class="field-label">Skill Level</span>
