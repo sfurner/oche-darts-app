@@ -1141,7 +1141,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.7c WACKY MODE';
+const BUILD_STAMP = 'v9.7d WACKY SPEED';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -2267,9 +2267,13 @@ function wackyPick(){
   for(const x of WK_VALUES){ r -= x[1]; if(r<=0) return x; }
   return WK_VALUES[0];
 }
+// Speed level 1 (fastest, the original pace) to 10 (slowest, a typical value holds about 10 seconds).
+function wackyMult(s){ const L = Math.min(10, Math.max(1, +s.wkSpeed || 1)); return 1 + (L-1)*(4/9); }
+function wackyHoldText(L){ const sec = Math.round(2*(1+(L-1)*(4/9))); return L<=1 ? 'about 2 seconds (fastest)' : L>=10 ? 'about 10 seconds (slowest)' : 'about '+sec+' seconds'; }
+function wkSpeedPreview(v){ const el = document.getElementById('wkSpeedLbl'); if(el) el.textContent = 'Level '+v+': a typical value holds '+wackyHoldText(+v); }
 function wackyReroll(s, key, now, firstPhase){
   const x = wackyPick();
-  const dwell = (x[2] + Math.random()*(x[3]-x[2])) * 1000;
+  const dwell = (x[2] + Math.random()*(x[3]-x[2])) * 1000 * wackyMult(s);
   s.wild[key] = {v:x[0], until: now + (firstPhase ? Math.random()*dwell : dwell)};
   const h = s.wildHist[key] || (s.wildHist[key] = []);
   h.push({t:now, v:x[0]});
@@ -2287,6 +2291,7 @@ function startWackySession(playerIds, opts){
   o.lockMode='off';
   const s = startWarSession(playerIds, o);
   s.variant='wacky';
+  s.wkSpeed = Math.min(10, Math.max(1, +o.wkSpeed || 1));
   s.target = [300,500,750,1000].includes(+o.wkTarget) ? +o.wkTarget : 500;
   s.lagMode = o.wkTiming==='reported' ? 'reported' : 'landed';
   s.wild = {}; s.wildHist = {};
@@ -5908,7 +5913,7 @@ function renderHomeConfirmModal(s){
    Opens the same options screen the game was set up with. Changes to rules that can safely change
    mid-game (finishing rule, checkout hints, War steal-back lock) apply right away and scores are kept.
    Anything else (start score, players' target setup, ring mode ...) needs a restart, which is offered. */
-const LIVE_OPT_KEYS = ['outRule','guidance','lockMode'];
+const LIVE_OPT_KEYS = ['outRule','guidance','lockMode','wkSpeed'];
 function liveOptsRestore(){
   const sv = state.liveOptsSaved;
   if(sv){ state.pendingGameId = sv.pendingGameId; state.gameOptions = sv.gameOptions; state.pendingCustomGame = sv.pendingCustomGame; }
@@ -5934,7 +5939,7 @@ function liveOptsChanges(){
   });
   return {live, restart};
 }
-const LIVE_OPT_NAMES = {outRule:'Finishing rule', guidance:'Checkout hints', lockMode:'Locked sections', startScore:'Start score', inRule:'Entering in', bullMode:'Bull', ringMode:'Sections', rounds:'Rounds', variant:'Variant'};
+const LIVE_OPT_NAMES = {outRule:'Finishing rule', guidance:'Checkout hints', lockMode:'Locked sections', startScore:'Start score', inRule:'Entering in', bullMode:'Bull', ringMode:'Sections', rounds:'Rounds', variant:'Variant', wkSpeed:'Board speed'};
 function applyLiveOptions(){
   const s = state.session, L = s && s._launch;
   if(!L) return closeLiveOptions();
@@ -6580,7 +6585,7 @@ function ensureGameOptionsInitialized(){
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
-    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed',
+    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed', wkSpeed:1,
     ...remembered,
     _forGameId: state.pendingGameId,
   };
@@ -8264,6 +8269,14 @@ function renderGameOptionsBody(){
       <span class="field-label">Score To Win</span>
       <div class="gchip-wrap">${[300,500,750,1000].map(n=>numChip(String(n),'wkTarget',n)).join('')}</div>
       <p class="info-note">500 takes about 9 or 10 rounds. Wedges show 10 to 100, with some negatives. Your score never goes below zero.</p>
+    </div>
+    <div>
+      <span class="field-label">Board Speed</span>
+      <div style="display:flex; align-items:center; gap:10px;"><span style="font-size:12px; color:var(--cream-dim);">Fastest</span>
+        <input type="range" min="1" max="10" step="1" value="${o.wkSpeed||1}" style="flex:1;" aria-label="Board speed" oninput="wkSpeedPreview(this.value)" onchange="setOption('wkSpeed',+this.value)">
+        <span style="font-size:12px; color:var(--cream-dim);">Slowest</span></div>
+      <p class="info-note" id="wkSpeedLbl">Level ${o.wkSpeed||1}: a typical value holds ${wackyHoldText(o.wkSpeed||1)}</p>
+      <p class="info-note">Level 1 is the original speed. You can also change it during a game from the game menu, and your scores stay.</p>
     </div>
     <div>
       <span class="field-label">Which Value Counts</span>
