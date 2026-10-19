@@ -159,6 +159,7 @@ body{
 .war-ctrl-btn.danger{ border-color:var(--red); color:#e08a7d; }
 .war-ctrl-btn.leave{ border-color:var(--red); color:#e08a7d; }
 .war-ctrl-btn.disabled{ opacity:0.35; cursor:default; }
+.wk-anim{ transition: fill .16s ease-out, stroke .16s ease-out; }
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .header-action-btn{ background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; }
 .header-action-btn:active{ transform:scale(0.96); }
@@ -1096,6 +1097,10 @@ const GAMES = [
     goal:'Score points by hitting wedges. Every wedge starts at 1, and each hit makes it worth one more for the next dart, whoever throws it.',
     score:'A dart scores the number showing on the wedge it lands in, then that wedge goes up by one. Doubles and triples do not multiply. When a wedge reaches the highest value (5 unless you change it), the next hit scores that value and the wedge is finished for good.',
     win:'First player to reach the target score wins. If every wedge is finished before anyone gets there, the highest score wins.'},
+  {id:'wacky', name:'Wacky Mode', desc:'The War board, but every wedge keeps changing its value while you play. Whatever it shows when your dart lands is what you get.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
+    goal:'Be first to the target score. Every wedge keeps changing its value while you play, from 10 up to 100 points, and some are negative.',
+    score:'A dart scores whatever number its wedge is showing at the moment the dart lands. Doubles and triples do not multiply. Negative values take points off your total, but your score never goes below zero.',
+    win:'The first player to reach the target score wins (500 unless you change it).'},
   {id:'war', name:'War', desc:'No targets, no assignments — claim territory wherever you land.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
     goal:'Every wedge on the board (plus Inner and Outer Bull) starts unclaimed. Wherever your darts land, that section becomes yours — even if someone else already claimed it.',
     score:'There\'s no score to track, just territory. Landing on any section, claimed or not, flips it to your color.',
@@ -1136,7 +1141,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.7b HIT ME BABY';
+const BUILD_STAMP = 'v9.7c WACKY MODE';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -1367,7 +1372,7 @@ function renderVolumeBlock(){
 }
 function callerScopeForGame(){
   const ss = state.session; if(!ss || state.screen!=='active') return null;
-  const k = ss.variant==='hmb' ? 'hmb' : ss.kind==='custom' ? (ss.builtinId || 'custom') : ss.kind;
+  const k = ss.variant==='hmb' ? 'hmb' : ss.variant==='wacky' ? 'wacky' : ss.kind==='custom' ? (ss.builtinId || 'custom') : ss.kind;
   return CALLER_SCOPES.some(x=>x[0]===k) ? k : 'all';
 }
 function toggleSpeakerPanel(){ state.speakerOpen = !state.speakerOpen; if(state.speakerOpen){ const gs = callerScopeForGame(); if(gs) _callerScope = gs; } if(state.speakerOpen) callerLoad().then(()=>{ try{ syncSpeakerPanel(true); }catch(e){} }); syncSpeakerPanel(true); }
@@ -2196,6 +2201,7 @@ function warDartLabel(s, num, segType, ring){
 // Undo helper: put a section back exactly as it was, including any lock that dart caused.
 function warRevertDart(s, d){
   if(!d || !d.key) return;
+  if(d.wk){ const pp = s.participants[d.pidx]; if(pp) pp.score = d.wkPrev; return; }
   if(d.hmb){
     s.vals[d.key] = d.hmbVal;
     const pp = s.participants[d.pidx]; if(pp) pp.score = (pp.score||0) - d.hmbPts;
@@ -2210,6 +2216,7 @@ function warRevertDart(s, d){
 }
 function warApplyDart(s, num, segType){
   if(s.variant==='hmb') return hmbApplyDart(s, num, segType);
+  if(s.variant==='wacky') return wackyApplyDart(s, num, segType);
   const ring = state.pendingHitRing || (s.ringMode!=='combined' ? warRingFromLastPoint(s) : null);
   state.pendingHitRing = null;
   const key = warSectionKey(s, num, segType, ring);
@@ -2246,6 +2253,103 @@ function warApplyDart(s, num, segType){
   return {turnOver: s.currentTurnDarts.length>=3 || s.complete, ann:{type:'hit', key, num, segType, lockedNow:rec.lockedNow}};
 }
 // Picks the sound for the dart that was just thrown: lock beats steal beats a plain hit.
+/* ---- Wacky Mode: War board, every wedge keeps changing its value on its own timer ---- */
+// [value, spawn weight, min dwell s, max dwell s]. Big and negative values are rare and short-lived.
+const WK_VALUES = [[10,24,1.0,3.0],[20,22,1.0,3.0],[30,16,1.0,2.6],[40,10,0.9,2.0],[50,6,0.8,1.4],[100,1.5,0.6,1.0],
+  [-10,10,0.8,2.0],[-20,7,0.8,1.6],[-30,4,0.6,1.2],[-40,2,0.6,1.0],[-50,1,0.5,0.9]];
+const WK_COLORS = {10:['#2563EB','#fff'],20:['#0891B2','#fff'],30:['#16A34A','#fff'],40:['#84CC16','#10151f'],50:['#F97316','#10151f'],100:['#FACC15','#10151f'],
+  '-10':['#991B1B','#fff'],'-20':['#B91C1C','#fff'],'-30':['#DC2626','#fff'],'-40':['#EF4444','#fff'],'-50':['#F43F5E','#fff']};
+function wackyColor(v){ return WK_COLORS[v] || ['#475569','#fff']; }
+function wackyLabel(v){ return (v<0?'−':'+') + Math.abs(v); }
+function wackyPick(){
+  let tot = 0; WK_VALUES.forEach(x=>{ tot += x[1]; });
+  let r = Math.random()*tot;
+  for(const x of WK_VALUES){ r -= x[1]; if(r<=0) return x; }
+  return WK_VALUES[0];
+}
+function wackyReroll(s, key, now, firstPhase){
+  const x = wackyPick();
+  const dwell = (x[2] + Math.random()*(x[3]-x[2])) * 1000;
+  s.wild[key] = {v:x[0], until: now + (firstPhase ? Math.random()*dwell : dwell)};
+  const h = s.wildHist[key] || (s.wildHist[key] = []);
+  h.push({t:now, v:x[0]});
+  while(h.length>8 || (h.length>2 && now - h[1].t > 6000)) h.shift();
+}
+function wackyValueAt(s, key, t){
+  const h = s.wildHist[key];
+  if(!h || !h.length) return s.wild[key] ? s.wild[key].v : 10;
+  for(let i=h.length-1;i>=0;i--){ if(h[i].t<=t) return h[i].v; }
+  return h[0].v;
+}
+function startWackySession(playerIds, opts){
+  const o = Object.assign({}, opts||{});
+  if(o.ringMode==='all') o.ringMode='combined';
+  o.lockMode='off';
+  const s = startWarSession(playerIds, o);
+  s.variant='wacky';
+  s.target = [300,500,750,1000].includes(+o.wkTarget) ? +o.wkTarget : 500;
+  s.lagMode = o.wkTiming==='reported' ? 'reported' : 'landed';
+  s.wild = {}; s.wildHist = {};
+  const now = Date.now();
+  Object.keys(s.sections).forEach(k=>wackyReroll(s,k,now,true));
+  s.participants.forEach(p=>{ p.score=0; });
+  return s;
+}
+function wackyApplyDart(s, num, segType){
+  const ring = state.pendingHitRing || (s.ringMode!=='combined' ? warRingFromLastPoint(s) : null);
+  state.pendingHitRing = null;
+  const key = warSectionKey(s, num, segType, ring);
+  const done = ()=>({turnOver: s.currentTurnDarts.length>=3 || s.complete});
+  if(key===null){
+    const lbl = num==='B' ? (segType==='bull'?'Inner Bull':'Outer Bull') : fullDartLabel(num, segType);
+    s.currentTurnDarts.push({label:lbl, hitTarget:false, key:null});
+    return Object.assign(done(), {ann:{type:'none'}});
+  }
+  const label = warDartLabel(s, num, segType, ring);
+  const lag = (s.lagMode==='landed' && cameraThrowInProgress) ? 700 : 0;
+  let v;
+  if(window._wkReplay && window._wkReplay.length) v = window._wkReplay.shift();
+  else v = wackyValueAt(s, key, Date.now()-lag);
+  const pp = s.participants[s.currentIdx];
+  const prev = pp.score||0;
+  pp.score = Math.max(0, prev + v);
+  s.currentTurnDarts.push({label, key, hitTarget:true, wk:true, wkVal:v, wkPrev:prev, pidx:s.currentIdx});
+  if(pp.score >= s.target){
+    s.complete = true; s.finalCounts = s.participants.map(p=>p.score||0);
+    s.winnerId = pp.playerId; s.tied = null;
+  }
+  return Object.assign(done(), {ann:{type:'hit', key, num, segType, lockedNow:false}});
+}
+function wackyPaint(key){
+  const s = state.session; if(!s || !s.wild || !s.wild[key]) return;
+  const v = s.wild[key].v, c = wackyColor(v);
+  document.querySelectorAll('[data-wk="'+key+'"]').forEach(el=>{
+    if(el.tagName.toLowerCase()==='text'){ el.textContent = wackyLabel(v); el.style.fill = c[1]; }
+    else { el.style.stroke = c[0]; if(el.getAttribute('data-rg')!=='1') el.style.fill = c[0]; }
+  });
+}
+function wackyTick(){
+  const s = state.session;
+  if(!s || s.variant!=='wacky' || s.complete || state.screen!=='active' || !s.wild) return;
+  const now = Date.now();
+  for(const k in s.wild){
+    if(now >= s.wild[k].until){ wackyReroll(s,k,now); wackyPaint(k); }
+  }
+}
+setInterval(function(){ try{ wackyTick(); }catch(e){} }, 100);
+function wackyBullMarkup(s){
+  const cx=BOARD_CX, cy=BOARD_CY;
+  const circ = (k,r)=>{ if(!s.wild[k]) return ''; const c = wackyColor(s.wild[k].v);
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${c[0]}" stroke="${c[0]}" stroke-width="2" class="board-seg wk-anim" data-wk="${k}" data-rg="0" data-num="B" data-seg="${r===R_BULL_INNER?'bullinner':'bullouter'}" style="cursor:pointer;"/>`; };
+  const txt = (k,x,y,fs)=>{ if(!s.wild[k]) return ''; const c = wackyColor(s.wild[k].v);
+    return `<text x="${x}" y="${y}" data-wk="${k}" style="fill:${c[1]}; pointer-events:none;" font-family="Oswald,sans-serif" font-size="${fs}" font-weight="700" text-anchor="middle" dominant-baseline="middle">${wackyLabel(s.wild[k].v)}</text>`; };
+  if(s.bullMode==='together') return circ('B',R_BULL_OUTER)+circ('B',R_BULL_INNER)+txt('B',cx,cy,13);
+  if(s.bullMode==='separate'){
+    const op = polar(cx,cy,(R_BULL_INNER+R_BULL_OUTER)/2,0);
+    return circ('OB',R_BULL_OUTER)+circ('IB',R_BULL_INNER)+txt('IB',cx,cy,10)+txt('OB',op[0],op[1]-1,8);
+  }
+  return '';
+}
 /* ---- Hit Me Baby One More Time: War board, every wedge counts up as it is hit ---- */
 const HMB_COLORS = {1:['#2563EB','#fff'],2:['#16A34A','#fff'],3:['#EAB308','#10151f'],4:['#F97316','#10151f'],5:['#DC2626','#fff'],6:['#8B5CF6','#fff'],7:['#EC4899','#fff'],8:['#14B8A6','#10151f'],9:['#A16207','#fff'],10:['#E5E7EB','#10151f']};
 function hmbColor(v){ return HMB_COLORS[v] || HMB_COLORS[10]; }
@@ -2298,6 +2402,7 @@ function hmbApplyDart(s, num, segType){
 }
 function warSfxForDart(s, res){
   try{
+    if(s.variant==='wacky' && res && res.ann && res.ann.type==='hit'){ const dd = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(dd && dd.wk) return warSfx(dd.wkVal<0?'steal':dd.wkVal>=50?'lock':'hit'); }
     const t = res && res.ann && res.ann.type;
     if(t==='lockedhit') return warSfx('hitlock');
     if(t==='none') return warSfx('miss');
@@ -2334,7 +2439,8 @@ function warUndo(s){
 }
 function finishWarGame(s){
   let winnerName;
-  const hmb = s.variant==='hmb';
+  const hmb = s.variant==='hmb' || s.variant==='wacky';
+  const vname = s.variant==='hmb' ? 'Hit Me Baby One More Time' : s.variant==='wacky' ? 'Wacky Mode' : 'War';
   if(s.tied){
     const names = s.tied.map(id=>{ const p=state.players.find(pp=>pp.id===id); return p?p.name:'Unknown'; });
     winnerName = 'Tie: '+names.join(' & ');
@@ -2343,7 +2449,7 @@ function finishWarGame(s){
     winnerName = w?w.name:'Unknown';
   }
   buildAndShowReview({
-    type: hmb?'Hit Me Baby One More Time':'War', gameType: hmb?'hmb':'war', name: hmb?'Hit Me Baby One More Time':'War',
+    type: vname, gameType: s.variant||'war', name: vname,
     winnerId: s.winnerId, winnerName,
     detail: hmb ? ('Scored '+Math.max(...s.participants.map(p=>p.score||0))+' points'+(s.target?' (target '+s.target+')':'')+'.') : 'Claimed the most territory once every section was taken.',
     participantIds: s.participants.map(p=>p.playerId), throwCounts: participantThrowCounts(s), session:s,
@@ -4742,6 +4848,9 @@ function botChooseWarTarget(s){
     }
     const key0 = keys[Math.floor(Math.random()*keys.length)];
     keys = [key0];
+  } else if(s.variant==='wacky'){
+    const top = Math.max(...keys.map(k=>s.wild[k].v));
+    keys = keys.filter(k=>s.wild[k].v===top);
   } else {
   const open = keys.filter(k=>!(s.locks && s.locks[k]!==undefined));
   if(open.length) keys = open;
@@ -4946,6 +5055,7 @@ function removeDartFromCurrentTurn(index){
     camTurnIds.splice(index, 1);
   } else if(camTurnIds.length) camTurnIds.splice(index, 1);
   const toReplay = s.currentTurnDarts.filter((d,i)=>i!==index).map(d=>({num:d._num, segType:d._segType}));
+  if(s.variant==='wacky') window._wkReplay = s.currentTurnDarts.filter((d,i)=>i!==index && d.key).map(d=>d.wkVal);
   while(s.currentTurnDarts.length>0){
     if(s.kind==='x01') x01Undo(s);
     else if(s.kind==='cricket') cricketUndo(s);
@@ -4956,7 +5066,7 @@ function removeDartFromCurrentTurn(index){
     if(d.segType===undefined) return; // untracked edge case (e.g. an off-number cricket "No Score") — nothing to replay
     if(d.segType==='miss' || d.num===null) recordMiss();
     else dispatchThrow(d.num, d.segType);
-  }); } finally { _callerMute = false; }
+  }); } finally { _callerMute = false; window._wkReplay = null; }
   if(s.turnHitPoints) s.turnHitPoints = s.turnHitPoints.slice(0, s.currentTurnDarts.length);
   if(armFix) scanFix = armFix;
   else if(usingSingleCam() && state.settings.dartsCallerCameraMode){ state.scanFixStatus = 'No fix sent: that dart did not come from the camera'; state.scanFixAt = Date.now(); setTimeout(()=>{ try{ render(); }catch(e){} }, 6200); }
@@ -5696,6 +5806,7 @@ function savableSnapshot(){ return (_turnSnap && _turnSnap.turns>0) ? _turnSnap 
 function gameNameFor(s){
   const GN = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer', personalbest:'Personal Best', war:'War', callshot:'Call Your Shot'};
   if(s.variant==='hmb') return 'Hit Me Baby One More Time';
+  if(s.variant==='wacky') return 'Wacky Mode';
   if(s.kind==='x01') return s.startScore+'';
   if(s.kind==='custom') return s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':(s.cfg&&s.cfg.name)||'Custom';
   return GN[s.kind] || s.kind;
@@ -5902,11 +6013,13 @@ const RULES_TEXT = {
   killer: {goal:'Be the last player with lives left.', score:'Everyone has a number and a set number of lives. First, hit the double of your own number to become a killer. Once you are a killer, hitting an opponent\'s number takes a life from them.', win:'When everyone else is out of lives, you win.'},
   callshot: {goal:'Call a target, hit it, and make the others match you.', score:'On your turn, call a target and try to hit it with your darts. If you miss, the turn just passes on. If you hit it, each other player gets the same number of darts to hit the same target. Anyone who fails gets a letter.', win:'A player who spells the whole word is out. The last player left wins.'},
   personalbest: {goal:'Beat your own best round.', score:'Each round is three darts, and every dart adds its value (doubles and triples count). Your first round sets your best. After that, every round tries to beat it.', win:'Depends on the mode you picked: no winner (just chase your best), highest single round, or highest average.'},
+  wacky: {goal:'Be first to the target score while the board keeps changing.', score:'Every wedge keeps changing its value, from 10 up to 100 points, and some are negative. A dart scores whatever number its wedge shows at the moment it lands. Doubles and triples do not multiply. Negative values take points off, but your score never goes below zero.', win:'The first player to reach the target score wins.'},
   hmb: {goal:'Be first to the target score by hitting wedges that keep getting more valuable.', score:'Every wedge starts at 1. A dart scores the number showing on the wedge it lands in, then that wedge goes up by one for everybody. Doubles and triples do not multiply. Once a wedge has reached the highest value, the next hit scores it and the wedge is finished.', win:'First to the target score wins. If every wedge is finished first, the highest score wins.'},
   war: {goal:'Claim sections of the board by landing darts in them.', score:'There are no points. Wherever a dart lands, that section turns to your color, even if another player owned it. If Steal-Back Lock is on, a section you lose and win back is locked to you.', win:'The game ends when every section has been claimed. The player holding the most sections wins.'}
 };
 function rulesIdForSession(s){
   if(s.variant==='hmb') return 'hmb';
+  if(s.variant==='wacky') return 'wacky';
   const MAP = {cricket:'cricket', atc:'atc', shanghai:'shanghai', baseball:'baseball', halveit:'halveit', killer:'killer', callshot:'callshot', war:'war', personalbest:'personalbest'};
   if(s.kind==='x01') return s.startScore===301?'301':'501';
   if(s.kind==='custom') return s.builtinId || null;
@@ -6467,7 +6580,7 @@ function ensureGameOptionsInitialized(){
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
-    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100,
+    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed',
     ...remembered,
     _forGameId: state.pendingGameId,
   };
@@ -6881,6 +6994,7 @@ const GAME_LAUNCHERS = {
   personalbest: startPersonalBestSession,
   war: startWarSession,
   hmb: startHmbSession,
+  wacky: startWackySession,
 };
 function launchGame(){
   const id = state.pendingGameId;
@@ -8143,6 +8257,27 @@ function renderGameOptionsBody(){
       <span class="field-label">Bull</span>
       <div class="gchip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
     </div>`;
+  } else if(id==='wacky'){
+    if(o.ringMode==='all') o.ringMode='combined';
+    body += `
+    <div>
+      <span class="field-label">Score To Win</span>
+      <div class="gchip-wrap">${[300,500,750,1000].map(n=>numChip(String(n),'wkTarget',n)).join('')}</div>
+      <p class="info-note">500 takes about 9 or 10 rounds. Wedges show 10 to 100, with some negatives. Your score never goes below zero.</p>
+    </div>
+    <div>
+      <span class="field-label">Which Value Counts</span>
+      <div class="gchip-wrap">${chip('When it lands','wkTiming','landed')}${chip('When it is reported','wkTiming','reported')}</div>
+      <p class="info-note">The camera reports a dart a moment after it lands. "When it lands" counts what the wedge showed about 0.7 seconds earlier. Taps and bots always count what is showing right then.</p>
+    </div>
+    <div>
+      <span class="field-label">Board Sections</span>
+      <div class="gchip-wrap">${chip('Whole Wedges','ringMode','combined')}${chip('Inside &amp; Outside','ringMode','split')}</div>
+    </div>
+    <div>
+      <span class="field-label">Bull</span>
+      <div class="gchip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
+    </div>`;
   } else if(id==='war'){
     if(!o.warPlayerColors) o.warPlayerColors = {};
     body += `
@@ -8362,7 +8497,7 @@ const CALLER_EVENTS = [
   {id:'require', label:'You require N',              v:'Say the finish'},
   {id:'takeout', label:'Takeout (darts removed)',    s:'Ding'}
 ];
-const CALLER_SCOPES = [['all','All games (default)'],['x01','301 and 501'],['cricket','Cricket'],['atc','Around the Clock'],['shanghai','Shanghai'],['baseball','Baseball'],['highscore','High Score'],['countup','Count Up'],['halveit','Halve It'],['killer','Killer'],['callshot','Call Your Shot'],['personalbest','Personal Best'],['war','War'],['hmb','Hit Me Baby One More Time'],['custom','Custom games']];
+const CALLER_SCOPES = [['all','All games (default)'],['x01','301 and 501'],['cricket','Cricket'],['atc','Around the Clock'],['shanghai','Shanghai'],['baseball','Baseball'],['highscore','High Score'],['countup','Count Up'],['halveit','Halve It'],['killer','Killer'],['callshot','Call Your Shot'],['personalbest','Personal Best'],['war','War'],['hmb','Hit Me Baby One More Time'],['wacky','Wacky Mode'],['custom','Custom games']];
 let _callerScope = 'all';
 function callerEvtCfg(){ const c = state.settings.callerEvents; return (c && typeof c === 'object') ? c : (state.settings.callerEvents = {all:{}, games:{}}); }
 function callerEvtValue(scope, evt, ch){
@@ -8394,7 +8529,7 @@ function callerScopeHasOverride(k){ const g = callerEvtCfg().games; return !!(g 
 function renderCallerEvents(){
   const sc = _callerScope, voiceGame = (sc === 'all' || sc === 'x01');
   const sw = (evt, ch) => `<button class="sw ${callerEvtValue(sc, evt, ch) ? 'on' : ''}" aria-label="${evt} ${ch==='v'?'voice':'sound'}" onclick="callerToggleEvt('${evt}','${ch}')"></button>`;
-  const rows = CALLER_EVENTS.filter(e => !((sc==='war'||sc==='hmb') && e.id==='dart')).map(e => `<div class="ce-row"><div class="ce-name">${e.label}</div>
+  const rows = CALLER_EVENTS.filter(e => !((sc==='war'||sc==='hmb'||sc==='wacky') && e.id==='dart')).map(e => `<div class="ce-row"><div class="ce-name">${e.label}</div>
       <div class="ce-cell">${e.v ? (voiceGame ? `<span class="ce-lab">${e.v}</span>${sw(e.id,'v')}` : '<span class="ce-lab dim">no voice yet</span>') : ''}</div>
       <div class="ce-cell">${e.s ? `<span class="ce-lab">${e.s}</span>${sw(e.id,'s')}` : ''}</div></div>`).join('');
   return `<div class="ce-card">
@@ -8405,7 +8540,7 @@ function renderCallerEvents(){
     <p class="info-note" style="margin:6px 0 8px 0;">${sc==='all' ? 'These apply to every game unless a game below has its own.' : 'Only what you change here is special for this game. The rest follows All games.'}</p>
     <div class="ce-head"><span></span><span>Voice</span><span>Sound</span></div>
     ${rows}
-    ${(sc==='war'||sc==='hmb') ? renderWarSfxCard() : ''}
+    ${(sc==='war'||sc==='hmb'||sc==='wacky') ? renderWarSfxCard() : ''}
     <div class="ce-timing"><span class="field-label">Dart call timing</span>
       <div class="chip-wrap"><button class="chip ${!state.settings.callerAfterThud?'on':''}" onclick="state.settings.callerAfterThud=false; persistState(); render();">With the thud</button><button class="chip ${state.settings.callerAfterThud?'on':''}" onclick="state.settings.callerAfterThud=true; persistState(); render();">After the thud</button></div></div>
     <div class="cam-menu-btns" style="margin-top:10px;"><div class="tiny-edit-btn" onclick="callerTest()">Test</div><div class="tiny-edit-btn" onclick="callerResetScope()">${sc==='all'?'Reset all to defaults':'Use the default for this game'}</div></div>
@@ -10545,6 +10680,7 @@ function renderWarBoard(s){
   const gapDeg = 1.2;
   let fills = '', labels = '', hatch = '', hmbNums = '';
   const HMB = s.variant==='hmb';
+  const WK = s.variant==='wacky';
   const m = s.ringMode;
   const sfx = (inner, ring)=> m==='all' ? ({0:'is',1:'t',2:'os',3:'d'}[inner]) : (m==='split' ? (ring==='outer'?'o':'i') : '');
   const bands = [
@@ -10565,6 +10701,14 @@ function renderWarBoard(s){
       let col = claimed ? warColorFor(s,owner) : WAR_NEUTRAL;
       let fill = claimed ? ((bd.rg && m!=='all') ? dtFill : warColorFor(s,owner)) : (bd.rg ? dtFill : '#151c30');
       const d = wedgePath(cx,cy,bd.r1,bd.r2,aStart,aEnd);
+      if(WK){
+        const hv = s.wild[key].v; const hc = wackyColor(hv);
+        claimed = true; col = hc[0]; fill = bd.rg ? dtFill : hc[0];
+        if(!bd.rg && (m==='split' || bd.ring==='outer')){
+          const rm = (bd.r1+bd.r2)/2, mp = polar(cx,cy,rm,(aFull1+aFull2)/2);
+          hmbNums += `<text x="${mp[0]}" y="${mp[1]}" data-wk="${key}" style="fill:${hc[1]}; pointer-events:none;" font-family="Oswald,sans-serif" font-size="17" font-weight="700" text-anchor="middle" dominant-baseline="middle">${wackyLabel(hv)}</text>`;
+        }
+      }
       if(HMB){
         const hv = s.vals[key]; const hc = hmbColor(hv);
         claimed = true; col = hc[0]; fill = bd.rg ? dtFill : hc[0];
@@ -10575,7 +10719,7 @@ function renderWarBoard(s){
           hmbNums += `<text x="${mp[0]}" y="${mp[1]}" fill="${dn?'rgba(255,255,255,0.55)':hc[1]}" font-family="Oswald,sans-serif" font-size="21" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${dn?'&#10003;':hv}</text>`;
         }
       }
-      fills += `<path d="${d}" fill="${fill}" stroke="${col}" stroke-width="${claimed?2:1}" class="board-seg" data-num="${num}" data-seg="${bd.seg}" data-ring="${bd.ring}" style="cursor:pointer;"/>`;
+      fills += `<path d="${d}" fill="${fill}" stroke="${col}" stroke-width="${claimed?2:1}" class="board-seg${WK?' wk-anim':''}" ${WK?`data-wk="${key}" data-rg="${bd.rg?1:0}"`:''} data-num="${num}" data-seg="${bd.seg}" data-ring="${bd.ring}" style="cursor:pointer;"/>`;
       if(s.locks && s.locks[key]!==undefined) hatch += `<path d="${d}" fill="rgba(12,18,34,0.78)" style="pointer-events:none;"/><path d="${d}" fill="none" stroke="${col}" stroke-width="3.4" style="pointer-events:none;"/>`;
     });
     const lp = polar(cx,cy,R_NUMBER_LABEL,(aFull1+aFull2)/2);
@@ -10610,7 +10754,7 @@ function renderWarBoard(s){
   const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, 'recordMiss()')"/>
-    ${warDefs}${fills}${bullMarkup}${HMB?hmbBullMarkup(s):''}${warBullHatch(s)}${hatch}${hmbNums}${labels}${missLabel}
+    ${warDefs}${fills}${bullMarkup}${HMB?hmbBullMarkup(s):''}${WK?wackyBullMarkup(s):''}${warBullHatch(s)}${hatch}${hmbNums}${labels}${missLabel}
   </svg>`;
 }
 function hmbBullMarkup(s){
@@ -10647,7 +10791,7 @@ function warBullHatch(s){
   return out;
 }
 function renderWarPlayerBoxes(s){
-  const HMB = s.variant==='hmb';
+  const HMB = s.variant==='hmb' || s.variant==='wacky';
   const total = Object.keys(s.sections).length;
   const sections = s.participants.map((p,i)=>{
     const count = HMB ? (p.score||0) : Object.values(s.sections).filter(v=>v===i).length;
@@ -10660,7 +10804,7 @@ function renderWarPlayerBoxes(s){
       if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
       const rowClass = d.hitTarget===true ? ' hit-target' : (d.hitTarget===false ? ' miss' : '');
       const fromP = (d.stolenFrom!=null && s.participants[d.stolenFrom]) ? s.participants[d.stolenFrom] : null;
-      const note = HMB ? (d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : ''].filter(Boolean).join(' &middot; ');
+      const note = HMB ? (d.wk ? `<span style="color:${d.wkVal<0?'#f87171':'#4ade80'};">${wackyLabel(d.wkVal)}</span>` : d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : ''].filter(Boolean).join(' &middot; ');
       return `<div class="turn-dart-row${rowClass}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val" style="font-family:'Oswald',sans-serif; font-size:13px; font-weight:600; text-align:right;">${note}</div></div>`;
     }).join('') : '';
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
@@ -10681,7 +10825,7 @@ function renderWarPlayerBoxes(s){
   </div>`;
 }
 function renderWarActiveShell(s){
-  return `${renderGameTopBar(s,s.variant==='hmb'?'Hit Me Baby One More Time':'War')}
+  return `${renderGameTopBar(s,s.variant==='hmb'?'Hit Me Baby One More Time':s.variant==='wacky'?'Wacky Mode':'War')}
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderWarBoard(s)}</div></div>
   ${gameOverlays(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
