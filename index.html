@@ -1101,6 +1101,10 @@ const GAMES = [
     goal:'Be first to the target score. Every wedge keeps changing its value while you play, from 10 up to 100 points, and some are negative.',
     score:'A dart scores whatever number its wedge is showing at the moment the dart lands. Doubles and triples do not multiply. Negative values take points off your total, but your score never goes below zero.',
     win:'The first player to reach the target score wins (500 unless you change it).'},
+  {id:'slots', name:'Slots', desc:'Every wedge is a slot machine symbol. Collect matching sets to score. Watch out for skulls.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
+    goal:'Collect sets of matching symbols and be first to the target score.',
+    score:'Every wedge shows a symbol. Hit it and you add that symbol to your own card, and the wedge changes to a new random symbol. Collect three of the same symbol (or two or four, if the game was set that way for you) to close out the set and score it. Cherries are worth the least and Lucky 7s the most, and the rarest symbols are worth the most. A skull takes 20 points away.',
+    win:'The first player to reach the target score wins, once everyone has had the same number of turns.'},
   {id:'war', name:'War', desc:'No targets, no assignments — claim territory wherever you land.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
     goal:'Every wedge on the board (plus Inner and Outer Bull) starts unclaimed. Wherever your darts land, that section becomes yours — even if someone else already claimed it.',
     score:'There\'s no score to track, just territory. Landing on any section, claimed or not, flips it to your color.',
@@ -1141,7 +1145,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.7d WACKY SPEED';
+const BUILD_STAMP = 'v9.8a SLOTS';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -1372,7 +1376,7 @@ function renderVolumeBlock(){
 }
 function callerScopeForGame(){
   const ss = state.session; if(!ss || state.screen!=='active') return null;
-  const k = ss.variant==='hmb' ? 'hmb' : ss.variant==='wacky' ? 'wacky' : ss.kind==='custom' ? (ss.builtinId || 'custom') : ss.kind;
+  const k = ss.variant==='hmb' ? 'hmb' : ss.variant==='wacky' ? 'wacky' : ss.variant==='slots' ? 'slots' : ss.kind==='custom' ? (ss.builtinId || 'custom') : ss.kind;
   return CALLER_SCOPES.some(x=>x[0]===k) ? k : 'all';
 }
 function toggleSpeakerPanel(){ state.speakerOpen = !state.speakerOpen; if(state.speakerOpen){ const gs = callerScopeForGame(); if(gs) _callerScope = gs; } if(state.speakerOpen) callerLoad().then(()=>{ try{ syncSpeakerPanel(true); }catch(e){} }); syncSpeakerPanel(true); }
@@ -2201,6 +2205,7 @@ function warDartLabel(s, num, segType, ring){
 // Undo helper: put a section back exactly as it was, including any lock that dart caused.
 function warRevertDart(s, d){
   if(!d || !d.key) return;
+  if(d.sl){ const pq = s.participants[d.pidx]; if(pq){ pq.tally = Object.assign({}, d.slPrevTally); pq.score = d.slPrevScore; } s.sym[d.key] = d.slSym; return; }
   if(d.wk){ const pp = s.participants[d.pidx]; if(pp) pp.score = d.wkPrev; return; }
   if(d.hmb){
     s.vals[d.key] = d.hmbVal;
@@ -2217,6 +2222,7 @@ function warRevertDart(s, d){
 function warApplyDart(s, num, segType){
   if(s.variant==='hmb') return hmbApplyDart(s, num, segType);
   if(s.variant==='wacky') return wackyApplyDart(s, num, segType);
+  if(s.variant==='slots') return slotsApplyDart(s, num, segType);
   const ring = state.pendingHitRing || (s.ringMode!=='combined' ? warRingFromLastPoint(s) : null);
   state.pendingHitRing = null;
   const key = warSectionKey(s, num, segType, ring);
@@ -2253,6 +2259,121 @@ function warApplyDart(s, num, segType){
   return {turnOver: s.currentTurnDarts.length>=3 || s.complete, ann:{type:'hit', key, num, segType, lockedNow:rec.lockedNow}};
 }
 // Picks the sound for the dart that was just thrown: lock beats steal beats a plain hit.
+/* ---- Slots: War board, every wedge is a slot symbol; players collect sets on their own card ---- */
+const SLOT_DEFS = [
+  {id:'cherry', name:'Cherries', val:5,   w:30,  color:'#DC2626'},
+  {id:'lemon',  name:'Lemons',   val:10,  w:22,  color:'#FACC15'},
+  {id:'bell',   name:'Bells',    val:20,  w:16,  color:'#F97316'},
+  {id:'chest',  name:'Treasure chests', val:40, w:11, color:'#B45309'},
+  {id:'diamond',name:'Diamonds', val:75,  w:6,   color:'#22D3EE'},
+  {id:'seven',  name:'Lucky 7s', val:150, w:2.5, color:'#D946EF'},
+  {id:'skull',  name:'Skulls',   val:-20, w:8,   color:'#9CA3AF'}];
+const SLOT_BY = {}; SLOT_DEFS.forEach(d=>{ SLOT_BY[d.id]=d; });
+const SLOT_ICONS = {
+  cherry:'<path d="M8.5 15 C9 10 11 6 16.5 3.5 M15.5 15 C15.5 10 16 6.5 16.5 3.5" fill="none" stroke="#166534" stroke-width="1.6" stroke-linecap="round"/><path d="M16.5 3.5 C19 3 21 4 21.5 6 C19.5 6.5 17.5 5.5 16.5 3.5Z" fill="#22C55E"/><circle cx="8" cy="17" r="4.2" fill="#DC2626"/><circle cx="16" cy="16.5" r="4.2" fill="#B91C1C"/><circle cx="6.8" cy="15.8" r="1.1" fill="#fff" opacity=".55"/><circle cx="14.8" cy="15.3" r="1.1" fill="#fff" opacity=".55"/>',
+  lemon:'<ellipse cx="12" cy="12" rx="9" ry="6.2" transform="rotate(-30 12 12)" fill="#FACC15" stroke="#A16207" stroke-width="1.2"/><path d="M3.6 16.2 L2 17.8 M20.4 7.8 L22 6.2" stroke="#A16207" stroke-width="1.6" stroke-linecap="round"/><path d="M9 9.5 C10 8.5 11.5 8 12.5 8.2" stroke="#fff" stroke-width="1.2" fill="none" opacity=".6" stroke-linecap="round"/>',
+  bell:'<path d="M12 3 C8.2 3 7 6.5 7 10.5 V14.5 L4.8 17 H19.2 L17 14.5 V10.5 C17 6.5 15.8 3 12 3Z" fill="#F59E0B" stroke="#92400E" stroke-width="1.2" stroke-linejoin="round"/><circle cx="12" cy="19.6" r="2.1" fill="#92400E"/><circle cx="12" cy="3" r="1.2" fill="#92400E"/><path d="M9.4 8 C9.6 6.8 10.4 5.8 11.4 5.4" stroke="#fff" stroke-width="1.2" fill="none" opacity=".6" stroke-linecap="round"/>',
+  chest:'<rect x="3" y="10" width="18" height="10.5" rx="1.4" fill="#92400E" stroke="#451A03" stroke-width="1.1"/><path d="M3 10.2 C3 5.6 7 4 12 4 C17 4 21 5.6 21 10.2 Z" fill="#B45309" stroke="#451A03" stroke-width="1.1"/><rect x="3" y="9.4" width="18" height="2" fill="#FACC15"/><rect x="10.3" y="10.8" width="3.4" height="4.4" rx=".8" fill="#FDE047" stroke="#A16207" stroke-width=".8"/><circle cx="12" cy="12.6" r=".7" fill="#451A03"/>',
+  diamond:'<path d="M7 4.5 H17 L21.5 9.5 L12 20.5 L2.5 9.5 Z" fill="#22D3EE" stroke="#0E7490" stroke-width="1.2" stroke-linejoin="round"/><path d="M2.5 9.5 H21.5 M9.5 4.5 L7.5 9.5 L12 20.5 M14.5 4.5 L16.5 9.5 L12 20.5" fill="none" stroke="#0E7490" stroke-width="1" stroke-linejoin="round"/><path d="M7 9.5 L9.5 4.5 H14.5" fill="none" stroke="#fff" stroke-width="1" opacity=".6"/>',
+  seven:'<text x="12" y="19.5" text-anchor="middle" font-family="Oswald,Impact,sans-serif" font-size="23" font-weight="800" fill="#DC2626" stroke="#7F1D1D" stroke-width="1" paint-order="stroke">7</text>',
+  skull:'<path d="M12 3 C6.8 3 4 6.8 4 11 C4 13.8 5.4 15.4 7.2 16.4 V20 H16.8 V16.4 C18.6 15.4 20 13.8 20 11 C20 6.8 17.2 3 12 3Z" fill="#F3F4F6" stroke="#9CA3AF" stroke-width=".8"/><circle cx="8.8" cy="11" r="2.3" fill="#111827"/><circle cx="15.2" cy="11" r="2.3" fill="#111827"/><path d="M12 13.2 L10.9 15.6 H13.1 Z" fill="#111827"/><path d="M10 18 V20 M12 18 V20 M14 18 V20" stroke="#9CA3AF" stroke-width=".9"/>'};
+function slotIconSvg(id, size){
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" style="vertical-align:middle; flex:none;" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="${id==='skull'?'#111827':'#F5EFE0'}"/>${SLOT_ICONS[id]||''}</svg>`;
+}
+function slotIconG(id, x, y, k){
+  return `<g transform="translate(${x},${y}) scale(${k}) translate(-12,-12)" style="pointer-events:none;"><circle cx="12" cy="12" r="12.3" fill="${id==='skull'?'#111827':'#F5EFE0'}"/>${SLOT_ICONS[id]||''}</g>`;
+}
+function slotMix(hex, k){ // darken a colour toward the board background for the wedge fill
+  const n = parseInt(hex.slice(1),16), r=(n>>16)&255, g=(n>>8)&255, bl=n&255;
+  return '#'+[r*k+16*(1-k), g*k+21*(1-k), bl*k+31*(1-k)].map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
+}
+function slotsRollSym(){
+  let tot = 0; SLOT_DEFS.forEach(d=>{ tot += d.w; });
+  let r = Math.random()*tot;
+  for(const d of SLOT_DEFS){ r -= d.w; if(r<=0) return d.id; }
+  return 'cherry';
+}
+function startSlotsSession(playerIds, opts){
+  const o = Object.assign({}, opts||{});
+  if(o.ringMode==='all') o.ringMode='combined';
+  o.lockMode='off';
+  const s = startWarSession(playerIds, o);
+  s.variant='slots';
+  s.target = [150,200,300,400].includes(+o.slotsTarget) ? +o.slotsTarget : 200;
+  s.pendingEnd = false;
+  s.sym = {}; Object.keys(s.sections).forEach(k=>{ s.sym[k] = slotsRollSym(); });
+  const needMap = o.slotsNeed || {};
+  s.participants.forEach(p=>{ p.score=0; p.tally={}; const n=+needMap[p.playerId]; p.need = (n===2||n===4) ? n : 3; });
+  return s;
+}
+function slotsRecalc(s){ s.pendingEnd = s.participants.some(p=>(p.score||0)>=s.target); }
+function slotsRoundEnd(s){
+  if(s.variant!=='slots' || s.complete) return;
+  if(s.pendingEnd && s.currentIdx===0){
+    const sc = s.participants.map(p=>p.score||0), best = Math.max(...sc);
+    s.complete = true; s.finalCounts = sc;
+    const winners = s.participants.filter((p,i)=>sc[i]===best);
+    if(winners.length===1){ s.winnerId = winners[0].playerId; s.tied=null; }
+    else { s.winnerId=null; s.tied=winners.map(p=>p.playerId); }
+  }
+}
+function slotsApplyDart(s, num, segType){
+  const ring = state.pendingHitRing || (s.ringMode!=='combined' ? warRingFromLastPoint(s) : null);
+  state.pendingHitRing = null;
+  const key = warSectionKey(s, num, segType, ring);
+  const done = ()=>({turnOver: s.currentTurnDarts.length>=3 || s.complete});
+  if(key===null){
+    const lbl = num==='B' ? (segType==='bull'?'Inner Bull':'Outer Bull') : fullDartLabel(num, segType);
+    s.currentTurnDarts.push({label:lbl, hitTarget:false, key:null});
+    return Object.assign(done(), {ann:{type:'none'}});
+  }
+  const label = warDartLabel(s, num, segType, ring);
+  const sym = s.sym[key], d = SLOT_BY[sym];
+  const pp = s.participants[s.currentIdx];
+  const prevTally = Object.assign({}, pp.tally), prevScore = pp.score||0;
+  const newSym = (window._slReplay && window._slReplay.length) ? window._slReplay.shift() : slotsRollSym();
+  s.sym[key] = newSym;
+  let pts = 0, closed = false;
+  if(sym==='skull'){ pp.score = Math.max(0, prevScore-20); pts = pp.score - prevScore; }
+  else {
+    pp.tally[sym] = (pp.tally[sym]||0) + 1;
+    if(pp.tally[sym] >= pp.need){ pp.tally[sym] = 0; pp.score = prevScore + d.val; pts = d.val; closed = true; }
+  }
+  s.currentTurnDarts.push({label, key, hitTarget:true, sl:true, slSym:sym, slNew:newSym, slPrevTally:prevTally, slPrevScore:prevScore, slPts:pts, slClosed:closed, slCount:pp.tally[sym]||0, slNeed:pp.need, pidx:s.currentIdx});
+  if(pp.score >= s.target) s.pendingEnd = true;
+  return Object.assign(done(), {ann:{type:'hit', key, num, segType, lockedNow:closed}});
+}
+function slotsNote(d){
+  if(d.slSym==='skull') return `<span style="color:#f87171;">${slotIconSvg('skull',16)} ${d.slPts<0?'−'+Math.abs(d.slPts):'no points'}</span>`;
+  if(d.slClosed) return `<span style="color:#4ade80;">${slotIconSvg(d.slSym,16)} set +${d.slPts}</span>`;
+  return `<span style="color:var(--cream-dim);">${slotIconSvg(d.slSym,16)} ${d.slCount}/${d.slNeed}</span>`;
+}
+function slotsCardHtml(s, i){
+  const p = s.participants[i];
+  const items = SLOT_DEFS.filter(d=>d.id!=='skull' && (p.tally[d.id]||0)>0).map(d=>{
+    const n = p.tally[d.id]; let pips = '';
+    for(let k=0;k<p.need;k++) pips += `<span style="display:inline-block; width:7px; height:7px; border-radius:50%; margin-left:2px; background:${k<n?'var(--brass)':'transparent'}; border:1px solid var(--brass);"></span>`;
+    return `<span style="display:inline-flex; align-items:center; gap:3px; margin:2px 10px 2px 0;">${slotIconSvg(d.id,22)}${pips}</span>`;
+  }).join('');
+  return `<div class="slot-card" style="padding:3px 4px 4px 4px; min-height:28px; display:flex; flex-wrap:wrap; align-items:center;">${items || '<span style="font-size:11px; color:var(--cream-dim);">No sets started</span>'}${p.need!==3 ? `<span style="font-size:11px; color:var(--cream-dim); margin-left:8px;">&middot; sets of ${p.need}</span>` : ''}</div>`;
+}
+function slotsLegendHtml(s){
+  return `<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--felt-lighter);">
+    <div style="display:flex; flex-wrap:wrap; gap:6px 12px;">${SLOT_DEFS.map(d=>`<span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--cream-dim);">${slotIconSvg(d.id,18)}${d.val<0?'−'+Math.abs(d.val):d.val}</span>`).join('')}</div>
+    ${s.pendingEnd && !s.complete ? '<p class="info-note" style="margin:8px 0 0 0;">Target reached. Everyone gets their turn this round, then the highest score wins.</p>' : ''}
+  </div>`;
+}
+function slotsBullMarkup(s){
+  const cx=BOARD_CX, cy=BOARD_CY;
+  const circ = (k,r)=>{ if(!s.sym[k]) return ''; const d = SLOT_BY[s.sym[k]];
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${slotMix(d.color,0.4)}" stroke="${d.color}" stroke-width="2" class="board-seg" data-num="B" data-seg="${r===R_BULL_INNER?'bullinner':'bullouter'}" style="cursor:pointer;"/>`; };
+  if(s.bullMode==='together') return circ('B',R_BULL_OUTER)+circ('B',R_BULL_INNER)+slotIconG(s.sym['B'],cx,cy,1.0);
+  if(s.bullMode==='separate'){
+    const op = polar(cx,cy,(R_BULL_INNER+R_BULL_OUTER)/2,0);
+    return circ('OB',R_BULL_OUTER)+circ('IB',R_BULL_INNER)+slotIconG(s.sym['IB'],cx,cy,0.7)+slotIconG(s.sym['OB'],op[0],op[1],0.5);
+  }
+  return '';
+}
 /* ---- Wacky Mode: War board, every wedge keeps changing its value on its own timer ---- */
 // [value, spawn weight, min dwell s, max dwell s]. Big and negative values are rare and short-lived.
 const WK_VALUES = [[10,24,1.0,3.0],[20,22,1.0,3.0],[30,16,1.0,2.6],[40,10,0.9,2.0],[50,6,0.8,1.4],[100,1.5,0.6,1.0],
@@ -2407,6 +2528,7 @@ function hmbApplyDart(s, num, segType){
 }
 function warSfxForDart(s, res){
   try{
+    if(s.variant==='slots' && res && res.ann && res.ann.type==='hit'){ const dd = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(dd && dd.sl) return warSfx(dd.slSym==='skull'?'hitlock':dd.slClosed?'lock':'hit'); }
     if(s.variant==='wacky' && res && res.ann && res.ann.type==='hit'){ const dd = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(dd && dd.wk) return warSfx(dd.wkVal<0?'steal':dd.wkVal>=50?'lock':'hit'); }
     const t = res && res.ann && res.ann.type;
     if(t==='lockedhit') return warSfx('hitlock');
@@ -2424,6 +2546,7 @@ function warEndTurn(s){
   if(!s.complete){
     s.currentIdx = (s.currentIdx+1) % s.participants.length;
     if(s.currentIdx===0) s.round++;
+    if(s.variant==='slots') slotsRoundEnd(s);
   }
 }
 function warUndo(s){
@@ -2431,6 +2554,7 @@ function warUndo(s){
     const d = s.currentTurnDarts.pop();
     warRevertDart(s, d);
     s.complete=false; s.winnerId=null; s.tied=null; s.finalCounts=null;
+    if(s.variant==='slots') slotsRecalc(s);
     return;
   }
   if(s.turnHistory.length===0) return;
@@ -2441,11 +2565,12 @@ function warUndo(s){
   const undone = lastTurn.darts[lastTurn.darts.length-1];
   warRevertDart(s, undone);
   s.complete=false; s.winnerId=null; s.tied=null; s.finalCounts=null;
+  if(s.variant==='slots') slotsRecalc(s);
 }
 function finishWarGame(s){
   let winnerName;
-  const hmb = s.variant==='hmb' || s.variant==='wacky';
-  const vname = s.variant==='hmb' ? 'Hit Me Baby One More Time' : s.variant==='wacky' ? 'Wacky Mode' : 'War';
+  const hmb = s.variant==='hmb' || s.variant==='wacky' || s.variant==='slots';
+  const vname = s.variant==='hmb' ? 'Hit Me Baby One More Time' : s.variant==='wacky' ? 'Wacky Mode' : s.variant==='slots' ? 'Slots' : 'War';
   if(s.tied){
     const names = s.tied.map(id=>{ const p=state.players.find(pp=>pp.id===id); return p?p.name:'Unknown'; });
     winnerName = 'Tie: '+names.join(' & ');
@@ -4853,6 +4978,11 @@ function botChooseWarTarget(s){
     }
     const key0 = keys[Math.floor(Math.random()*keys.length)];
     keys = [key0];
+  } else if(s.variant==='slots'){
+    const me = s.participants[s.currentIdx]; let best = null, bs = -1e9;
+    keys.forEach(k=>{ const sy = s.sym[k]; if(sy==='skull') return; const d = SLOT_BY[sy]; const tl = me.tally[sy]||0;
+      const sco = (tl+1)*0.5*d.val + (tl===me.need-1 ? d.val : 0) + Math.random()*0.01; if(sco>bs){ bs=sco; best=k; } });
+    keys = [best || keys[0]];
   } else if(s.variant==='wacky'){
     const top = Math.max(...keys.map(k=>s.wild[k].v));
     keys = keys.filter(k=>s.wild[k].v===top);
@@ -5061,6 +5191,7 @@ function removeDartFromCurrentTurn(index){
   } else if(camTurnIds.length) camTurnIds.splice(index, 1);
   const toReplay = s.currentTurnDarts.filter((d,i)=>i!==index).map(d=>({num:d._num, segType:d._segType}));
   if(s.variant==='wacky') window._wkReplay = s.currentTurnDarts.filter((d,i)=>i!==index && d.key).map(d=>d.wkVal);
+  if(s.variant==='slots') window._slReplay = s.currentTurnDarts.filter((d,i)=>i!==index && d.key).map(d=>d.slNew);
   while(s.currentTurnDarts.length>0){
     if(s.kind==='x01') x01Undo(s);
     else if(s.kind==='cricket') cricketUndo(s);
@@ -5071,7 +5202,7 @@ function removeDartFromCurrentTurn(index){
     if(d.segType===undefined) return; // untracked edge case (e.g. an off-number cricket "No Score") — nothing to replay
     if(d.segType==='miss' || d.num===null) recordMiss();
     else dispatchThrow(d.num, d.segType);
-  }); } finally { _callerMute = false; window._wkReplay = null; }
+  }); } finally { _callerMute = false; window._wkReplay = null; window._slReplay = null; }
   if(s.turnHitPoints) s.turnHitPoints = s.turnHitPoints.slice(0, s.currentTurnDarts.length);
   if(armFix) scanFix = armFix;
   else if(usingSingleCam() && state.settings.dartsCallerCameraMode){ state.scanFixStatus = 'No fix sent: that dart did not come from the camera'; state.scanFixAt = Date.now(); setTimeout(()=>{ try{ render(); }catch(e){} }, 6200); }
@@ -5812,6 +5943,7 @@ function gameNameFor(s){
   const GN = {cricket:'Cricket', atc:'Around the Clock', shanghai:'Shanghai', baseball:'Baseball', halveit:'Halve It', killer:'Killer', personalbest:'Personal Best', war:'War', callshot:'Call Your Shot'};
   if(s.variant==='hmb') return 'Hit Me Baby One More Time';
   if(s.variant==='wacky') return 'Wacky Mode';
+  if(s.variant==='slots') return 'Slots';
   if(s.kind==='x01') return s.startScore+'';
   if(s.kind==='custom') return s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':(s.cfg&&s.cfg.name)||'Custom';
   return GN[s.kind] || s.kind;
@@ -6018,6 +6150,7 @@ const RULES_TEXT = {
   killer: {goal:'Be the last player with lives left.', score:'Everyone has a number and a set number of lives. First, hit the double of your own number to become a killer. Once you are a killer, hitting an opponent\'s number takes a life from them.', win:'When everyone else is out of lives, you win.'},
   callshot: {goal:'Call a target, hit it, and make the others match you.', score:'On your turn, call a target and try to hit it with your darts. If you miss, the turn just passes on. If you hit it, each other player gets the same number of darts to hit the same target. Anyone who fails gets a letter.', win:'A player who spells the whole word is out. The last player left wins.'},
   personalbest: {goal:'Beat your own best round.', score:'Each round is three darts, and every dart adds its value (doubles and triples count). Your first round sets your best. After that, every round tries to beat it.', win:'Depends on the mode you picked: no winner (just chase your best), highest single round, or highest average.'},
+  slots: {goal:'Collect sets of matching symbols and be first to the target score.', score:'Every wedge shows a symbol. Hitting a wedge adds that symbol to your own card, and the wedge changes to a new random symbol. Collect three of the same symbol (or the number set for you) to close the set and score it. Cherries 5, lemons 10, bells 20, treasure chests 40, diamonds 75, lucky 7s 150. The rarest symbols are worth the most. A skull takes 20 points off, but never below zero. Doubles and triples count as one hit.', win:'When someone reaches the target, everyone finishes the round, then the highest score wins.'},
   wacky: {goal:'Be first to the target score while the board keeps changing.', score:'Every wedge keeps changing its value, from 10 up to 100 points, and some are negative. A dart scores whatever number its wedge shows at the moment it lands. Doubles and triples do not multiply. Negative values take points off, but your score never goes below zero.', win:'The first player to reach the target score wins.'},
   hmb: {goal:'Be first to the target score by hitting wedges that keep getting more valuable.', score:'Every wedge starts at 1. A dart scores the number showing on the wedge it lands in, then that wedge goes up by one for everybody. Doubles and triples do not multiply. Once a wedge has reached the highest value, the next hit scores it and the wedge is finished.', win:'First to the target score wins. If every wedge is finished first, the highest score wins.'},
   war: {goal:'Claim sections of the board by landing darts in them.', score:'There are no points. Wherever a dart lands, that section turns to your color, even if another player owned it. If Steal-Back Lock is on, a section you lose and win back is locked to you.', win:'The game ends when every section has been claimed. The player holding the most sections wins.'}
@@ -6025,6 +6158,7 @@ const RULES_TEXT = {
 function rulesIdForSession(s){
   if(s.variant==='hmb') return 'hmb';
   if(s.variant==='wacky') return 'wacky';
+  if(s.variant==='slots') return 'slots';
   const MAP = {cricket:'cricket', atc:'atc', shanghai:'shanghai', baseball:'baseball', halveit:'halveit', killer:'killer', callshot:'callshot', war:'war', personalbest:'personalbest'};
   if(s.kind==='x01') return s.startScore===301?'301':'501';
   if(s.kind==='custom') return s.builtinId || null;
@@ -6585,7 +6719,7 @@ function ensureGameOptionsInitialized(){
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
-    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed', wkSpeed:1,
+    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed', wkSpeed:1, slotsTarget:200, slotsNeed:{},
     ...remembered,
     _forGameId: state.pendingGameId,
   };
@@ -6612,6 +6746,7 @@ function warMiniBoard(mode){
   for(let i=0;i<20;i++) bands.forEach(b=>{ d += seg(i,b[0],b[1]); });
   return `<svg width="64" height="64" viewBox="-102 -102 204 204" style="flex:none;"><circle r="101" fill="#0A1424"/><path d="${d}" fill="#2A4470" stroke="#0A1424" stroke-width="1.2"/><circle r="8" fill="#2A4470"/></svg>`;
 }
+function setSlotsNeed(pid,n){ if(!state.gameOptions.slotsNeed) state.gameOptions.slotsNeed = {}; state.gameOptions.slotsNeed[pid] = n; render(); }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
 function setWarPlayerColor(playerId, color){
   if(!state.gameOptions.warPlayerColors) state.gameOptions.warPlayerColors = {};
@@ -6633,6 +6768,7 @@ function warForceNextPlayer(){
   s.turnHitPoints = [];
   s.currentIdx = (s.currentIdx+1) % s.participants.length;
   if(s.currentIdx===0) s.round++;
+  if(s.variant==='slots'){ slotsRoundEnd(s); if(s.complete){ finishWarGame(s); return; } }
   render();
 }
 // Prototype for 501/301 only — compact row showing the current choice,
@@ -7000,6 +7136,7 @@ const GAME_LAUNCHERS = {
   war: startWarSession,
   hmb: startHmbSession,
   wacky: startWackySession,
+  slots: startSlotsSession,
 };
 function launchGame(){
   const id = state.pendingGameId;
@@ -8262,6 +8399,37 @@ function renderGameOptionsBody(){
       <span class="field-label">Bull</span>
       <div class="gchip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
     </div>`;
+  } else if(id==='slots'){
+    if(o.ringMode==='all') o.ringMode='combined';
+    if(!o.slotsNeed) o.slotsNeed = {};
+    body += `
+    <div>
+      <span class="field-label">Score To Win</span>
+      <div class="gchip-wrap">${[150,200,300,400].map(n=>numChip(String(n),'slotsTarget',n)).join('')}</div>
+      <p class="info-note">200 takes about 13 rounds. When someone reaches the target, everyone finishes the round and the highest score wins.</p>
+    </div>
+    ${state.selectedPlayerIds.length ? `<div>
+      <span class="field-label">Symbols To Close A Set</span>
+      ${state.selectedPlayerIds.map(pid=>{
+        const p = state.players.find(pp=>pp.id===pid);
+        const cur = [2,4].includes(+o.slotsNeed[pid]) ? +o.slotsNeed[pid] : 3;
+        return `<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <div style="min-width:80px; color:var(--cream-dim); font-size:13px;">${p?p.name:pid}</div>
+          <div class="gchip-wrap" style="flex:1;">${[2,3,4].map(n=>`<span class="gchip ${cur===n?'selected':''}" onclick="setSlotsNeed('${pid}',${n})">${n}</span>`).join('')}</div>
+        </div>`;
+      }).join('')}
+      <p class="info-note">How many matching symbols close a set for each player. 3 is the normal game. Give a newer player 2 to even things out, since the game rewards aiming for the symbols you need.</p>
+    </div>` : ''}
+    <div>
+      <span class="field-label">Board Sections</span>
+      <div class="gchip-wrap">${chip('Whole Wedges','ringMode','combined')}${chip('Inside &amp; Outside','ringMode','split')}</div>
+      <p class="info-note">Doubles and triples count as one hit.</p>
+    </div>
+    <div>
+      <span class="field-label">Bull</span>
+      <div class="gchip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
+      <p class="info-note">Bull is just another symbol. Together is one symbol for the whole bull, and Both Required gives the inner and outer bull a symbol each.</p>
+    </div>`;
   } else if(id==='wacky'){
     if(o.ringMode==='all') o.ringMode='combined';
     body += `
@@ -8510,7 +8678,7 @@ const CALLER_EVENTS = [
   {id:'require', label:'You require N',              v:'Say the finish'},
   {id:'takeout', label:'Takeout (darts removed)',    s:'Ding'}
 ];
-const CALLER_SCOPES = [['all','All games (default)'],['x01','301 and 501'],['cricket','Cricket'],['atc','Around the Clock'],['shanghai','Shanghai'],['baseball','Baseball'],['highscore','High Score'],['countup','Count Up'],['halveit','Halve It'],['killer','Killer'],['callshot','Call Your Shot'],['personalbest','Personal Best'],['war','War'],['hmb','Hit Me Baby One More Time'],['wacky','Wacky Mode'],['custom','Custom games']];
+const CALLER_SCOPES = [['all','All games (default)'],['x01','301 and 501'],['cricket','Cricket'],['atc','Around the Clock'],['shanghai','Shanghai'],['baseball','Baseball'],['highscore','High Score'],['countup','Count Up'],['halveit','Halve It'],['killer','Killer'],['callshot','Call Your Shot'],['personalbest','Personal Best'],['war','War'],['hmb','Hit Me Baby One More Time'],['wacky','Wacky Mode'],['slots','Slots'],['custom','Custom games']];
 let _callerScope = 'all';
 function callerEvtCfg(){ const c = state.settings.callerEvents; return (c && typeof c === 'object') ? c : (state.settings.callerEvents = {all:{}, games:{}}); }
 function callerEvtValue(scope, evt, ch){
@@ -8542,7 +8710,7 @@ function callerScopeHasOverride(k){ const g = callerEvtCfg().games; return !!(g 
 function renderCallerEvents(){
   const sc = _callerScope, voiceGame = (sc === 'all' || sc === 'x01');
   const sw = (evt, ch) => `<button class="sw ${callerEvtValue(sc, evt, ch) ? 'on' : ''}" aria-label="${evt} ${ch==='v'?'voice':'sound'}" onclick="callerToggleEvt('${evt}','${ch}')"></button>`;
-  const rows = CALLER_EVENTS.filter(e => !((sc==='war'||sc==='hmb'||sc==='wacky') && e.id==='dart')).map(e => `<div class="ce-row"><div class="ce-name">${e.label}</div>
+  const rows = CALLER_EVENTS.filter(e => !((sc==='war'||sc==='hmb'||sc==='wacky'||sc==='slots') && e.id==='dart')).map(e => `<div class="ce-row"><div class="ce-name">${e.label}</div>
       <div class="ce-cell">${e.v ? (voiceGame ? `<span class="ce-lab">${e.v}</span>${sw(e.id,'v')}` : '<span class="ce-lab dim">no voice yet</span>') : ''}</div>
       <div class="ce-cell">${e.s ? `<span class="ce-lab">${e.s}</span>${sw(e.id,'s')}` : ''}</div></div>`).join('');
   return `<div class="ce-card">
@@ -8553,7 +8721,7 @@ function renderCallerEvents(){
     <p class="info-note" style="margin:6px 0 8px 0;">${sc==='all' ? 'These apply to every game unless a game below has its own.' : 'Only what you change here is special for this game. The rest follows All games.'}</p>
     <div class="ce-head"><span></span><span>Voice</span><span>Sound</span></div>
     ${rows}
-    ${(sc==='war'||sc==='hmb'||sc==='wacky') ? renderWarSfxCard() : ''}
+    ${(sc==='war'||sc==='hmb'||sc==='wacky'||sc==='slots') ? renderWarSfxCard() : ''}
     <div class="ce-timing"><span class="field-label">Dart call timing</span>
       <div class="chip-wrap"><button class="chip ${!state.settings.callerAfterThud?'on':''}" onclick="state.settings.callerAfterThud=false; persistState(); render();">With the thud</button><button class="chip ${state.settings.callerAfterThud?'on':''}" onclick="state.settings.callerAfterThud=true; persistState(); render();">After the thud</button></div></div>
     <div class="cam-menu-btns" style="margin-top:10px;"><div class="tiny-edit-btn" onclick="callerTest()">Test</div><div class="tiny-edit-btn" onclick="callerResetScope()">${sc==='all'?'Reset all to defaults':'Use the default for this game'}</div></div>
@@ -10694,6 +10862,7 @@ function renderWarBoard(s){
   let fills = '', labels = '', hatch = '', hmbNums = '';
   const HMB = s.variant==='hmb';
   const WK = s.variant==='wacky';
+  const SL = s.variant==='slots';
   const m = s.ringMode;
   const sfx = (inner, ring)=> m==='all' ? ({0:'is',1:'t',2:'os',3:'d'}[inner]) : (m==='split' ? (ring==='outer'?'o':'i') : '');
   const bands = [
@@ -10714,6 +10883,14 @@ function renderWarBoard(s){
       let col = claimed ? warColorFor(s,owner) : WAR_NEUTRAL;
       let fill = claimed ? ((bd.rg && m!=='all') ? dtFill : warColorFor(s,owner)) : (bd.rg ? dtFill : '#151c30');
       const d = wedgePath(cx,cy,bd.r1,bd.r2,aStart,aEnd);
+      if(SL){
+        const sd = SLOT_BY[s.sym[key]];
+        claimed = true; col = sd.color; fill = bd.rg ? dtFill : slotMix(sd.color, 0.4);
+        if(!bd.rg && (m==='split' || bd.ring==='outer')){
+          const rm = (bd.r1+bd.r2)/2, mp = polar(cx,cy,rm,(aFull1+aFull2)/2);
+          hmbNums += slotIconG(sd.id, mp[0], mp[1], 1.2);
+        }
+      }
       if(WK){
         const hv = s.wild[key].v; const hc = wackyColor(hv);
         claimed = true; col = hc[0]; fill = bd.rg ? dtFill : hc[0];
@@ -10767,7 +10944,7 @@ function renderWarBoard(s){
   const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, 'recordMiss()')"/>
-    ${warDefs}${fills}${bullMarkup}${HMB?hmbBullMarkup(s):''}${WK?wackyBullMarkup(s):''}${warBullHatch(s)}${hatch}${hmbNums}${labels}${missLabel}
+    ${warDefs}${fills}${bullMarkup}${HMB?hmbBullMarkup(s):''}${WK?wackyBullMarkup(s):''}${SL?slotsBullMarkup(s):''}${warBullHatch(s)}${hatch}${hmbNums}${labels}${missLabel}
   </svg>`;
 }
 function hmbBullMarkup(s){
@@ -10804,7 +10981,8 @@ function warBullHatch(s){
   return out;
 }
 function renderWarPlayerBoxes(s){
-  const HMB = s.variant==='hmb' || s.variant==='wacky';
+  const HMB = s.variant==='hmb' || s.variant==='wacky' || s.variant==='slots';
+  const SLV = s.variant==='slots';
   const total = Object.keys(s.sections).length;
   const sections = s.participants.map((p,i)=>{
     const count = HMB ? (p.score||0) : Object.values(s.sections).filter(v=>v===i).length;
@@ -10817,7 +10995,7 @@ function renderWarPlayerBoxes(s){
       if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
       const rowClass = d.hitTarget===true ? ' hit-target' : (d.hitTarget===false ? ' miss' : '');
       const fromP = (d.stolenFrom!=null && s.participants[d.stolenFrom]) ? s.participants[d.stolenFrom] : null;
-      const note = HMB ? (d.wk ? `<span style="color:${d.wkVal<0?'#f87171':'#4ade80'};">${wackyLabel(d.wkVal)}</span>` : d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : ''].filter(Boolean).join(' &middot; ');
+      const note = HMB ? (d.sl ? slotsNote(d) : d.wk ? `<span style="color:${d.wkVal<0?'#f87171':'#4ade80'};">${wackyLabel(d.wkVal)}</span>` : d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : ''].filter(Boolean).join(' &middot; ');
       return `<div class="turn-dart-row${rowClass}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val" style="font-family:'Oswald',sans-serif; font-size:13px; font-weight:600; text-align:right;">${note}</div></div>`;
     }).join('') : '';
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
@@ -10826,6 +11004,7 @@ function renderWarPlayerBoxes(s){
         <div class="ps-name">${plainPlayerName(p.playerId)}${(s.lockMode==='stealback' && s.locks && Object.values(s.locks).filter(v=>v===i).length) ? ` <span style="font-size:11px; color:var(--cream-dim); font-weight:500;">&middot; ${Object.values(s.locks).filter(v=>v===i).length} locked</span>` : ''}</div>
         <div class="ps-score" style="color:${warColorFor(s,i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${HMB ? (s.target? count+'/'+s.target : count) : count+'/'+total}</div>
       </div>
+      ${SLV ? slotsCardHtml(s,i) : ''}
       ${isCurrent ? `<div class="ps-body">${rows}</div>` : ''}
     </div>`;
   }).join('');
@@ -10835,10 +11014,11 @@ function renderWarPlayerBoxes(s){
   return `<div class="panel-zone-players">
     <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
     <div class="player-sections">${sections}</div>
+    ${SLV ? slotsLegendHtml(s) : ''}
   </div>`;
 }
 function renderWarActiveShell(s){
-  return `${renderGameTopBar(s,s.variant==='hmb'?'Hit Me Baby One More Time':s.variant==='wacky'?'Wacky Mode':'War')}
+  return `${renderGameTopBar(s,s.variant==='hmb'?'Hit Me Baby One More Time':s.variant==='wacky'?'Wacky Mode':s.variant==='slots'?'Slots':'War')}
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderWarBoard(s)}</div></div>
   ${gameOverlays(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
