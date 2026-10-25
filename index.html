@@ -1145,7 +1145,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.8b THREE-HIT LOCK';
+const BUILD_STAMP = 'v9.8c HIT COUNTS OPTION';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -2155,7 +2155,7 @@ function startWarSession(playerIds, opts){
   else if(bullMode==='together'){ sections['B'] = null; }
   // bullMode 'none' — Bull simply isn't part of the sections map at all.
   return {
-    kind:'war', bullMode, ringMode, lockMode, locks:{}, held:{}, hits:{},
+    kind:'war', bullMode, ringMode, lockMode, locks:{}, held:{}, hits:{}, showHits: !!(opts && opts.showHits),
     participants: playerIds.map(pid=>({playerId:pid, color: customColors[pid]||null})),
     sections, currentIdx:0, round:1,
     currentTurnDarts:[], turnHistory:[],
@@ -6072,7 +6072,7 @@ function renderHomeConfirmModal(s){
    Opens the same options screen the game was set up with. Changes to rules that can safely change
    mid-game (finishing rule, checkout hints, War steal-back lock) apply right away and scores are kept.
    Anything else (start score, players' target setup, ring mode ...) needs a restart, which is offered. */
-const LIVE_OPT_KEYS = ['outRule','guidance','lockMode','wkSpeed'];
+const LIVE_OPT_KEYS = ['outRule','guidance','lockMode','wkSpeed','showHits'];
 function liveOptsRestore(){
   const sv = state.liveOptsSaved;
   if(sv){ state.pendingGameId = sv.pendingGameId; state.gameOptions = sv.gameOptions; state.pendingCustomGame = sv.pendingCustomGame; }
@@ -6098,7 +6098,7 @@ function liveOptsChanges(){
   });
   return {live, restart};
 }
-const LIVE_OPT_NAMES = {outRule:'Finishing rule', guidance:'Checkout hints', lockMode:'Locked sections', startScore:'Start score', inRule:'Entering in', bullMode:'Bull', ringMode:'Sections', rounds:'Rounds', variant:'Variant', wkSpeed:'Board speed'};
+const LIVE_OPT_NAMES = {outRule:'Finishing rule', guidance:'Checkout hints', lockMode:'Locked sections', startScore:'Start score', inRule:'Entering in', bullMode:'Bull', ringMode:'Sections', rounds:'Rounds', variant:'Variant', wkSpeed:'Board speed', showHits:'Hit counts'};
 function applyLiveOptions(){
   const s = state.session, L = s && s._launch;
   if(!L) return closeLiveOptions();
@@ -6746,7 +6746,7 @@ function ensureGameOptionsInitialized(){
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
-    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed', wkSpeed:1, slotsTarget:200, slotsNeed:{},
+    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed', wkSpeed:1, slotsTarget:200, slotsNeed:{}, showHits:false,
     ...remembered,
     _forGameId: state.pendingGameId,
   };
@@ -8504,9 +8504,14 @@ function renderGameOptionsBody(){
       <div class="option-legend">
         <div class="leg-item ${o.lockMode!=='stealback'&&o.lockMode!=='threehit'?'active-leg':''}"><b>Off</b> &mdash; any section can always be taken again (the classic game).</div>
         <div class="leg-item ${o.lockMode==='stealback'?'active-leg':''}"><b>Steal-Back Lock</b> &mdash; if you lose a section and then win it back, it locks to you. A locked section is dimmed with a bold border in its owner's colour, nobody can take it again, and darts that land on it score nothing.</div>
-        <div class="leg-item ${o.lockMode==='threehit'?'active-leg':''}"><b>Three-Hit Lock</b> &mdash; every player keeps a count of how many times they have hit each section, shown as a small coloured circle on the board. The section's colour shows who is ahead, meaning who has hit it the most. A tie stays with whoever was ahead first. Whoever hits a section three times first locks it for good. The game only ends when the whole board is locked, and whoever locked the most sections wins.</div>
+        <div class="leg-item ${o.lockMode==='threehit'?'active-leg':''}"><b>Three-Hit Lock</b> &mdash; every player keeps a count of how many times they have hit each section. The section's colour shows who is ahead, meaning who has hit it the most. A tie stays with whoever was ahead first. Whoever hits a section three times first locks it for good. The game only ends when the whole board is locked, and whoever locked the most sections wins.</div>
       </div>
     </div>
+    ${o.lockMode==='threehit' ? `<div>
+      <span class="field-label">Hit Counts On The Board</span>
+      <div class="gchip-wrap">${boolChip('Hidden','showHits',false)}${boolChip('Shown','showHits',true)}</div>
+      <p class="info-note">Shown puts a small circle on each section for every player who has hit it, with their number of hits. Hidden keeps the board clean, and the section colour still shows who is ahead. You can also change this during a game from the game menu.</p>
+    </div>` : ''}
     <div>
       <span class="field-label">Bull</span>
       <div class="gchip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
@@ -10940,7 +10945,7 @@ function renderWarBoard(s){
       fills += `<path d="${d}" fill="${fill}" stroke="${col}" stroke-width="${claimed?2:1}" class="board-seg${WK?' wk-anim':''}" ${WK?`data-wk="${key}" data-rg="${bd.rg?1:0}"`:''} data-num="${num}" data-seg="${bd.seg}" data-ring="${bd.ring}" style="cursor:pointer;"/>`;
       if(s.locks && s.locks[key]!==undefined) hatch += `<path d="${d}" fill="rgba(12,18,34,0.78)" style="pointer-events:none;"/><path d="${d}" fill="none" stroke="${col}" stroke-width="3.4" style="pointer-events:none;"/>`;
     });
-    if(s.lockMode==='threehit' && s.hits){
+    if(s.lockMode==='threehit' && s.hits && s.showHits){
       bands.forEach(bd=>{
         if(bd.rg || (m==='combined' && bd.ring!=='outer')) return;
         const key = String(num) + bd.k;
@@ -11018,7 +11023,7 @@ function hmbBullMarkup(s){
   return out;
 }
 function warBullDots(s){
-  if(s.lockMode!=='threehit' || !s.hits) return '';
+  if(s.lockMode!=='threehit' || !s.hits || !s.showHits) return '';
   const cx=BOARD_CX, cy=BOARD_CY; let out = '';
   const row = (k,y)=>{
     if(!s.hits[k] || (s.locks && s.locks[k]!==undefined)) return;
@@ -11057,7 +11062,7 @@ function renderWarPlayerBoxes(s){
       if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
       const rowClass = d.hitTarget===true ? ' hit-target' : (d.hitTarget===false ? ' miss' : '');
       const fromP = (d.stolenFrom!=null && s.participants[d.stolenFrom]) ? s.participants[d.stolenFrom] : null;
-      const note = HMB ? (d.sl ? slotsNote(d) : d.wk ? `<span style="color:${d.wkVal<0?'#f87171':'#4ade80'};">${wackyLabel(d.wkVal)}</span>` : d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : '', (d.hitN && !d.lockedNow) ? `<span style="color:var(--cream-dim);">${d.hitN}/3</span>` : ''].filter(Boolean).join(' &middot; ');
+      const note = HMB ? (d.sl ? slotsNote(d) : d.wk ? `<span style="color:${d.wkVal<0?'#f87171':'#4ade80'};">${wackyLabel(d.wkVal)}</span>` : d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : '', (d.hitN && !d.lockedNow && s.showHits) ? `<span style="color:var(--cream-dim);">${d.hitN}/3</span>` : ''].filter(Boolean).join(' &middot; ');
       return `<div class="turn-dart-row${rowClass}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val" style="font-family:'Oswald',sans-serif; font-size:13px; font-weight:600; text-align:right;">${note}</div></div>`;
     }).join('') : '';
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
