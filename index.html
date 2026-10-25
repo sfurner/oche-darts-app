@@ -1108,7 +1108,7 @@ const GAMES = [
   {id:'war', name:'War', desc:'No targets, no assignments — claim territory wherever you land.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
     goal:'Every wedge on the board (plus Inner and Outer Bull) starts unclaimed. Wherever your darts land, that section becomes yours — even if someone else already claimed it.',
     score:'There\'s no score to track, just territory. Landing on any section, claimed or not, flips it to your color.',
-    win:'The instant every section on the board has been claimed by someone, the game ends immediately. Whoever holds the most sections wins — ties are possible. Options: Whole Wedges (20 sections), Inside & Outside (40) or Master Mode (80: inner single, triple, outer single and double are each a section). With Steal-Back Lock on, a section you lose and win back locks to you for good.'},
+    win:'The instant every section on the board has been claimed by someone, the game ends immediately. Whoever holds the most sections wins — ties are possible. Options: Whole Wedges (20 sections), Inside & Outside (40) or Master Mode (80: inner single, triple, outer single and double are each a section). With Steal-Back Lock on, a section you lose and win back locks to you for good. With Three-Hit Lock on, a section takes the colour of whoever has hit it the most, the first player to hit a section three times locks it, and the game only ends when the whole board is locked: most locked sections wins.'},
 ];
 
 const PRACTICES = [
@@ -1145,7 +1145,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.8a SLOTS';
+const BUILD_STAMP = 'v9.8b THREE-HIT LOCK';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -2139,7 +2139,7 @@ function warColorFor(s, idx){
 function startWarSession(playerIds, opts){
   const bullMode = (opts && opts.bullMode) || 'separate';
   const ringMode = (opts && opts.ringMode)==='split' ? 'split' : ((opts && opts.ringMode)==='all' ? 'all' : 'combined');
-  const lockMode = (opts && opts.lockMode)==='stealback' ? 'stealback' : 'off';
+  const lockMode = (opts && opts.lockMode)==='stealback' ? 'stealback' : ((opts && opts.lockMode)==='threehit' ? 'threehit' : 'off');
   const customColors = (opts && opts.warPlayerColors) || {};
   const sections = {};
   // 'split' gives every number two sections: the inner wedge (bull out to the
@@ -2155,7 +2155,7 @@ function startWarSession(playerIds, opts){
   else if(bullMode==='together'){ sections['B'] = null; }
   // bullMode 'none' — Bull simply isn't part of the sections map at all.
   return {
-    kind:'war', bullMode, ringMode, lockMode, locks:{}, held:{},
+    kind:'war', bullMode, ringMode, lockMode, locks:{}, held:{}, hits:{},
     participants: playerIds.map(pid=>({playerId:pid, color: customColors[pid]||null})),
     sections, currentIdx:0, round:1,
     currentTurnDarts:[], turnHistory:[],
@@ -2187,6 +2187,17 @@ function warSectionKey(s, num, segType, ring){
   return segType==='bull' ? 'IB' : 'OB';
 }
 function warCheckWin(s){
+  if(s.lockMode==='threehit'){
+    const keys = Object.keys(s.sections);
+    if(!keys.every(k=>s.locks && s.locks[k]!==undefined)) return;
+    const cnt = s.participants.map((p,i)=>keys.filter(k=>s.locks[k]===i).length);
+    const mx = Math.max(...cnt);
+    const wn = s.participants.filter((p,i)=>cnt[i]===mx);
+    s.complete = true; s.finalCounts = cnt;
+    if(wn.length===1){ s.winnerId = wn[0].playerId; s.tied = null; }
+    else { s.winnerId = null; s.tied = wn.map(p=>p.playerId); }
+    return;
+  }
   if(!Object.values(s.sections).every(v=>v!==null)) return;
   const counts = s.participants.map((p,i)=>Object.values(s.sections).filter(v=>v===i).length);
   const max = Math.max(...counts);
@@ -2213,6 +2224,7 @@ function warRevertDart(s, d){
     if(d.lockedNow && s.locks) delete s.locks[d.key];
     return;
   }
+  if(d.hitCounted && s.hits && s.hits[d.key]) s.hits[d.key][d.hitIdx] = Math.max(0, (s.hits[d.key][d.hitIdx]||0) - 1);
   s.sections[d.key] = d.prevOwner;
   if(d.lockedNow && s.locks) delete s.locks[d.key];
   if(d.heldAdded!==null && d.heldAdded!==undefined && s.held && s.held[d.key]){
@@ -2242,7 +2254,7 @@ function warApplyDart(s, num, segType){
   const prevOwner = s.sections[key];
   const rec = {label, key, prevOwner, hitTarget:true, heldAdded:null, lockedNow:false};
   if(prevOwner!==s.currentIdx && prevOwner!==null && prevOwner!==undefined) rec.stolenFrom = prevOwner;
-  if(prevOwner!==s.currentIdx){
+  if(prevOwner!==s.currentIdx && s.lockMode!=='threehit'){
     s.sections[key] = s.currentIdx;
     // Steal-back lock: take a section from someone, and if you held it before and lost it,
     // it locks to you for the rest of the game.
@@ -2253,6 +2265,21 @@ function warApplyDart(s, num, segType){
       if(!h.includes(prevOwner)){ h.push(prevOwner); rec.heldAdded = prevOwner; }
       if(h.includes(s.currentIdx)){ s.locks[key] = s.currentIdx; rec.lockedNow = true; }
     }
+  }
+  if(s.lockMode==='threehit'){
+    if(!s.hits) s.hits = {};
+    const hh = s.hits[key] || (s.hits[key] = []);
+    hh[s.currentIdx] = (hh[s.currentIdx]||0) + 1;
+    rec.hitCounted = true; rec.hitIdx = s.currentIdx; rec.hitN = hh[s.currentIdx];
+    // Colour follows whoever has hit the section most. A tie stays with whoever already holds it.
+    delete rec.stolenFrom;
+    let top = -1, topIdx = null; hh.forEach((c,i)=>{ if((c||0)>top){ top = c||0; topIdx = i; } });
+    const tied = hh.filter(c=>(c||0)===top).length>1;
+    let owner = prevOwner;
+    if(!tied) owner = topIdx; else if(prevOwner===null || prevOwner===undefined) owner = s.currentIdx;
+    s.sections[key] = owner;
+    if(owner!==prevOwner && prevOwner!==null && prevOwner!==undefined) rec.stolenFrom = prevOwner;
+    if(rec.hitN>=3){ s.locks[key] = s.currentIdx; s.sections[key] = s.currentIdx; rec.lockedNow = true; }
   }
   s.currentTurnDarts.push(rec);
   warCheckWin(s);
@@ -2581,7 +2608,7 @@ function finishWarGame(s){
   buildAndShowReview({
     type: vname, gameType: s.variant||'war', name: vname,
     winnerId: s.winnerId, winnerName,
-    detail: hmb ? ('Scored '+Math.max(...s.participants.map(p=>p.score||0))+' points'+(s.target?' (target '+s.target+')':'')+'.') : 'Claimed the most territory once every section was taken.',
+    detail: s.lockMode==='threehit' ? 'Locked the most sections once the whole board was locked.' : hmb ? ('Scored '+Math.max(...s.participants.map(p=>p.score||0))+' points'+(s.target?' (target '+s.target+')':'')+'.') : 'Claimed the most territory once every section was taken.',
     participantIds: s.participants.map(p=>p.playerId), throwCounts: participantThrowCounts(s), session:s,
   });
 }
@@ -6153,7 +6180,7 @@ const RULES_TEXT = {
   slots: {goal:'Collect sets of matching symbols and be first to the target score.', score:'Every wedge shows a symbol. Hitting a wedge adds that symbol to your own card, and the wedge changes to a new random symbol. Collect three of the same symbol (or the number set for you) to close the set and score it. Cherries 5, lemons 10, bells 20, treasure chests 40, diamonds 75, lucky 7s 150. The rarest symbols are worth the most. A skull takes 20 points off, but never below zero. Doubles and triples count as one hit.', win:'When someone reaches the target, everyone finishes the round, then the highest score wins.'},
   wacky: {goal:'Be first to the target score while the board keeps changing.', score:'Every wedge keeps changing its value, from 10 up to 100 points, and some are negative. A dart scores whatever number its wedge shows at the moment it lands. Doubles and triples do not multiply. Negative values take points off, but your score never goes below zero.', win:'The first player to reach the target score wins.'},
   hmb: {goal:'Be first to the target score by hitting wedges that keep getting more valuable.', score:'Every wedge starts at 1. A dart scores the number showing on the wedge it lands in, then that wedge goes up by one for everybody. Doubles and triples do not multiply. Once a wedge has reached the highest value, the next hit scores it and the wedge is finished.', win:'First to the target score wins. If every wedge is finished first, the highest score wins.'},
-  war: {goal:'Claim sections of the board by landing darts in them.', score:'There are no points. Wherever a dart lands, that section turns to your color, even if another player owned it. If Steal-Back Lock is on, a section you lose and win back is locked to you.', win:'The game ends when every section has been claimed. The player holding the most sections wins.'}
+  war: {goal:'Claim sections of the board by landing darts in them.', score:'There are no points. Wherever a dart lands, that section turns to your color, even if another player owned it. If Steal-Back Lock is on, a section you lose and win back is locked to you. If Three-Hit Lock is on, the first player to hit a section three times locks it.', win:'The game ends when every section has been claimed. The player holding the most sections wins. With Three-Hit Lock, the game ends only when every section is locked, and the player with the most locked sections wins.'}
 };
 function rulesIdForSession(s){
   if(s.variant==='hmb') return 'hmb';
@@ -8473,10 +8500,11 @@ function renderGameOptionsBody(){
     </div>
     <div>
       <span class="field-label">Locked Sections</span>
-      <div class="gchip-wrap">${chip('Off','lockMode','off')}${chip('Steal-Back Lock','lockMode','stealback')}</div>
+      <div class="gchip-wrap">${chip('Off','lockMode','off')}${chip('Steal-Back Lock','lockMode','stealback')}${chip('Three-Hit Lock','lockMode','threehit')}</div>
       <div class="option-legend">
-        <div class="leg-item ${o.lockMode!=='stealback'?'active-leg':''}"><b>Off</b> &mdash; any section can always be taken again (the classic game).</div>
+        <div class="leg-item ${o.lockMode!=='stealback'&&o.lockMode!=='threehit'?'active-leg':''}"><b>Off</b> &mdash; any section can always be taken again (the classic game).</div>
         <div class="leg-item ${o.lockMode==='stealback'?'active-leg':''}"><b>Steal-Back Lock</b> &mdash; if you lose a section and then win it back, it locks to you. A locked section is dimmed with a bold border in its owner's colour, nobody can take it again, and darts that land on it score nothing.</div>
+        <div class="leg-item ${o.lockMode==='threehit'?'active-leg':''}"><b>Three-Hit Lock</b> &mdash; every player keeps a count of how many times they have hit each section, shown as a small coloured circle on the board. The section's colour shows who is ahead, meaning who has hit it the most. A tie stays with whoever was ahead first. Whoever hits a section three times first locks it for good. The game only ends when the whole board is locked, and whoever locked the most sections wins.</div>
       </div>
     </div>
     <div>
@@ -10912,6 +10940,27 @@ function renderWarBoard(s){
       fills += `<path d="${d}" fill="${fill}" stroke="${col}" stroke-width="${claimed?2:1}" class="board-seg${WK?' wk-anim':''}" ${WK?`data-wk="${key}" data-rg="${bd.rg?1:0}"`:''} data-num="${num}" data-seg="${bd.seg}" data-ring="${bd.ring}" style="cursor:pointer;"/>`;
       if(s.locks && s.locks[key]!==undefined) hatch += `<path d="${d}" fill="rgba(12,18,34,0.78)" style="pointer-events:none;"/><path d="${d}" fill="none" stroke="${col}" stroke-width="3.4" style="pointer-events:none;"/>`;
     });
+    if(s.lockMode==='threehit' && s.hits){
+      bands.forEach(bd=>{
+        if(bd.rg || (m==='combined' && bd.ring!=='outer')) return;
+        const key = String(num) + bd.k;
+        if(!s.hits[key] || (s.locks && s.locks[key]!==undefined)) return;
+        const pl = []; s.hits[key].forEach((c,pi)=>{ if(c>0) pl.push([pi,c]); });
+        if(!pl.length) return;
+        const am = (aFull1+aFull2)/2, rmid = (bd.r1+bd.r2)/2;
+        pl.forEach((e,j)=>{
+          let pt;
+          if(bd.ring==='outer'){ // side by side across the wedge
+            const sp = pl.length>1 ? Math.min(21, (rmid*14*Math.PI/180)/(pl.length-1)) : 0;
+            pt = polar(cx,cy, rmid, am + (j-(pl.length-1)/2)*(sp/rmid)*57.2958);
+          } else { // inner band: one above the other
+            const span = bd.r2 - bd.r1 - 44, sp = pl.length>1 ? Math.min(19, span/(pl.length-1)) : 0;
+            pt = polar(cx,cy, bd.r1 + 26 + j*sp, am);
+          }
+          hmbNums += `<circle cx="${pt[0]}" cy="${pt[1]}" r="9" fill="${warColorFor(s,e[0])}" stroke="#0b1020" stroke-width="1.5" style="pointer-events:none;"/><text x="${pt[0]}" y="${pt[1]}" fill="#fff" stroke="#0b1020" stroke-width="2.2" paint-order="stroke" font-family="Oswald,sans-serif" font-size="12" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${e[1]}</text>`;
+        });
+      });
+    }
     const lp = polar(cx,cy,R_NUMBER_LABEL,(aFull1+aFull2)/2);
     labels += `<text x="${lp[0]}" y="${lp[1]}" fill="var(--cream)" font-family="Oswald,sans-serif" font-size="25" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${num}</text>`;
   }
@@ -10944,7 +10993,7 @@ function renderWarBoard(s){
   const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, 'recordMiss()')"/>
-    ${warDefs}${fills}${bullMarkup}${HMB?hmbBullMarkup(s):''}${WK?wackyBullMarkup(s):''}${SL?slotsBullMarkup(s):''}${warBullHatch(s)}${hatch}${hmbNums}${labels}${missLabel}
+    ${warDefs}${fills}${bullMarkup}${HMB?hmbBullMarkup(s):''}${WK?wackyBullMarkup(s):''}${SL?slotsBullMarkup(s):''}${warBullHatch(s)}${hatch}${hmbNums}${warBullDots(s)}${labels}${missLabel}
   </svg>`;
 }
 function hmbBullMarkup(s){
@@ -10966,6 +11015,19 @@ function hmbBullMarkup(s){
     const op = polar(cx,cy,(R_BULL_INNER+R_BULL_OUTER)/2,0);
     out += `<text x="${op[0]}" y="${op[1]}" fill="${ho[1]}" font-family="Oswald,sans-serif" font-size="11" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${s.locks&&s.locks['OB']!==undefined?'&#10003;':s.vals['OB']}</text>`;
   }
+  return out;
+}
+function warBullDots(s){
+  if(s.lockMode!=='threehit' || !s.hits) return '';
+  const cx=BOARD_CX, cy=BOARD_CY; let out = '';
+  const row = (k,y)=>{
+    if(!s.hits[k] || (s.locks && s.locks[k]!==undefined)) return;
+    const pl = []; s.hits[k].forEach((c,pi)=>{ if(c>0) pl.push([pi,c]); });
+    pl.forEach((e,j)=>{ const x = cx + (j-(pl.length-1)/2)*13;
+      out += `<circle cx="${x}" cy="${y}" r="6" fill="${warColorFor(s,e[0])}" stroke="#0b1020" stroke-width="1.2" style="pointer-events:none;"/><text x="${x}" y="${y}" fill="#fff" stroke="#0b1020" stroke-width="1.8" paint-order="stroke" font-family="Oswald,sans-serif" font-size="8.5" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${e[1]}</text>`; });
+  };
+  if(s.bullMode==='together') row('B', cy);
+  else if(s.bullMode==='separate'){ row('IB', cy); row('OB', cy-(R_BULL_INNER+R_BULL_OUTER)/2); }
   return out;
 }
 function warBullHatch(s){
@@ -10995,14 +11057,14 @@ function renderWarPlayerBoxes(s){
       if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
       const rowClass = d.hitTarget===true ? ' hit-target' : (d.hitTarget===false ? ' miss' : '');
       const fromP = (d.stolenFrom!=null && s.participants[d.stolenFrom]) ? s.participants[d.stolenFrom] : null;
-      const note = HMB ? (d.sl ? slotsNote(d) : d.wk ? `<span style="color:${d.wkVal<0?'#f87171':'#4ade80'};">${wackyLabel(d.wkVal)}</span>` : d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : ''].filter(Boolean).join(' &middot; ');
+      const note = HMB ? (d.sl ? slotsNote(d) : d.wk ? `<span style="color:${d.wkVal<0?'#f87171':'#4ade80'};">${wackyLabel(d.wkVal)}</span>` : d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : '', (d.hitN && !d.lockedNow) ? `<span style="color:var(--cream-dim);">${d.hitN}/3</span>` : ''].filter(Boolean).join(' &middot; ');
       return `<div class="turn-dart-row${rowClass}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val" style="font-family:'Oswald',sans-serif; font-size:13px; font-weight:600; text-align:right;">${note}</div></div>`;
     }).join('') : '';
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
       <div class="ps-header">
         <div class="ps-avatar" style="background:${warColorFor(s,i)}; color:#1c1c1c;">${playerEmojiOrInitials(p.playerId)}</div>
         <div class="ps-name">${plainPlayerName(p.playerId)}${(s.lockMode==='stealback' && s.locks && Object.values(s.locks).filter(v=>v===i).length) ? ` <span style="font-size:11px; color:var(--cream-dim); font-weight:500;">&middot; ${Object.values(s.locks).filter(v=>v===i).length} locked</span>` : ''}</div>
-        <div class="ps-score" style="color:${warColorFor(s,i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${HMB ? (s.target? count+'/'+s.target : count) : count+'/'+total}</div>
+        <div class="ps-score" style="color:${warColorFor(s,i)}; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:16px;">${HMB ? (s.target? count+'/'+s.target : count) : (s.lockMode==='threehit' ? Object.values(s.locks||{}).filter(v=>v===i).length+'/'+total : count+'/'+total)}</div>
       </div>
       ${SLV ? slotsCardHtml(s,i) : ''}
       ${isCurrent ? `<div class="ps-body">${rows}</div>` : ''}
