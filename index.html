@@ -160,6 +160,13 @@ body{
 .war-ctrl-btn.leave{ border-color:var(--red); color:#e08a7d; }
 .war-ctrl-btn.disabled{ opacity:0.35; cursor:default; }
 .wk-anim{ transition: fill .16s ease-out, stroke .16s ease-out; }
+@keyframes lkpop{ 0%{transform:scale(1) rotate(0)} 25%{transform:scale(1.16) rotate(-4deg)} 50%{transform:scale(.95) rotate(3deg)} 75%{transform:scale(1.05) rotate(-1.5deg)} 100%{transform:scale(1) rotate(0)} }
+.lockfx-pop{ transform-box:fill-box; transform-origin:center; animation:lkpop .65s ease-out; }
+@keyframes lkflash{ 0%{opacity:.9} 100%{opacity:0} }
+.lockfx-flash{ opacity:0; animation:lkflash .75s ease-out; }
+@keyframes lkp{ 0%{transform:translate(0,0) scale(1); opacity:1} 100%{transform:translate(var(--dx),var(--dy)) scale(.3); opacity:0} }
+.lockfx-p{ opacity:0; animation:lkp .85s ease-out; }
+@media (prefers-reduced-motion: reduce){ .lockfx-pop,.lockfx-flash,.lockfx-p{ animation:none; } }
 .panel-controls .btn-undo, .panel-controls .btn-leave{ flex:1; border-radius:8px; padding:11px 0; text-align:center; font-size:12px; font-weight:600; cursor:pointer; border:1px solid; letter-spacing:0.02em; }
 .header-action-btn{ background:var(--felt-light); border:1px solid var(--felt-lighter); color:var(--cream-dim); border-radius:8px; padding:6px 10px; font-size:11px; font-weight:600; font-family:'Inter',sans-serif; cursor:pointer; white-space:nowrap; }
 .header-action-btn:active{ transform:scale(0.96); }
@@ -1108,7 +1115,7 @@ const GAMES = [
   {id:'war', name:'War', desc:'No targets, no assignments — claim territory wherever you land.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
     goal:'Every wedge on the board (plus Inner and Outer Bull) starts unclaimed. Wherever your darts land, that section becomes yours — even if someone else already claimed it.',
     score:'There\'s no score to track, just territory. Landing on any section, claimed or not, flips it to your color.',
-    win:'The instant every section on the board has been claimed by someone, the game ends immediately. Whoever holds the most sections wins — ties are possible. Options: Whole Wedges (20 sections), Inside & Outside (40) or Master Mode (80: inner single, triple, outer single and double are each a section). With Steal-Back Lock on, a section you lose and win back locks to you for good. With Three-Hit Lock on, a section takes the colour of whoever has hit it the most, the first player to hit a section three times locks it, and the game only ends when the whole board is locked: most locked sections wins.'},
+    win:'The instant every section on the board has been claimed by someone, the game ends immediately. Whoever holds the most sections wins — ties are possible. Options: Whole Wedges (20 sections), Inside & Outside (40) or Master Mode (80: inner single, triple, outer single and double are each a section). With Steal-Back Lock on, a section you lose and win back locks to you for good. With Three-Hit Lock on, a section takes the colour of whoever has hit it the most, the first player to reach three hits on a section locks it (a double counts as two hits and a triple as three), and the game only ends when the whole board is locked: most locked sections wins.'},
 ];
 
 const PRACTICES = [
@@ -1145,7 +1152,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.8c HIT COUNTS OPTION';
+const BUILD_STAMP = 'v9.8d DOUBLES + LOCK POP';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -2224,7 +2231,7 @@ function warRevertDart(s, d){
     if(d.lockedNow && s.locks) delete s.locks[d.key];
     return;
   }
-  if(d.hitCounted && s.hits && s.hits[d.key]) s.hits[d.key][d.hitIdx] = Math.max(0, (s.hits[d.key][d.hitIdx]||0) - 1);
+  if(d.hitCounted && s.hits && s.hits[d.key]) s.hits[d.key][d.hitIdx] = Math.max(0, (s.hits[d.key][d.hitIdx]||0) - (d.hitInc||1));
   s.sections[d.key] = d.prevOwner;
   if(d.lockedNow && s.locks) delete s.locks[d.key];
   if(d.heldAdded!==null && d.heldAdded!==undefined && s.held && s.held[d.key]){
@@ -2269,8 +2276,11 @@ function warApplyDart(s, num, segType){
   if(s.lockMode==='threehit'){
     if(!s.hits) s.hits = {};
     const hh = s.hits[key] || (s.hits[key] = []);
-    hh[s.currentIdx] = (hh[s.currentIdx]||0) + 1;
-    rec.hitCounted = true; rec.hitIdx = s.currentIdx; rec.hitN = hh[s.currentIdx];
+    // A triple counts as 3 hits and a double as 2 (the inner bull is a double when the bull is one section).
+    // In Master Mode every ring is its own section already, so each dart counts once.
+    const inc = s.ringMode==='all' ? 1 : (segType==='triple' ? 3 : segType==='double' ? 2 : (segType==='bull' && s.bullMode==='together') ? 2 : 1);
+    hh[s.currentIdx] = (hh[s.currentIdx]||0) + inc;
+    rec.hitCounted = true; rec.hitIdx = s.currentIdx; rec.hitInc = inc; rec.hitN = Math.min(3, hh[s.currentIdx]);
     // Colour follows whoever has hit the section most. A tie stays with whoever already holds it.
     delete rec.stolenFrom;
     let top = -1, topIdx = null; hh.forEach((c,i)=>{ if((c||0)>top){ top = c||0; topIdx = i; } });
@@ -4805,6 +4815,7 @@ function dispatchThrowCore(num, segType){
   } else if(s.kind==='war'){
     const res = warApplyDart(s, num, segType);
     warSfxForDart(s, res);
+    warLockFx(s);
     if(res.turnOver){ warEndTurn(s); if(s.complete) finishWarGame(s); }
   }
   if(s.currentTurnDarts.length>0){
@@ -8504,7 +8515,7 @@ function renderGameOptionsBody(){
       <div class="option-legend">
         <div class="leg-item ${o.lockMode!=='stealback'&&o.lockMode!=='threehit'?'active-leg':''}"><b>Off</b> &mdash; any section can always be taken again (the classic game).</div>
         <div class="leg-item ${o.lockMode==='stealback'?'active-leg':''}"><b>Steal-Back Lock</b> &mdash; if you lose a section and then win it back, it locks to you. A locked section is dimmed with a bold border in its owner's colour, nobody can take it again, and darts that land on it score nothing.</div>
-        <div class="leg-item ${o.lockMode==='threehit'?'active-leg':''}"><b>Three-Hit Lock</b> &mdash; every player keeps a count of how many times they have hit each section. The section's colour shows who is ahead, meaning who has hit it the most. A tie stays with whoever was ahead first. Whoever hits a section three times first locks it for good. The game only ends when the whole board is locked, and whoever locked the most sections wins.</div>
+        <div class="leg-item ${o.lockMode==='threehit'?'active-leg':''}"><b>Three-Hit Lock</b> &mdash; every player keeps a count of how many times they have hit each section. The section's colour shows who is ahead, meaning who has hit it the most. A tie stays with whoever was ahead first. Whoever reaches three hits first locks it for good. A double counts as two hits and a triple as three, so a triple on its own locks a section. In Inside &amp; Outside a triple counts for the inside and a double for the outside. The game only ends when the whole board is locked, and whoever locked the most sections wins.</div>
       </div>
     </div>
     ${o.lockMode==='threehit' ? `<div>
@@ -10892,6 +10903,8 @@ const WAR_NEUTRAL = '#3a4560';
 function renderWarBoard(s){
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
   const gapDeg = 1.2;
+  const fx = (window._lockFx && !window._lockFx.shown && Date.now()-window._lockFx.t<2000) ? window._lockFx : null;
+  let fxOut = '';
   let fills = '', labels = '', hatch = '', hmbNums = '';
   const HMB = s.variant==='hmb';
   const WK = s.variant==='wacky';
@@ -10916,6 +10929,14 @@ function renderWarBoard(s){
       let col = claimed ? warColorFor(s,owner) : WAR_NEUTRAL;
       let fill = claimed ? ((bd.rg && m!=='all') ? dtFill : warColorFor(s,owner)) : (bd.rg ? dtFill : '#151c30');
       const d = wedgePath(cx,cy,bd.r1,bd.r2,aStart,aEnd);
+      if(fx && fx.key===key){
+        fxOut += `<path d="${d}" class="lockfx-flash" fill="#ffffff" style="pointer-events:none;"/>`;
+        if(!fx.pDone){
+          fx.pDone = true;
+          const rm = m==='combined' ? (R_TRIPLE_OUT+R_DOUBLE_IN)/2 : (bd.r1+bd.r2)/2, mp = polar(cx,cy,rm,(aFull1+aFull2)/2);
+          fxOut += lockBurst(mp[0], mp[1], fx.color);
+        }
+      }
       if(SL){
         const sd = SLOT_BY[s.sym[key]];
         claimed = true; col = sd.color; fill = bd.rg ? dtFill : slotMix(sd.color, 0.4);
@@ -10942,7 +10963,7 @@ function renderWarBoard(s){
           hmbNums += `<text x="${mp[0]}" y="${mp[1]}" fill="${dn?'rgba(255,255,255,0.55)':hc[1]}" font-family="Oswald,sans-serif" font-size="21" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${dn?'&#10003;':hv}</text>`;
         }
       }
-      fills += `<path d="${d}" fill="${fill}" stroke="${col}" stroke-width="${claimed?2:1}" class="board-seg${WK?' wk-anim':''}" ${WK?`data-wk="${key}" data-rg="${bd.rg?1:0}"`:''} data-num="${num}" data-seg="${bd.seg}" data-ring="${bd.ring}" style="cursor:pointer;"/>`;
+      fills += `<path d="${d}" fill="${fill}" stroke="${col}" stroke-width="${claimed?2:1}" class="board-seg${WK?' wk-anim':''}${(fx && fx.key===key)?' lockfx-pop':''}" ${WK?`data-wk="${key}" data-rg="${bd.rg?1:0}"`:''} data-num="${num}" data-seg="${bd.seg}" data-ring="${bd.ring}" style="cursor:pointer;"/>`;
       if(s.locks && s.locks[key]!==undefined) hatch += `<path d="${d}" fill="rgba(12,18,34,0.78)" style="pointer-events:none;"/><path d="${d}" fill="none" stroke="${col}" stroke-width="3.4" style="pointer-events:none;"/>`;
     });
     if(s.lockMode==='threehit' && s.hits && s.showHits){
@@ -10991,6 +11012,11 @@ function renderWarBoard(s){
     bullMarkup = `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="${outerFill}" stroke="${outerStroke}" stroke-width="${outerClaimed?3:2}" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>
       <circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${innerFill}" stroke="${innerStroke}" stroke-width="${innerClaimed?3:2}" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
   }
+  if(fx && /^(B|IB|OB)$/.test(fx.key)){
+    fxOut += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" class="lockfx-flash" fill="#ffffff" style="pointer-events:none;"/>` + lockBurst(cx, cy, fx.color);
+    fx.pDone = true;
+  }
+  if(fx) fx.shown = true;
   const missOuterEdge = R_BEZEL + 22;
   const cropMargin = (canvas - missOuterEdge*2)/2 - 10;
   const viewSize = canvas - cropMargin*2;
@@ -10998,7 +11024,7 @@ function renderWarBoard(s){
   const missLabel = `<text x="${missLabelPos[0]}" y="${missLabelPos[1]}" fill="rgba(200,206,216,0.35)" font-family="Oswald,sans-serif" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">MISS</text>`;
   return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
     <circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, 'recordMiss()')"/>
-    ${warDefs}${fills}${bullMarkup}${HMB?hmbBullMarkup(s):''}${WK?wackyBullMarkup(s):''}${SL?slotsBullMarkup(s):''}${warBullHatch(s)}${hatch}${hmbNums}${warBullDots(s)}${labels}${missLabel}
+    ${warDefs}${fills}${bullMarkup}${HMB?hmbBullMarkup(s):''}${WK?wackyBullMarkup(s):''}${SL?slotsBullMarkup(s):''}${warBullHatch(s)}${hatch}${hmbNums}${warBullDots(s)}${labels}${missLabel}${fxOut}
   </svg>`;
 }
 function hmbBullMarkup(s){
@@ -11021,6 +11047,28 @@ function hmbBullMarkup(s){
     out += `<text x="${op[0]}" y="${op[1]}" fill="${ho[1]}" font-family="Oswald,sans-serif" font-size="11" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${s.locks&&s.locks['OB']!==undefined?'&#10003;':s.vals['OB']}</text>`;
   }
   return out;
+}
+// Little celebration when a section locks or a set closes: the wedge pops and wiggles, flashes white, and throws sparks.
+function lockBurst(x, y, color){
+  x = +x; y = +y;
+  let out = '';
+  for(let i=0;i<16;i++){
+    const a = Math.random()*Math.PI*2, dist = 34 + Math.random()*58, r = 2.6 + Math.random()*3.4;
+    out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${i%3===0?'#fff':color}" class="lockfx-p" style="--dx:${(Math.cos(a)*dist).toFixed(1)}px; --dy:${(Math.sin(a)*dist).toFixed(1)}px; pointer-events:none;"/>`;
+  }
+  return out;
+}
+function warLockFx(s){
+  try{
+    if(typeof _callerMute!=='undefined' && _callerMute) return;
+    const d = s.currentTurnDarts[s.currentTurnDarts.length-1];
+    if(!d || !d.key) return;
+    let color;
+    if(d.sl){ if(!d.slClosed) return; color = SLOT_BY[d.slSym].color; }
+    else if(d.lockedNow){ color = s.variant==='hmb' ? '#FACC15' : warColorFor(s, s.currentIdx); }
+    else return;
+    window._lockFx = {key:d.key, color, t:Date.now(), shown:false, pDone:false};
+  }catch(e){}
 }
 function warBullDots(s){
   if(s.lockMode!=='threehit' || !s.hits || !s.showHits) return '';
