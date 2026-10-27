@@ -1112,9 +1112,9 @@ const GAMES = [
     goal:'Collect sets of matching symbols and be first to the target score.',
     score:'Every wedge shows a symbol. Hit it and you add that symbol to your own card, and the wedge changes to a new random symbol. Collect three of the same symbol (or two or four, if the game was set that way for you) to close out the set and score it. Cherries are worth the least and Lucky 7s the most, and the rarest symbols are worth the most. A skull takes 20 points away.',
     win:'The first player to reach the target score wins, once everyone has had the same number of turns.'},
-  {id:'islands', name:'Islands', desc:'Coloured islands pop up on the board. The colour tells you the points, and the board is redrawn every turn.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
+  {id:'islands', name:'Islands', desc:'Coloured islands pop up on the board. The colour tells you the points, and the board is redrawn every round.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
     goal:'Land your darts on the high-value islands and have the highest score after the last round.',
-    score:'Each island is a colour and every colour is worth the same each time: blue 5, green 10, yellow 15, orange 25, red 50. The points are printed in each island. Any other part of the board is worth 1, and missing the board is 0. Doubles and triples do not multiply. The board is redrawn every time the turn changes hands. You can play with islands made from board pieces, circles or amoebas.',
+    score:'Each island is a colour and every colour is worth the same each time: blue 5, green 9, yellow 12, orange 16, red 20. The points are printed in each island. Any other part of the board is worth 1, and missing the board is 0. Doubles and triples do not multiply. The small, high-scoring islands sit on their own, so going for them is a real risk. The board is redrawn once everyone has had a turn. You can play with islands made from board pieces, circles or amoebas.',
     win:'After the set number of rounds (10 unless you change it) the highest score wins.'},
   {id:'war', name:'War', desc:'No targets, no assignments — claim territory wherever you land.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
     goal:'Every wedge on the board (plus Inner and Outer Bull) starts unclaimed. Wherever your darts land, that section becomes yours — even if someone else already claimed it.',
@@ -1156,7 +1156,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.9a ISLANDS';
+const BUILD_STAMP = 'v9.9b ISLANDS ROUND BOARD';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -2418,11 +2418,13 @@ function slotsBullMarkup(s){
   return '';
 }
 /* ---- Islands: random coloured shapes on the board, the colour tells the points, new board every turn ---- */
-const ISL_PAL = [{v:5,name:'Blue',c:'#3B82F6'},{v:10,name:'Green',c:'#22C55E'},{v:15,name:'Yellow',c:'#FACC15'},{v:25,name:'Orange',c:'#FB923C'},{v:50,name:'Red',c:'#EF4444'}];
+const ISL_PAL = [{v:5,name:'Blue',c:'#3B82F6'},{v:9,name:'Green',c:'#22C55E'},{v:12,name:'Yellow',c:'#FACC15'},{v:16,name:'Orange',c:'#FB923C'},{v:20,name:'Red',c:'#EF4444'}];
 const ISL_BY = {}; ISL_PAL.forEach(p=>{ ISL_BY[p.v]=p; });
 const ISL_PER_COLOR = 2;                       // two shapes of each colour
-const ISL_RADIUS = {5:0.235, 10:0.195, 15:0.165, 25:0.135, 50:0.11}; // circle size as a fraction of the board radius
-const ISL_SHARE = {5:0.075, 10:0.05, 15:0.034, 25:0.021, 50:0.011};   // board-piece shape size as a share of the board area
+// Size steps evenly from big (blue, low points) down to about one double/triple wide (red, high points).
+const ISL_RADIUS = {5:0.235, 9:0.195, 12:0.156, 16:0.116, 20:0.077};   // circle size as a fraction of the board radius
+const ISL_SHARE = {}; Object.keys(ISL_RADIUS).forEach(k=>{ ISL_SHARE[k] = ISL_RADIUS[k]*ISL_RADIUS[k]; });   // board-piece shape size as a share of the board area
+const ISL_GAP = {5:0, 9:4, 12:10, 16:18, 20:26};   // empty space kept around a shape: the more it is worth, the more alone it sits
 let _islCells = null;
 function islCells(){
   if(_islCells) return _islCells;
@@ -2447,22 +2449,23 @@ function islNbrs(cells, id){
   return out;
 }
 function islGenPieces(){
-  const cells = islCells(), ids = Object.keys(cells), region = {}, shapes = [];
+  const cells = islCells(), ids = Object.keys(cells), region = {}, blocked = {}, shapes = [];
   const boardArea = Math.PI*R_DOUBLE_OUT*R_DOUBLE_OUT;
-  ISL_PAL.forEach(pal=>{
+  ISL_PAL.slice().reverse().forEach(pal=>{            // most valuable first, so they get the quiet spots
     const share = ISL_SHARE[pal.v];
     for(let k=0;k<ISL_PER_COLOR;k++){
-      let free = ids.filter(i=>region[i]===undefined); if(!free.length) break;
+      let free = ids.filter(i=>region[i]===undefined && !blocked[i]); if(!free.length) break;
       const small = free.filter(i=>cells[i].area<=share*boardArea*1.35); if(small.length) free = small;
       const s0 = free[Math.floor(Math.random()*free.length)], mem = [s0];
       region[s0] = shapes.length; let ar = cells[s0].area;
       while(ar < share*boardArea*0.85){
-        const fr = [...new Set(mem.flatMap(n=>islNbrs(cells,n)))].filter(n=>region[n]===undefined); if(!fr.length) break;
+        const fr = [...new Set(mem.flatMap(n=>islNbrs(cells,n)))].filter(n=>region[n]===undefined && !blocked[n]); if(!fr.length) break;
         fr.sort((p,q)=>Math.abs(share*boardArea-(ar+cells[p].area))-Math.abs(share*boardArea-(ar+cells[q].area)));
         const p = Math.random()<0.5 ? fr[0] : fr[Math.floor(Math.random()*fr.length)];
         if(ar+cells[p].area > share*boardArea*1.5) break;
         region[p] = shapes.length; mem.push(p); ar += cells[p].area;
       }
+      if(pal.v>=12) mem.forEach(m=>{ islNbrs(cells,m).forEach(n=>{ if(region[n]===undefined) blocked[n] = true; }); });   // high scores keep a ring of empty board around them
       shapes.push({v:pal.v, cells:mem});
     }
   });
@@ -2487,18 +2490,16 @@ function islInside(p, poly){
 }
 function islGrow(poly, k, x, y){ return poly.map(p=>[x+(p[0]-x)*k, y+(p[1]-y)*k]); }
 function islGenShapes(amoeba){
-  const cx=BOARD_CX, cy=BOARD_CY, RB=R_DOUBLE_OUT, placed = [];
-  ISL_PAL.forEach(pal=>{
+  const cx=BOARD_CX, cy=BOARD_CY, RB=R_DOUBLE_OUT, placed = [], wob = amoeba ? 1.12 : 1;
+  ISL_PAL.forEach(pal=>{            // big ones first so they fit, then the small high-score ones each get their own space
     let made = 0, tries = 0;
-    while(made<ISL_PER_COLOR && tries++<12000){
-      const r = ISL_RADIUS[pal.v]*(0.92+Math.random()*0.16)*RB, a = Math.random()*Math.PI*2, d = Math.sqrt(Math.random())*(RB-r*1.3-10);
+    while(made<ISL_PER_COLOR && tries++<15000){
+      const r = ISL_RADIUS[pal.v]*(0.94+Math.random()*0.12)*RB, a = Math.random()*Math.PI*2, d = Math.sqrt(Math.random())*(RB-r*wob-6);
       const x = cx+Math.cos(a)*d, y = cy+Math.sin(a)*d, poly = islShapePoly(x,y,r,amoeba);
       if(!poly.every(p=>Math.hypot(p[0]-cx,p[1]-cy)<RB-3)) continue;
       let ok = true;
       for(const q of placed){
-        if(Math.hypot(q.x-x,q.y-y) > q.r*1.45+r*1.5+12) continue;
-        const gq = islGrow(q.poly,1.10,q.x,q.y), gp = islGrow(poly,1.10,x,y);
-        if(poly.some(p=>islInside(p,gq)) || q.poly.some(p=>islInside(p,gp)) || islInside([x,y],gq) || islInside([q.x,q.y],gp)){ ok = false; break; }
+        if(Math.hypot(q.x-x,q.y-y) < q.r*wob + r*wob + ISL_GAP[q.v] + ISL_GAP[pal.v]){ ok = false; break; }
       }
       if(ok){ placed.push({v:pal.v, x:+x.toFixed(1), y:+y.toFixed(1), r:+r.toFixed(1), poly}); made++; }
     }
@@ -2506,7 +2507,10 @@ function islGenShapes(amoeba){
   return placed;
 }
 function islNewBoard(style){
-  return {style, shapes: style==='pieces' ? islGenPieces() : islGenShapes(style==='amoebas')};
+  if(style==='pieces') return {style, shapes:islGenPieces()};
+  let best = null;
+  for(let k=0;k<8;k++){ const sh = islGenShapes(style==='amoebas'); if(!best || sh.length>best.length) best = sh; if(sh.length>=ISL_PAL.length*ISL_PER_COLOR) break; }
+  return {style, shapes:best};
 }
 // Points for a dart that lands at (x,y): 0 off the board, 1 on empty board, otherwise the colour of the shape it is inside.
 function islValueAt(s, x, y){
@@ -2537,6 +2541,7 @@ function startIslandsSession(playerIds, opts){
 // Called after the turn has passed to the next player: finish after the last round, otherwise draw a fresh board.
 function islandsAfterTurn(s){
   if(s.variant!=='islands' || s.complete) return;
+  if(s.currentIdx!==0) return;      // the board only changes once everyone has played it
   if(s.round > s.rounds){
     const sc = s.participants.map(p=>p.score||0), best = Math.max(...sc);
     s.complete = true; s.finalCounts = sc;
@@ -2574,7 +2579,7 @@ function islandsLegendHtml(s){
   const dots = ISL_PAL.map(p=>`<span style="display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--cream-dim);"><span style="width:12px; height:12px; border-radius:50%; background:${p.c}; display:inline-block;"></span>${p.v}</span>`).join('');
   return `<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--felt-lighter);">
     <div style="display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center;">${dots}<span style="font-size:12px; color:var(--cream-dim);">Empty 1</span></div>
-    <p class="info-note" style="margin:8px 0 0 0;">Round ${Math.min(s.round, s.rounds)} of ${s.rounds}. The board is redrawn every time the turn changes hands.${s.style!=='pieces' ? ' This style scores where the dart really lands, so use the camera or tap the board.' : ''}</p>
+    <p class="info-note" style="margin:8px 0 0 0;">Round ${Math.min(s.round, s.rounds)} of ${s.rounds}. The board is redrawn after everyone has had a turn.${s.style!=='pieces' ? ' This style scores where the dart really lands, so use the camera or tap the board.' : ''}</p>
   </div>`;
 }
 function islandsBoardSvg(s){
@@ -2777,7 +2782,7 @@ function hmbApplyDart(s, num, segType){
 }
 function warSfxForDart(s, res){
   try{
-    if(s.variant==='islands'){ const di = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(di && di.isl) return warSfx(di.islPts>=25?'lock':di.islPts>1?'hit':'miss'); }
+    if(s.variant==='islands'){ const di = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(di && di.isl) return warSfx(di.islPts>=16?'lock':di.islPts>1?'hit':'miss'); }
     if(s.variant==='slots' && res && res.ann && res.ann.type==='hit'){ const dd = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(dd && dd.sl) return warSfx(dd.slSym==='skull'?'hitlock':dd.slClosed?'lock':'hit'); }
     if(s.variant==='wacky' && res && res.ann && res.ann.type==='hit'){ const dd = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(dd && dd.wk) return warSfx(dd.wkVal<0?'steal':dd.wkVal>=50?'lock':'hit'); }
     const t = res && res.ann && res.ann.type;
@@ -6407,7 +6412,7 @@ const RULES_TEXT = {
   killer: {goal:'Be the last player with lives left.', score:'Everyone has a number and a set number of lives. First, hit the double of your own number to become a killer. Once you are a killer, hitting an opponent\'s number takes a life from them.', win:'When everyone else is out of lives, you win.'},
   callshot: {goal:'Call a target, hit it, and make the others match you.', score:'On your turn, call a target and try to hit it with your darts. If you miss, the turn just passes on. If you hit it, each other player gets the same number of darts to hit the same target. Anyone who fails gets a letter.', win:'A player who spells the whole word is out. The last player left wins.'},
   personalbest: {goal:'Beat your own best round.', score:'Each round is three darts, and every dart adds its value (doubles and triples count). Your first round sets your best. After that, every round tries to beat it.', win:'Depends on the mode you picked: no winner (just chase your best), highest single round, or highest average.'},
-  islands: {goal:'Land your darts on the high-value islands and have the highest score after the last round.', score:'Each island is a colour and every colour is worth the same each time: blue 5, green 10, yellow 15, orange 25, red 50. The points are printed in each island. Any other part of the board is worth 1, and missing the board is 0. Doubles and triples do not multiply. The board is redrawn every time the turn changes hands.', win:'After the set number of rounds (10 unless you change it) the highest score wins.'},
+  islands: {goal:'Land your darts on the high-value islands and have the highest score after the last round.', score:'Each island is a colour and every colour is worth the same each time: blue 5, green 9, yellow 12, orange 16, red 20. The points are printed in each island. Any other part of the board is worth 1, and missing the board is 0. Doubles and triples do not multiply. The small, high-scoring islands sit on their own, so going for them is a real risk. The board is redrawn once everyone has had a turn.', win:'After the set number of rounds (10 unless you change it) the highest score wins.'},
   slots: {goal:'Collect sets of matching symbols and be first to the target score.', score:'Every wedge shows a symbol. Hitting a wedge adds that symbol to your own card, and the wedge changes to a new random symbol. Collect three of the same symbol (or the number set for you) to close the set and score it. Cherries 5, lemons 10, bells 20, treasure chests 40, diamonds 75, lucky 7s 150. The rarest symbols are worth the most. A skull takes 20 points off, but never below zero. Doubles and triples count as one hit.', win:'When someone reaches the target, everyone finishes the round, then the highest score wins.'},
   wacky: {goal:'Be first to the target score while the board keeps changing.', score:'Every wedge keeps changing its value, from 10 up to 100 points, and some are negative. A dart scores whatever number its wedge shows at the moment it lands. Doubles and triples do not multiply. Negative values take points off, but your score never goes below zero.', win:'The first player to reach the target score wins.'},
   hmb: {goal:'Be first to the target score by hitting wedges that keep getting more valuable.', score:'Every wedge starts at 1. A dart scores the number showing on the wedge it lands in, then that wedge goes up by one for everybody. Doubles and triples do not multiply. Once a wedge has reached the highest value, the next hit scores it and the wedge is finished.', win:'First to the target score wins. If every wedge is finished first, the highest score wins.'},
@@ -8670,7 +8675,7 @@ function renderGameOptionsBody(){
     <div>
       <span class="field-label">Rounds</span>
       <div class="gchip-wrap">${[5,10,15].map(n=>numChip(String(n),'islRounds',n)).join('')}</div>
-      <p class="info-note">Highest score after the last round wins. Blue 5, green 10, yellow 15, orange 25, red 50, empty board 1.</p>
+      <p class="info-note">Highest score after the last round wins. Blue 5, green 9, yellow 12, orange 16, red 20, empty board 1.</p>
     </div>`;
   } else if(id==='slots'){
     if(o.ringMode==='all') o.ringMode='combined';
