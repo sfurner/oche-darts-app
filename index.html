@@ -1112,6 +1112,10 @@ const GAMES = [
     goal:'Collect sets of matching symbols and be first to the target score.',
     score:'Every wedge shows a symbol. Hit it and you add that symbol to your own card, and the wedge changes to a new random symbol. Collect three of the same symbol (or two or four, if the game was set that way for you) to close out the set and score it. Cherries are worth the least and Lucky 7s the most, and the rarest symbols are worth the most. A skull takes 20 points away.',
     win:'The first player to reach the target score wins, once everyone has had the same number of turns.'},
+  {id:'islands', name:'Islands', desc:'Coloured islands pop up on the board. The colour tells you the points, and the board is redrawn every turn.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
+    goal:'Land your darts on the high-value islands and have the highest score after the last round.',
+    score:'Each island is a colour and every colour is worth the same each time: blue 5, green 10, yellow 15, orange 25, red 50. The points are printed in each island. Any other part of the board is worth 1, and missing the board is 0. Doubles and triples do not multiply. The board is redrawn every time the turn changes hands. You can play with islands made from board pieces, circles or amoebas.',
+    win:'After the set number of rounds (10 unless you change it) the highest score wins.'},
   {id:'war', name:'War', desc:'No targets, no assignments — claim territory wherever you land.', players:'2-4', length:'10-15 min', difficulty:'Easy', status:'live',
     goal:'Every wedge on the board (plus Inner and Outer Bull) starts unclaimed. Wherever your darts land, that section becomes yours — even if someone else already claimed it.',
     score:'There\'s no score to track, just territory. Landing on any section, claimed or not, flips it to your color.',
@@ -1152,7 +1156,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.8d DOUBLES + LOCK POP';
+const BUILD_STAMP = 'v9.9a ISLANDS';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -1383,7 +1387,7 @@ function renderVolumeBlock(){
 }
 function callerScopeForGame(){
   const ss = state.session; if(!ss || state.screen!=='active') return null;
-  const k = ss.variant==='hmb' ? 'hmb' : ss.variant==='wacky' ? 'wacky' : ss.variant==='slots' ? 'slots' : ss.kind==='custom' ? (ss.builtinId || 'custom') : ss.kind;
+  const k = ss.variant==='hmb' ? 'hmb' : ss.variant==='wacky' ? 'wacky' : ss.variant==='slots' ? 'slots' : ss.variant==='islands' ? 'islands' : ss.kind==='custom' ? (ss.builtinId || 'custom') : ss.kind;
   return CALLER_SCOPES.some(x=>x[0]===k) ? k : 'all';
 }
 function toggleSpeakerPanel(){ state.speakerOpen = !state.speakerOpen; if(state.speakerOpen){ const gs = callerScopeForGame(); if(gs) _callerScope = gs; } if(state.speakerOpen) callerLoad().then(()=>{ try{ syncSpeakerPanel(true); }catch(e){} }); syncSpeakerPanel(true); }
@@ -2223,6 +2227,7 @@ function warDartLabel(s, num, segType, ring){
 // Undo helper: put a section back exactly as it was, including any lock that dart caused.
 function warRevertDart(s, d){
   if(!d || !d.key) return;
+  if(d.isl){ const pi = s.participants[d.pidx]; if(pi) pi.score = (pi.score||0) - d.islPts; return; }
   if(d.sl){ const pq = s.participants[d.pidx]; if(pq){ pq.tally = Object.assign({}, d.slPrevTally); pq.score = d.slPrevScore; } s.sym[d.key] = d.slSym; return; }
   if(d.wk){ const pp = s.participants[d.pidx]; if(pp) pp.score = d.wkPrev; return; }
   if(d.hmb){
@@ -2242,6 +2247,7 @@ function warApplyDart(s, num, segType){
   if(s.variant==='hmb') return hmbApplyDart(s, num, segType);
   if(s.variant==='wacky') return wackyApplyDart(s, num, segType);
   if(s.variant==='slots') return slotsApplyDart(s, num, segType);
+  if(s.variant==='islands') return islandsApplyDart(s, num, segType);
   const ring = state.pendingHitRing || (s.ringMode!=='combined' ? warRingFromLastPoint(s) : null);
   state.pendingHitRing = null;
   const key = warSectionKey(s, num, segType, ring);
@@ -2411,6 +2417,212 @@ function slotsBullMarkup(s){
   }
   return '';
 }
+/* ---- Islands: random coloured shapes on the board, the colour tells the points, new board every turn ---- */
+const ISL_PAL = [{v:5,name:'Blue',c:'#3B82F6'},{v:10,name:'Green',c:'#22C55E'},{v:15,name:'Yellow',c:'#FACC15'},{v:25,name:'Orange',c:'#FB923C'},{v:50,name:'Red',c:'#EF4444'}];
+const ISL_BY = {}; ISL_PAL.forEach(p=>{ ISL_BY[p.v]=p; });
+const ISL_PER_COLOR = 2;                       // two shapes of each colour
+const ISL_RADIUS = {5:0.235, 10:0.195, 15:0.165, 25:0.135, 50:0.11}; // circle size as a fraction of the board radius
+const ISL_SHARE = {5:0.075, 10:0.05, 15:0.034, 25:0.021, 50:0.011};   // board-piece shape size as a share of the board area
+let _islCells = null;
+function islCells(){
+  if(_islCells) return _islCells;
+  const cx=BOARD_CX, cy=BOARD_CY, cells={};
+  const bandR=[[R_BULL_OUTER,R_TRIPLE_IN],[R_TRIPLE_IN,R_TRIPLE_OUT],[R_TRIPLE_OUT,R_DOUBLE_IN],[R_DOUBLE_IN,R_DOUBLE_OUT]];
+  for(let i=0;i<20;i++) for(let b=0;b<4;b++){
+    const num=BOARD_ORDER[i], [r1,r2]=bandR[b], a1=-9+i*18+WEDGE_ROTATION+1.2, a2=-9+i*18+WEDGE_ROTATION+18-1.2;
+    const m = polar(cx,cy,(r1+r2)/2,-9+i*18+WEDGE_ROTATION+9);
+    cells[num+'|'+b] = {id:num+'|'+b, num, i, b, area:0.5*(r2*r2-r1*r1)*(16.6*Math.PI/180), path:wedgePath(cx,cy,r1,r2,a1,a2), mx:+m[0], my:+m[1]};
+  }
+  cells['OB'] = {id:'OB', b:-1, area:Math.PI*(R_BULL_OUTER*R_BULL_OUTER-R_BULL_INNER*R_BULL_INNER), mx:cx, my:cy-(R_BULL_INNER+R_BULL_OUTER)/2};
+  cells['IB'] = {id:'IB', b:-2, area:Math.PI*R_BULL_INNER*R_BULL_INNER, mx:cx, my:cy};
+  _islCells = cells; return cells;
+}
+function islNbrs(cells, id){
+  const c = cells[id], out = [];
+  if(id==='IB') return ['OB'];
+  if(id==='OB'){ for(let i=0;i<20;i++) out.push(BOARD_ORDER[i]+'|0'); out.push('IB'); return out; }
+  out.push(c.b>0 ? BOARD_ORDER[c.i]+'|'+(c.b-1) : 'OB');
+  if(c.b<3) out.push(BOARD_ORDER[c.i]+'|'+(c.b+1));
+  out.push(BOARD_ORDER[(c.i+19)%20]+'|'+c.b); out.push(BOARD_ORDER[(c.i+1)%20]+'|'+c.b);
+  return out;
+}
+function islGenPieces(){
+  const cells = islCells(), ids = Object.keys(cells), region = {}, shapes = [];
+  const boardArea = Math.PI*R_DOUBLE_OUT*R_DOUBLE_OUT;
+  ISL_PAL.forEach(pal=>{
+    const share = ISL_SHARE[pal.v];
+    for(let k=0;k<ISL_PER_COLOR;k++){
+      let free = ids.filter(i=>region[i]===undefined); if(!free.length) break;
+      const small = free.filter(i=>cells[i].area<=share*boardArea*1.35); if(small.length) free = small;
+      const s0 = free[Math.floor(Math.random()*free.length)], mem = [s0];
+      region[s0] = shapes.length; let ar = cells[s0].area;
+      while(ar < share*boardArea*0.85){
+        const fr = [...new Set(mem.flatMap(n=>islNbrs(cells,n)))].filter(n=>region[n]===undefined); if(!fr.length) break;
+        fr.sort((p,q)=>Math.abs(share*boardArea-(ar+cells[p].area))-Math.abs(share*boardArea-(ar+cells[q].area)));
+        const p = Math.random()<0.5 ? fr[0] : fr[Math.floor(Math.random()*fr.length)];
+        if(ar+cells[p].area > share*boardArea*1.5) break;
+        region[p] = shapes.length; mem.push(p); ar += cells[p].area;
+      }
+      shapes.push({v:pal.v, cells:mem});
+    }
+  });
+  return shapes;
+}
+function islShapePoly(x, y, r, amoeba){
+  const n = 48, pts = [], ph = [Math.random()*6.28, Math.random()*6.28, Math.random()*6.28], am = [0.10+Math.random()*0.12, 0.06+Math.random()*0.08, 0.03+Math.random()*0.06];
+  for(let k=0;k<n;k++){
+    const t = k/n*Math.PI*2; let rr = r;
+    if(amoeba) rr = r*(1 + am[0]*Math.cos(2*t+ph[0]) + am[1]*Math.cos(3*t+ph[1]) + am[2]*Math.cos(5*t+ph[2]));
+    pts.push([+(x+Math.cos(t)*rr).toFixed(1), +(y+Math.sin(t)*rr).toFixed(1)]);
+  }
+  return pts;
+}
+function islInside(p, poly){
+  let c = false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const a = poly[i], b = poly[j];
+    if((a[1]>p[1])!==(b[1]>p[1]) && p[0] < (b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0]) c = !c;
+  }
+  return c;
+}
+function islGrow(poly, k, x, y){ return poly.map(p=>[x+(p[0]-x)*k, y+(p[1]-y)*k]); }
+function islGenShapes(amoeba){
+  const cx=BOARD_CX, cy=BOARD_CY, RB=R_DOUBLE_OUT, placed = [];
+  ISL_PAL.forEach(pal=>{
+    let made = 0, tries = 0;
+    while(made<ISL_PER_COLOR && tries++<12000){
+      const r = ISL_RADIUS[pal.v]*(0.92+Math.random()*0.16)*RB, a = Math.random()*Math.PI*2, d = Math.sqrt(Math.random())*(RB-r*1.3-10);
+      const x = cx+Math.cos(a)*d, y = cy+Math.sin(a)*d, poly = islShapePoly(x,y,r,amoeba);
+      if(!poly.every(p=>Math.hypot(p[0]-cx,p[1]-cy)<RB-3)) continue;
+      let ok = true;
+      for(const q of placed){
+        if(Math.hypot(q.x-x,q.y-y) > q.r*1.45+r*1.5+12) continue;
+        const gq = islGrow(q.poly,1.10,q.x,q.y), gp = islGrow(poly,1.10,x,y);
+        if(poly.some(p=>islInside(p,gq)) || q.poly.some(p=>islInside(p,gp)) || islInside([x,y],gq) || islInside([q.x,q.y],gp)){ ok = false; break; }
+      }
+      if(ok){ placed.push({v:pal.v, x:+x.toFixed(1), y:+y.toFixed(1), r:+r.toFixed(1), poly}); made++; }
+    }
+  });
+  return placed;
+}
+function islNewBoard(style){
+  return {style, shapes: style==='pieces' ? islGenPieces() : islGenShapes(style==='amoebas')};
+}
+// Points for a dart that lands at (x,y): 0 off the board, 1 on empty board, otherwise the colour of the shape it is inside.
+function islValueAt(s, x, y){
+  const sc = scoreForPoint(x, y);
+  if(sc.ring==='totalMiss' || sc.ring==='over') return {v:0, si:-1};
+  const b = s.board;
+  if(b.style==='pieces'){
+    const id = sc.ring==='bullInner' ? 'IB' : sc.ring==='bullOuter' ? 'OB' : sc.number+'|'+({inner:0, triple:1, outer:2, double:3}[sc.ring]);
+    for(let i=0;i<b.shapes.length;i++) if(b.shapes[i].cells.includes(id)) return {v:b.shapes[i].v, si:i};
+    return {v:1, si:-1};
+  }
+  let best = null;
+  b.shapes.forEach((sh,i)=>{ if(islInside([x,y],sh.poly) && (!best || sh.v>best.v)) best = {v:sh.v, si:i}; });
+  return best || {v:1, si:-1};
+}
+function islName(v){ return v===0 ? 'Off the board' : v===1 ? 'Empty space' : (ISL_BY[v] ? ISL_BY[v].name : String(v)); }
+function startIslandsSession(playerIds, opts){
+  const o = Object.assign({}, opts||{});
+  o.ringMode = 'combined'; o.lockMode = 'off'; o.bullMode = 'separate';
+  const s = startWarSession(playerIds, o);
+  s.variant = 'islands';
+  s.style = ['pieces','circles','amoebas'].includes(o.islStyle) ? o.islStyle : 'pieces';
+  s.rounds = [5,10,15].includes(+o.islRounds) ? +o.islRounds : 10;
+  s.participants.forEach(p=>{ p.score = 0; });
+  s.board = islNewBoard(s.style);
+  return s;
+}
+// Called after the turn has passed to the next player: finish after the last round, otherwise draw a fresh board.
+function islandsAfterTurn(s){
+  if(s.variant!=='islands' || s.complete) return;
+  if(s.round > s.rounds){
+    const sc = s.participants.map(p=>p.score||0), best = Math.max(...sc);
+    s.complete = true; s.finalCounts = sc;
+    const winners = s.participants.filter((p,i)=>sc[i]===best);
+    if(winners.length===1){ s.winnerId = winners[0].playerId; s.tied = null; }
+    else { s.winnerId = null; s.tied = winners.map(p=>p.playerId); }
+    return;
+  }
+  s.board = islNewBoard(s.style);
+}
+function islandsApplyDart(s, num, segType){
+  let pt = (window._islReplay && window._islReplay.length) ? window._islReplay.shift() : state._islPt;
+  state._islPt = null;
+  if(!pt) pt = boardPointForTarget(num, segType);   // typed entry has no exact position, so use the middle of that part of the board
+  const hit = islValueAt(s, pt.x, pt.y);
+  const pp = s.participants[s.currentIdx];
+  pp.score = (pp.score||0) + hit.v;
+  const label = islName(hit.v) + ' ' + hit.v;
+  s.currentTurnDarts.push({label, key:'isl', hitTarget:hit.v>1, isl:true, islPts:hit.v, islPt:{x:pt.x, y:pt.y}, pidx:s.currentIdx});
+  return {turnOver: s.currentTurnDarts.length>=3, ann:{type:'hit', key:'isl'}};
+}
+// Bot: aim at whichever standard target point sits inside the most valuable shape.
+function islandsBotTarget(s){
+  const cands = [];
+  for(const n of BOARD_ORDER) for(const seg of ['single','double','triple']) cands.push({num:n, seg});
+  cands.push({num:'B', seg:'bull'}); cands.push({num:'B', seg:'single'});
+  let bestV = -1, pool = [];
+  cands.forEach(c=>{
+    const p = boardPointForTarget(c.num, c.seg), v = islValueAt(s, p.x, p.y).v;
+    if(v>bestV){ bestV = v; pool = [c]; } else if(v===bestV) pool.push(c);
+  });
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+function islandsLegendHtml(s){
+  const dots = ISL_PAL.map(p=>`<span style="display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--cream-dim);"><span style="width:12px; height:12px; border-radius:50%; background:${p.c}; display:inline-block;"></span>${p.v}</span>`).join('');
+  return `<div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--felt-lighter);">
+    <div style="display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center;">${dots}<span style="font-size:12px; color:var(--cream-dim);">Empty 1</span></div>
+    <p class="info-note" style="margin:8px 0 0 0;">Round ${Math.min(s.round, s.rounds)} of ${s.rounds}. The board is redrawn every time the turn changes hands.${s.style!=='pieces' ? ' This style scores where the dart really lands, so use the camera or tap the board.' : ''}</p>
+  </div>`;
+}
+function islandsBoardSvg(s){
+  const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS, C=islCells(), b=s.board;
+  const missOuterEdge = R_BEZEL+22, cropMargin = (canvas-missOuterEdge*2)/2-10, viewSize = canvas-cropMargin*2;
+  const segOf = ['single','triple','single','double'], ringOf = ['inner','inner','outer','outer'];
+  let base = '', fills = '', wire = '', nums = '', tags = '', dots = '';
+  const colorOf = (v)=>ISL_BY[v].c;
+  const owner = {}; // cell id -> value (board pieces)
+  if(b.style==='pieces') b.shapes.forEach(sh=>{ sh.cells.forEach(id=>{ owner[id]=sh.v; }); });
+  Object.keys(C).forEach(id=>{
+    const c = C[id]; if(!c.path) return;
+    base += `<path d="${c.path}" fill="#141b2d" stroke="#222c45" stroke-width="1" class="board-seg" data-num="${c.num}" data-seg="${segOf[c.b]}" data-ring="${ringOf[c.b]}" style="cursor:pointer;"/>`;
+    wire += `<path d="${c.path}" fill="none" stroke="#fff" stroke-opacity=".34" stroke-width="1" style="pointer-events:none;"/>`;
+    if(owner[id]!==undefined) fills += `<path d="${c.path}" fill="${colorOf(owner[id])}" fill-opacity="0.74" stroke="#0a111e" stroke-opacity=".5" stroke-width="1.1" style="pointer-events:none;"/>`;
+  });
+  base += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="#141b2d" stroke="#222c45" class="board-seg" data-num="B" data-seg="bullouter" style="cursor:pointer;"/>`;
+  base += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="#141b2d" stroke="#222c45" class="board-seg" data-num="B" data-seg="bullinner" style="cursor:pointer;"/>`;
+  if(owner['OB']!==undefined){
+    const R=R_BULL_OUTER, r=R_BULL_INNER;
+    fills += `<path d="M${cx-R},${cy} a${R},${R} 0 1,0 ${2*R},0 a${R},${R} 0 1,0 ${-2*R},0 Z M${cx-r},${cy} a${r},${r} 0 1,1 ${2*r},0 a${r},${r} 0 1,1 ${-2*r},0 Z" fill-rule="evenodd" fill="${colorOf(owner['OB'])}" fill-opacity="0.74" stroke="#0a111e" stroke-opacity=".5" style="pointer-events:none;"/>`;
+  }
+  if(owner['IB']!==undefined) fills += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="${colorOf(owner['IB'])}" fill-opacity="0.74" stroke="#0a111e" stroke-opacity=".5" style="pointer-events:none;"/>`;
+  wire += `<circle cx="${cx}" cy="${cy}" r="${R_BULL_OUTER}" fill="none" stroke="#fff" stroke-opacity=".34" style="pointer-events:none;"/><circle cx="${cx}" cy="${cy}" r="${R_BULL_INNER}" fill="none" stroke="#fff" stroke-opacity=".34" style="pointer-events:none;"/>`;
+  const tag = (x, y, v, size)=>`<text x="${(+x).toFixed(1)}" y="${(+y).toFixed(1)}" fill="#fff" stroke="#0a111e" stroke-width="${(size*0.2).toFixed(1)}" paint-order="stroke" stroke-linejoin="round" font-family="Oswald,sans-serif" font-size="${size}" font-weight="700" text-anchor="middle" dominant-baseline="central" style="pointer-events:none;">${v}</text>`;
+  if(b.style==='pieces'){
+    b.shapes.forEach(sh=>{
+      let mx=0, my=0; sh.cells.forEach(id=>{ mx+=C[id].mx; my+=C[id].my; }); mx/=sh.cells.length; my/=sh.cells.length;
+      let best = sh.cells[0], bd = 1e9;
+      sh.cells.forEach(id=>{ const d = Math.hypot(C[id].mx-mx, C[id].my-my); if(d<bd){ bd=d; best=id; } });
+      tags += tag(C[best].mx, C[best].my, sh.v, best==='IB' ? 11 : best==='OB' ? 11 : 15);
+    });
+  } else {
+    b.shapes.forEach(sh=>{
+      fills += `<path d="M${sh.poly.map(q=>q[0]+','+q[1]).join('L')}Z" fill="${colorOf(sh.v)}" fill-opacity="0.74" stroke="#fff" stroke-opacity=".7" stroke-width="1.8" stroke-linejoin="round" style="pointer-events:none;"/>`;
+      tags += tag(sh.x, sh.y, sh.v, Math.round(Math.max(13, Math.min(32, sh.r*0.55))));
+    });
+  }
+  for(let i=0;i<20;i++){
+    const lp = polar(cx,cy,R_NUMBER_LABEL,-9+i*18+WEDGE_ROTATION+9);
+    nums += `<text x="${lp[0]}" y="${lp[1]}" fill="#c9d1e4" font-family="Oswald,sans-serif" font-size="27" font-weight="700" text-anchor="middle" dominant-baseline="middle" style="pointer-events:none;">${BOARD_ORDER[i]}</text>`;
+  }
+  s.currentTurnDarts.forEach((d,i)=>{ if(d.islPt) dots += `<circle cx="${d.islPt.x.toFixed(1)}" cy="${d.islPt.y.toFixed(1)}" r="6" fill="#fff" stroke="#0a111e" stroke-width="2" style="pointer-events:none;"/><text x="${d.islPt.x.toFixed(1)}" y="${d.islPt.y.toFixed(1)}" fill="#0a111e" font-family="Oswald,sans-serif" font-size="9" font-weight="700" text-anchor="middle" dominant-baseline="central" style="pointer-events:none;">${i+1}</text>`; });
+  return `<svg viewBox="${cropMargin} ${cropMargin} ${viewSize} ${viewSize}" class="dartboard-svg" onclick="handleBoardClick(event)">
+    <circle class="miss-ring-band" cx="${cx}" cy="${cy}" r="${missOuterEdge}" fill="var(--ink)" onclick="handleMissRingClick(event, 'recordMiss()')"/>
+    ${base}${fills}${wire}${nums}${tags}${dots}
+  </svg>`;
+}
 /* ---- Wacky Mode: War board, every wedge keeps changing its value on its own timer ---- */
 // [value, spawn weight, min dwell s, max dwell s]. Big and negative values are rare and short-lived.
 const WK_VALUES = [[10,24,1.0,3.0],[20,22,1.0,3.0],[30,16,1.0,2.6],[40,10,0.9,2.0],[50,6,0.8,1.4],[100,1.5,0.6,1.0],
@@ -2565,6 +2777,7 @@ function hmbApplyDart(s, num, segType){
 }
 function warSfxForDart(s, res){
   try{
+    if(s.variant==='islands'){ const di = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(di && di.isl) return warSfx(di.islPts>=25?'lock':di.islPts>1?'hit':'miss'); }
     if(s.variant==='slots' && res && res.ann && res.ann.type==='hit'){ const dd = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(dd && dd.sl) return warSfx(dd.slSym==='skull'?'hitlock':dd.slClosed?'lock':'hit'); }
     if(s.variant==='wacky' && res && res.ann && res.ann.type==='hit'){ const dd = s.currentTurnDarts[s.currentTurnDarts.length-1]; if(dd && dd.wk) return warSfx(dd.wkVal<0?'steal':dd.wkVal>=50?'lock':'hit'); }
     const t = res && res.ann && res.ann.type;
@@ -2578,12 +2791,13 @@ function warSfxForDart(s, res){
 }
 function warEndTurn(s){
   s.participants[s.currentIdx].lastTurnDarts = s.currentTurnDarts.map(d=>d.label);
-  s.turnHistory.push({participantIdx:s.currentIdx, darts:s.currentTurnDarts});
+  s.turnHistory.push({participantIdx:s.currentIdx, darts:s.currentTurnDarts, board:(s.variant==='islands'?s.board:undefined)});
   s.currentTurnDarts = [];
   if(!s.complete){
     s.currentIdx = (s.currentIdx+1) % s.participants.length;
     if(s.currentIdx===0) s.round++;
     if(s.variant==='slots') slotsRoundEnd(s);
+    if(s.variant==='islands') islandsAfterTurn(s);
   }
 }
 function warUndo(s){
@@ -2596,6 +2810,7 @@ function warUndo(s){
   }
   if(s.turnHistory.length===0) return;
   const lastTurn = s.turnHistory.pop();
+  if(lastTurn.board) s.board = lastTurn.board;
   s.currentIdx = lastTurn.participantIdx;
   if(s.currentIdx===s.participants.length-1) s.round--;
   s.currentTurnDarts = lastTurn.darts.slice(0,-1);
@@ -2606,8 +2821,8 @@ function warUndo(s){
 }
 function finishWarGame(s){
   let winnerName;
-  const hmb = s.variant==='hmb' || s.variant==='wacky' || s.variant==='slots';
-  const vname = s.variant==='hmb' ? 'Hit Me Baby One More Time' : s.variant==='wacky' ? 'Wacky Mode' : s.variant==='slots' ? 'Slots' : 'War';
+  const hmb = s.variant==='hmb' || s.variant==='wacky' || s.variant==='slots' || s.variant==='islands';
+  const vname = s.variant==='hmb' ? 'Hit Me Baby One More Time' : s.variant==='wacky' ? 'Wacky Mode' : s.variant==='slots' ? 'Slots' : s.variant==='islands' ? 'Islands' : 'War';
   if(s.tied){
     const names = s.tied.map(id=>{ const p=state.players.find(pp=>pp.id===id); return p?p.name:'Unknown'; });
     winnerName = 'Tie: '+names.join(' & ');
@@ -4746,6 +4961,7 @@ function dispatchThrowCore(num, segType){
   if(!s.turnHitPoints || s.currentTurnDarts.length===0) s.turnHitPoints = [];
   const thisPoint = state.pendingHitPoint || null;
   state.pendingHitPoint = null;
+  state._islPt = thisPoint;
   if(thisPoint) s.turnHitPoints.push(thisPoint);
   if(s.kind==='x01'){
     let throwObj;
@@ -5007,6 +5223,7 @@ function botChooseX01Target(s){
 // open ones in War, since stealing is core to the game. No smart weighting
 // toward open sections, just genuinely random for maximum unpredictability.
 function botChooseWarTarget(s){
+  if(s.variant==='islands') return islandsBotTarget(s);
   let keys = Object.keys(s.sections);
   if(s.variant==='hmb'){
     const live = keys.filter(k=>!(s.locks && s.locks[k]!==undefined));
@@ -5230,6 +5447,7 @@ function removeDartFromCurrentTurn(index){
   const toReplay = s.currentTurnDarts.filter((d,i)=>i!==index).map(d=>({num:d._num, segType:d._segType}));
   if(s.variant==='wacky') window._wkReplay = s.currentTurnDarts.filter((d,i)=>i!==index && d.key).map(d=>d.wkVal);
   if(s.variant==='slots') window._slReplay = s.currentTurnDarts.filter((d,i)=>i!==index && d.key).map(d=>d.slNew);
+  if(s.variant==='islands') window._islReplay = s.currentTurnDarts.filter((d,i)=>i!==index && d.isl).map(d=>d.islPt);
   while(s.currentTurnDarts.length>0){
     if(s.kind==='x01') x01Undo(s);
     else if(s.kind==='cricket') cricketUndo(s);
@@ -5240,7 +5458,7 @@ function removeDartFromCurrentTurn(index){
     if(d.segType===undefined) return; // untracked edge case (e.g. an off-number cricket "No Score") — nothing to replay
     if(d.segType==='miss' || d.num===null) recordMiss();
     else dispatchThrow(d.num, d.segType);
-  }); } finally { _callerMute = false; window._wkReplay = null; window._slReplay = null; }
+  }); } finally { _callerMute = false; window._wkReplay = null; window._slReplay = null; window._islReplay = null; }
   if(s.turnHitPoints) s.turnHitPoints = s.turnHitPoints.slice(0, s.currentTurnDarts.length);
   if(armFix) scanFix = armFix;
   else if(usingSingleCam() && state.settings.dartsCallerCameraMode){ state.scanFixStatus = 'No fix sent: that dart did not come from the camera'; state.scanFixAt = Date.now(); setTimeout(()=>{ try{ render(); }catch(e){} }, 6200); }
@@ -5982,6 +6200,7 @@ function gameNameFor(s){
   if(s.variant==='hmb') return 'Hit Me Baby One More Time';
   if(s.variant==='wacky') return 'Wacky Mode';
   if(s.variant==='slots') return 'Slots';
+  if(s.variant==='islands') return 'Islands';
   if(s.kind==='x01') return s.startScore+'';
   if(s.kind==='custom') return s.builtinId==='highscore'?'High Score':s.builtinId==='countup'?'Count Up':(s.cfg&&s.cfg.name)||'Custom';
   return GN[s.kind] || s.kind;
@@ -6188,6 +6407,7 @@ const RULES_TEXT = {
   killer: {goal:'Be the last player with lives left.', score:'Everyone has a number and a set number of lives. First, hit the double of your own number to become a killer. Once you are a killer, hitting an opponent\'s number takes a life from them.', win:'When everyone else is out of lives, you win.'},
   callshot: {goal:'Call a target, hit it, and make the others match you.', score:'On your turn, call a target and try to hit it with your darts. If you miss, the turn just passes on. If you hit it, each other player gets the same number of darts to hit the same target. Anyone who fails gets a letter.', win:'A player who spells the whole word is out. The last player left wins.'},
   personalbest: {goal:'Beat your own best round.', score:'Each round is three darts, and every dart adds its value (doubles and triples count). Your first round sets your best. After that, every round tries to beat it.', win:'Depends on the mode you picked: no winner (just chase your best), highest single round, or highest average.'},
+  islands: {goal:'Land your darts on the high-value islands and have the highest score after the last round.', score:'Each island is a colour and every colour is worth the same each time: blue 5, green 10, yellow 15, orange 25, red 50. The points are printed in each island. Any other part of the board is worth 1, and missing the board is 0. Doubles and triples do not multiply. The board is redrawn every time the turn changes hands.', win:'After the set number of rounds (10 unless you change it) the highest score wins.'},
   slots: {goal:'Collect sets of matching symbols and be first to the target score.', score:'Every wedge shows a symbol. Hitting a wedge adds that symbol to your own card, and the wedge changes to a new random symbol. Collect three of the same symbol (or the number set for you) to close the set and score it. Cherries 5, lemons 10, bells 20, treasure chests 40, diamonds 75, lucky 7s 150. The rarest symbols are worth the most. A skull takes 20 points off, but never below zero. Doubles and triples count as one hit.', win:'When someone reaches the target, everyone finishes the round, then the highest score wins.'},
   wacky: {goal:'Be first to the target score while the board keeps changing.', score:'Every wedge keeps changing its value, from 10 up to 100 points, and some are negative. A dart scores whatever number its wedge shows at the moment it lands. Doubles and triples do not multiply. Negative values take points off, but your score never goes below zero.', win:'The first player to reach the target score wins.'},
   hmb: {goal:'Be first to the target score by hitting wedges that keep getting more valuable.', score:'Every wedge starts at 1. A dart scores the number showing on the wedge it lands in, then that wedge goes up by one for everybody. Doubles and triples do not multiply. Once a wedge has reached the highest value, the next hit scores it and the wedge is finished.', win:'First to the target score wins. If every wedge is finished first, the highest score wins.'},
@@ -6197,6 +6417,7 @@ function rulesIdForSession(s){
   if(s.variant==='hmb') return 'hmb';
   if(s.variant==='wacky') return 'wacky';
   if(s.variant==='slots') return 'slots';
+  if(s.variant==='islands') return 'islands';
   const MAP = {cricket:'cricket', atc:'atc', shanghai:'shanghai', baseball:'baseball', halveit:'halveit', killer:'killer', callshot:'callshot', war:'war', personalbest:'personalbest'};
   if(s.kind==='x01') return s.startScore===301?'301':'501';
   if(s.kind==='custom') return s.builtinId || null;
@@ -6757,7 +6978,7 @@ function ensureGameOptionsInitialized(){
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
-    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed', wkSpeed:1, slotsTarget:200, slotsNeed:{}, showHits:false,
+    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed', wkSpeed:1, slotsTarget:200, slotsNeed:{}, showHits:false, islStyle:'pieces', islRounds:10,
     ...remembered,
     _forGameId: state.pendingGameId,
   };
@@ -6801,11 +7022,12 @@ function warForceNextPlayer(){
   if(!s || s.kind!=='war' || s.complete) return;
   cameraPendingTurnEnd = null;
   s.participants[s.currentIdx].lastTurnDarts = s.currentTurnDarts.map(d=>d.label);
-  s.turnHistory.push({participantIdx:s.currentIdx, darts:s.currentTurnDarts});
+  s.turnHistory.push({participantIdx:s.currentIdx, darts:s.currentTurnDarts, board:(s.variant==='islands'?s.board:undefined)});
   s.currentTurnDarts = [];
   s.turnHitPoints = [];
   s.currentIdx = (s.currentIdx+1) % s.participants.length;
   if(s.currentIdx===0) s.round++;
+  if(s.variant==='islands'){ islandsAfterTurn(s); if(s.complete){ finishWarGame(s); return; } }
   if(s.variant==='slots'){ slotsRoundEnd(s); if(s.complete){ finishWarGame(s); return; } }
   render();
 }
@@ -7175,6 +7397,7 @@ const GAME_LAUNCHERS = {
   hmb: startHmbSession,
   wacky: startWackySession,
   slots: startSlotsSession,
+  islands: startIslandsSession,
 };
 function launchGame(){
   const id = state.pendingGameId;
@@ -8437,6 +8660,18 @@ function renderGameOptionsBody(){
       <span class="field-label">Bull</span>
       <div class="gchip-wrap">${chip('Not Required','bullMode','none')}${chip('Together','bullMode','together')}${chip('Both Required','bullMode','separate')}</div>
     </div>`;
+  } else if(id==='islands'){
+    body += `
+    <div>
+      <span class="field-label">Shape Style</span>
+      <div class="gchip-wrap">${chip('Board pieces','islStyle','pieces')}${chip('Circles','islStyle','circles')}${chip('Amoebas','islStyle','amoebas')}</div>
+      <p class="info-note">Board pieces are made of the normal board sections, so they work with every way of entering darts. Circles and amoebas score exactly where the dart lands, so they need the camera or tapping the board.</p>
+    </div>
+    <div>
+      <span class="field-label">Rounds</span>
+      <div class="gchip-wrap">${[5,10,15].map(n=>numChip(String(n),'islRounds',n)).join('')}</div>
+      <p class="info-note">Highest score after the last round wins. Blue 5, green 10, yellow 15, orange 25, red 50, empty board 1.</p>
+    </div>`;
   } else if(id==='slots'){
     if(o.ringMode==='all') o.ringMode='combined';
     if(!o.slotsNeed) o.slotsNeed = {};
@@ -8722,7 +8957,7 @@ const CALLER_EVENTS = [
   {id:'require', label:'You require N',              v:'Say the finish'},
   {id:'takeout', label:'Takeout (darts removed)',    s:'Ding'}
 ];
-const CALLER_SCOPES = [['all','All games (default)'],['x01','301 and 501'],['cricket','Cricket'],['atc','Around the Clock'],['shanghai','Shanghai'],['baseball','Baseball'],['highscore','High Score'],['countup','Count Up'],['halveit','Halve It'],['killer','Killer'],['callshot','Call Your Shot'],['personalbest','Personal Best'],['war','War'],['hmb','Hit Me Baby One More Time'],['wacky','Wacky Mode'],['slots','Slots'],['custom','Custom games']];
+const CALLER_SCOPES = [['all','All games (default)'],['x01','301 and 501'],['cricket','Cricket'],['atc','Around the Clock'],['shanghai','Shanghai'],['baseball','Baseball'],['highscore','High Score'],['countup','Count Up'],['halveit','Halve It'],['killer','Killer'],['callshot','Call Your Shot'],['personalbest','Personal Best'],['war','War'],['hmb','Hit Me Baby One More Time'],['wacky','Wacky Mode'],['slots','Slots'],['islands','Islands'],['custom','Custom games']];
 let _callerScope = 'all';
 function callerEvtCfg(){ const c = state.settings.callerEvents; return (c && typeof c === 'object') ? c : (state.settings.callerEvents = {all:{}, games:{}}); }
 function callerEvtValue(scope, evt, ch){
@@ -8754,7 +8989,7 @@ function callerScopeHasOverride(k){ const g = callerEvtCfg().games; return !!(g 
 function renderCallerEvents(){
   const sc = _callerScope, voiceGame = (sc === 'all' || sc === 'x01');
   const sw = (evt, ch) => `<button class="sw ${callerEvtValue(sc, evt, ch) ? 'on' : ''}" aria-label="${evt} ${ch==='v'?'voice':'sound'}" onclick="callerToggleEvt('${evt}','${ch}')"></button>`;
-  const rows = CALLER_EVENTS.filter(e => !((sc==='war'||sc==='hmb'||sc==='wacky'||sc==='slots') && e.id==='dart')).map(e => `<div class="ce-row"><div class="ce-name">${e.label}</div>
+  const rows = CALLER_EVENTS.filter(e => !((sc==='war'||sc==='hmb'||sc==='wacky'||sc==='slots'||sc==='islands') && e.id==='dart')).map(e => `<div class="ce-row"><div class="ce-name">${e.label}</div>
       <div class="ce-cell">${e.v ? (voiceGame ? `<span class="ce-lab">${e.v}</span>${sw(e.id,'v')}` : '<span class="ce-lab dim">no voice yet</span>') : ''}</div>
       <div class="ce-cell">${e.s ? `<span class="ce-lab">${e.s}</span>${sw(e.id,'s')}` : ''}</div></div>`).join('');
   return `<div class="ce-card">
@@ -8765,7 +9000,7 @@ function renderCallerEvents(){
     <p class="info-note" style="margin:6px 0 8px 0;">${sc==='all' ? 'These apply to every game unless a game below has its own.' : 'Only what you change here is special for this game. The rest follows All games.'}</p>
     <div class="ce-head"><span></span><span>Voice</span><span>Sound</span></div>
     ${rows}
-    ${(sc==='war'||sc==='hmb'||sc==='wacky'||sc==='slots') ? renderWarSfxCard() : ''}
+    ${(sc==='war'||sc==='hmb'||sc==='wacky'||sc==='slots'||sc==='islands') ? renderWarSfxCard() : ''}
     <div class="ce-timing"><span class="field-label">Dart call timing</span>
       <div class="chip-wrap"><button class="chip ${!state.settings.callerAfterThud?'on':''}" onclick="state.settings.callerAfterThud=false; persistState(); render();">With the thud</button><button class="chip ${state.settings.callerAfterThud?'on':''}" onclick="state.settings.callerAfterThud=true; persistState(); render();">After the thud</button></div></div>
     <div class="cam-menu-btns" style="margin-top:10px;"><div class="tiny-edit-btn" onclick="callerTest()">Test</div><div class="tiny-edit-btn" onclick="callerResetScope()">${sc==='all'?'Reset all to defaults':'Use the default for this game'}</div></div>
@@ -10901,6 +11136,7 @@ function renderTipsSection(s){
 // visually distinct from the claim color itself.
 const WAR_NEUTRAL = '#3a4560';
 function renderWarBoard(s){
+  if(s.variant==='islands') return islandsBoardSvg(s);
   const cx=BOARD_CX, cy=BOARD_CY, canvas=BOARD_CANVAS;
   const gapDeg = 1.2;
   const fx = (window._lockFx && !window._lockFx.shown && Date.now()-window._lockFx.t<2000) ? window._lockFx : null;
@@ -11096,7 +11332,7 @@ function warBullHatch(s){
   return out;
 }
 function renderWarPlayerBoxes(s){
-  const HMB = s.variant==='hmb' || s.variant==='wacky' || s.variant==='slots';
+  const HMB = s.variant==='hmb' || s.variant==='wacky' || s.variant==='slots' || s.variant==='islands';
   const SLV = s.variant==='slots';
   const total = Object.keys(s.sections).length;
   const sections = s.participants.map((p,i)=>{
@@ -11110,7 +11346,7 @@ function renderWarPlayerBoxes(s){
       if(!d) return `<div class="turn-dart-row pending"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">Waiting…</div><div class="turn-dart-val">–</div></div>`;
       const rowClass = d.hitTarget===true ? ' hit-target' : (d.hitTarget===false ? ' miss' : '');
       const fromP = (d.stolenFrom!=null && s.participants[d.stolenFrom]) ? s.participants[d.stolenFrom] : null;
-      const note = HMB ? (d.sl ? slotsNote(d) : d.wk ? `<span style="color:${d.wkVal<0?'#f87171':'#4ade80'};">${wackyLabel(d.wkVal)}</span>` : d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : '', (d.hitN && !d.lockedNow && s.showHits) ? `<span style="color:var(--cream-dim);">${d.hitN}/3</span>` : ''].filter(Boolean).join(' &middot; ');
+      const note = HMB ? (d.isl ? `<span style="color:${d.islPts>1?'var(--brass)':'var(--cream-dim)'};">+${d.islPts}</span>` : d.sl ? slotsNote(d) : d.wk ? `<span style="color:${d.wkVal<0?'#f87171':'#4ade80'};">${wackyLabel(d.wkVal)}</span>` : d.hmb ? `<span style="color:var(--brass);">+${d.hmbPts}${d.lockedNow?' &middot; finished':''}</span>` : '') : [fromP ? `<span style="color:${warColorFor(s,d.stolenFrom)};">from ${plainPlayerName(fromP.playerId)}</span>` : '', d.lockedNow ? '<span style="color:var(--brass);">locked</span>' : '', (d.hitN && !d.lockedNow && s.showHits) ? `<span style="color:var(--cream-dim);">${d.hitN}/3</span>` : ''].filter(Boolean).join(' &middot; ');
       return `<div class="turn-dart-row${rowClass}" style="cursor:pointer;" title="Tap to fix this dart" onclick="removeDartFromCurrentTurn(${idx})"><div class="turn-dart-num">${idx+1}</div><div class="turn-dart-label">${d.label}</div><div class="turn-dart-val" style="font-family:'Oswald',sans-serif; font-size:13px; font-weight:600; text-align:right;">${note}</div></div>`;
     }).join('') : '';
     return `<div class="player-section ${isCurrent?'active':'collapsed'}">
@@ -11129,11 +11365,11 @@ function renderWarPlayerBoxes(s){
   return `<div class="panel-zone-players">
     <div class="pi-label" style="margin-bottom:6px; color:var(--cream-dim); font-size:12px; letter-spacing:0.04em;">PLAYERS</div>
     <div class="player-sections">${sections}</div>
-    ${SLV ? slotsLegendHtml(s) : ''}
+    ${SLV ? slotsLegendHtml(s) : ''}${s.variant==='islands' ? islandsLegendHtml(s) : ''}
   </div>`;
 }
 function renderWarActiveShell(s){
-  return `${renderGameTopBar(s,s.variant==='hmb'?'Hit Me Baby One More Time':s.variant==='wacky'?'Wacky Mode':s.variant==='slots'?'Slots':'War')}
+  return `${renderGameTopBar(s,s.variant==='hmb'?'Hit Me Baby One More Time':s.variant==='wacky'?'Wacky Mode':s.variant==='slots'?'Slots':s.variant==='islands'?'Islands':'War')}
   <div class="board-area"><div class="board-wrap" id="mainDartboardWrap">${renderWarBoard(s)}</div></div>
   ${gameOverlays(s)}${FOOTER_MARKER}<div class="panel-resize-handle" onpointerdown="startPanelResizeDrag(event)"></div>
   ${renderBoardConfirmLine(s)}
