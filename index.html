@@ -569,6 +569,7 @@ h1,h2,h3,h4{font-family:'Oswald',sans-serif; margin:0; letter-spacing:0.02em; fo
 .chalkboard-panel .cb-title{ text-align:center; color:#f2f2ee; font-size:16px; letter-spacing:0.08em; margin-bottom:4px; font-family:'Kalam',cursive; font-weight:700; text-shadow:0 0 3px rgba(255,255,255,0.35); }
 .chalkboard-panel .cb-header-row, .chalkboard-panel .cb-row{ display:grid; align-items:center; gap:1px; }
 .chalkboard-panel .cb-name{ text-align:center; color:#fff; font-family:'Kalam',cursive; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:2px; text-shadow:0 0 3px rgba(255,255,255,0.3); }
+.chalkboard-panel .cb-need{ font-family:'Inter',sans-serif; font-size:10px; font-weight:600; letter-spacing:0.04em; color:#c9c9bf; text-shadow:none; line-height:1.2; }
 .chalkboard-panel .cb-rows{ flex:1; display:flex; flex-direction:column; justify-content:space-evenly; }
 .chalkboard-panel .cb-num{ color:#f2f2ee; font-family:'Kalam',cursive; font-weight:700; font-size:21px; text-align:center; text-shadow:0 0 3px rgba(255,255,255,0.35); }
 .chalkboard-panel .cb-mark{ display:flex; align-items:center; justify-content:center; min-height:30px; }
@@ -1156,7 +1157,7 @@ function pickPlayerEmoji(){
 // Version number shown in the sidebar footer for deploy verification.
 // Bump the whole number for a major change (a new game, a big rework),
 // bump the decimal for a smaller change like this one.
-const BUILD_STAMP = 'v9.9b ISLANDS ROUND BOARD';
+const BUILD_STAMP = 'v10.0 CRICKET HITS TO CLOSE';
 /* ===== v7.2 diagnostics: a ring buffer of timed events, exportable from Settings > About and data ===== */
 const DBG = {log:[], max:6000, t0:performance.now(), inflight:0, maxInflight:0,
   poll:{n:0, err:0, latSum:0, latMax:0, last:0}, render:{n:0, sum:0, max:0, last:0}, persist:{n:0, sum:0, max:0, last:0, len:0},
@@ -2050,25 +2051,30 @@ function startCricketSession(playerIds, opts){
     kind:'cricket',
     variant: opts.variant || 'standard',
     participants: playerIds.map(pid => ({
-      playerId: pid, marks:{20:0,19:0,18:0,17:0,16:0,15:0,B:0}, points:0, finished:false
+      playerId: pid, marks:{20:0,19:0,18:0,17:0,16:0,15:0,B:0}, points:0, finished:false,
+      need: ([1,2].includes(+((opts.cricketNeed||{})[pid]))) ? +opts.cricketNeed[pid] : 3
     })),
     currentIdx:0, round:1,
     currentTurnDarts:[], turnHistory:[],
     complete:false, winnerId:null,
   };
 }
+// Hits needed to close a number for this player (3 = normal Cricket; 2 or 1 = fewer hits).
+function cricketNeed(p){ return (p && (p.need===1 || p.need===2)) ? p.need : 3; }
+function cricketAnyCustomNeed(s){ return s.participants.some(p=>cricketNeed(p)!==3); }
 function cricketCurrent(s){ return s.participants[s.currentIdx]; }
-function cricketNumClosed(p, num){ return p.marks[num] >= 3; }
+function cricketNumClosed(p, num){ return p.marks[num] >= cricketNeed(p); }
 function cricketAllClosed(p){ return CRICKET_NUMS.every(n=>cricketNumClosed(p,n)); }
 function cricketApplyDart(s, num, marksHit){
   const p = cricketCurrent(s);
+  const need = cricketNeed(p);
   const before = p.marks[num];
   let applied = marksHit;
   let overflow = 0;
-  if(before + applied > 3){ overflow = before+applied-3; applied = 3-before; }
+  if(before + applied > need){ overflow = before+applied-need; applied = need-before; }
   p.marks[num] = before + applied;
   let pointsScored = 0;
-  if(overflow>0 && p.marks[num]>=3){
+  if(overflow>0 && p.marks[num]>=need){
     const othersOpen = s.participants.some(o=>o!==p && !cricketNumClosed(o,num));
     if(s.variant!=='noscore' && othersOpen){
       const val = num==='B'?25:num;
@@ -2080,7 +2086,7 @@ function cricketApplyDart(s, num, marksHit){
       }
     }
   }
-  s.currentTurnDarts.push({label:(num==='B'?'Bull':num)+' x'+marksHit, num, marksHit, pointsScored, hitTarget:true});
+  s.currentTurnDarts.push({label:(num==='B'?'Bull':num)+' x'+marksHit, num, marksHit, applied, pointsScored, hitTarget:true});
   cricketCheckWin(s);
   return {turnOver: s.currentTurnDarts.length>=3 || s.complete};
 }
@@ -2113,7 +2119,7 @@ function cricketUndo(s){
   if(s.currentTurnDarts.length>0){
     const d = s.currentTurnDarts.pop();
     const p = cricketCurrent(s);
-    p.marks[d.num] -= d.marksHit;
+    p.marks[d.num] -= (d.applied!==undefined ? d.applied : d.marksHit);
     if(p.marks[d.num]<0) p.marks[d.num]=0;
     if(d.pointsScored){
       if(s.variant==='cutthroat'){
@@ -6333,7 +6339,7 @@ function liveOptsChanges(){
   });
   return {live, restart};
 }
-const LIVE_OPT_NAMES = {outRule:'Finishing rule', guidance:'Checkout hints', lockMode:'Locked sections', startScore:'Start score', inRule:'Entering in', bullMode:'Bull', ringMode:'Sections', rounds:'Rounds', variant:'Variant', wkSpeed:'Board speed', showHits:'Hit counts'};
+const LIVE_OPT_NAMES = {cricketNeed:'Hits to close', outRule:'Finishing rule', guidance:'Checkout hints', lockMode:'Locked sections', startScore:'Start score', inRule:'Entering in', bullMode:'Bull', ringMode:'Sections', rounds:'Rounds', variant:'Variant', wkSpeed:'Board speed', showHits:'Hit counts'};
 function applyLiveOptions(){
   const s = state.session, L = s && s._launch;
   if(!L) return closeLiveOptions();
@@ -6402,7 +6408,7 @@ function closeTips(){ state.tipsOpen=false; render(); }
 const RULES_TEXT = {
   '301': {goal:'Count down from 301 to exactly zero.', score:'Each dart takes its value off your score. A double counts twice the number, a triple counts three times. You throw three darts a turn. If a turn would take you below zero (or leave you on 1 with a double out), it is a bust and your score goes back to where it was at the start of that turn.', win:'Reach exactly zero with your last dart. With double out, that last dart must be a double (the bull counts as a double).'},
   '501': {goal:'Count down from 501 to exactly zero.', score:'Each dart takes its value off your score. A double counts twice the number, a triple counts three times. You throw three darts a turn. If a turn would take you below zero (or leave you on 1 with a double out), it is a bust and your score goes back to where it was at the start of that turn.', win:'Reach exactly zero with your last dart. With double out, that last dart must be a double (the bull counts as a double).'},
-  cricket: {goal:'Close the numbers 20, 19, 18, 17, 16, 15 and the bull before your opponents do.', score:'Three marks close a number: a single is one mark, a double is two, a triple is three. Once you have closed a number and an opponent has not, every extra hit scores that number\'s points for you. Once everyone has closed a number, it is dead and scores nothing.', win:'Close all seven numbers while your points are equal to or higher than every opponent.'},
+  cricket: {goal:'Close the numbers 20, 19, 18, 17, 16, 15 and the bull before your opponents do.', score:'Three marks close a number: a single is one mark, a double is two, a triple is three. Once you have closed a number and an opponent has not, every extra hit scores that number\'s points for you. Once everyone has closed a number, it is dead and scores nothing. In the game options each player can be set to close a number with 1, 2 or 3 hits instead of the usual 3.', win:'Close all seven numbers while your points are equal to or higher than every opponent.'},
   atc: {goal:'Hit 1, then 2, then 3, all the way up to 20 in order.', score:'You only move on when you hit your current number. Throw three darts a turn at that number. Depending on the game options, a double or triple may move you ahead more than one number.', win:'The first player to finish the last number wins.'},
   shanghai: {goal:'Score the most points over the rounds. Round 1 is the 1s, round 2 is the 2s, and so on.', score:'Only darts in that round\'s number count. A single scores the number, a double twice, a triple three times. Darts anywhere else score nothing.', win:'Highest total after the last round wins. If you hit a single, a double and a triple of the round\'s number in one turn, that is a Shanghai and you win on the spot.'},
   baseball: {goal:'Score the most runs over nine innings. Inning 1 is the 1s, inning 2 is the 2s, up to inning 9.', score:'Only darts in that inning\'s number count. A single is one run, a double two runs, a triple three runs. Each inning is one turn of three darts.', win:'The most runs after nine innings wins.'},
@@ -6983,7 +6989,7 @@ function ensureGameOptionsInitialized(){
     includeBull:false, advanceMode:'standard', rounds: state.pendingGameId==='shanghai'?20:8, startingLives:5,
     callShotMaxDarts:3, callShotWord:'', callShotMode:'single', callShotNumTargets:2, callShotOrderMatters:true,
     halveitPreset:'classic', halveitTargets:[20,19,18,17,16,15,'B'], halveitOrder:'sequence', halveitBooster:'off',
-    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed', wkSpeed:1, slotsTarget:200, slotsNeed:{}, showHits:false, islStyle:'pieces', islRounds:10,
+    bullMode:'separate', ringMode:'combined', lockMode:'off', hmbCap:5, hmbTarget:100, wkTarget:500, wkTiming:'landed', wkSpeed:1, slotsTarget:200, slotsNeed:{}, cricketNeed:{}, showHits:false, islStyle:'pieces', islRounds:10,
     ...remembered,
     _forGameId: state.pendingGameId,
   };
@@ -7010,6 +7016,7 @@ function warMiniBoard(mode){
   for(let i=0;i<20;i++) bands.forEach(b=>{ d += seg(i,b[0],b[1]); });
   return `<svg width="64" height="64" viewBox="-102 -102 204 204" style="flex:none;"><circle r="101" fill="#0A1424"/><path d="${d}" fill="#2A4470" stroke="#0A1424" stroke-width="1.2"/><circle r="8" fill="#2A4470"/></svg>`;
 }
+function setCricketNeed(pid,n){ if(!state.gameOptions.cricketNeed) state.gameOptions.cricketNeed = {}; state.gameOptions.cricketNeed[pid] = n; render(); }
 function setSlotsNeed(pid,n){ if(!state.gameOptions.slotsNeed) state.gameOptions.slotsNeed = {}; state.gameOptions.slotsNeed[pid] = n; render(); }
 function setOption(key,val){ state.gameOptions[key]=val; render(); }
 function setWarPlayerColor(playerId, color){
@@ -8641,7 +8648,19 @@ function renderGameOptionsBody(){
         <div class="leg-item ${o.variant==='noscore'?'active-leg':''}"><b>No Score</b> — points never come into it. Purely a race to close every number first.</div>
         <div class="leg-item ${o.variant==='cutthroat'?'active-leg':''}"><b>Cut Throat</b> — extra hits work against your opponents instead of for you. Points get added to every rival who still has that number open, so closing early protects you.</div>
       </div>
-    </div>`;
+    </div>
+    ${state.selectedPlayerIds.length ? `<div>
+      <span class="field-label">Hits To Close A Number</span>
+      ${state.selectedPlayerIds.map(pid=>{
+        const p = state.players.find(pp=>pp.id===pid);
+        const cur = [1,2].includes(+(o.cricketNeed||{})[pid]) ? +o.cricketNeed[pid] : 3;
+        return `<div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+          <div style="min-width:80px; color:var(--cream-dim); font-size:13px;">${p?p.name:pid}</div>
+          <div class="gchip-wrap" style="flex:1;">${[1,2,3].map(n=>`<span class="gchip ${cur===n?'selected':''}" onclick="setCricketNeed('${pid}',${n})">${n}</span>`).join('')}</div>
+        </div>`;
+      }).join('')}
+      <p class="info-note">How many hits close a number for each player. 3 is normal Cricket. At 2, the first hit draws an X and the second adds the circle. At 1, a single hit draws the full circled X. Once a number is closed, extra hits score points (unless the variant is No Score) until every opponent has closed it too.</p>
+    </div>` : ''}`;
   } else if(id==='hmb'){
     if(!o.warPlayerColors) o.warPlayerColors = {};
     if(o.ringMode==='all') o.ringMode='combined';
@@ -11060,7 +11079,7 @@ function renderTipsSection(s){
     let big, small;
     if(nextTarget!==undefined){
       big = 'Close '+(nextTarget==='B'?'Bull':nextTarget);
-      small = open.length+' number'+(open.length!==1?'s':'')+' still open';
+      small = open.length+' number'+(open.length!==1?'s':'')+' still open'+(cricketNeed(p)!==3?' \u2014 '+cricketNeed(p)+' hit'+(cricketNeed(p)>1?'s':'')+' closes a number':'');
     } else {
       const others = s.participants.filter(o=>o!==p);
       const stillNeed = s.variant==='cutthroat'
@@ -11491,12 +11510,13 @@ function renderChalkboard(s){
   const nameFontSize = n<=2 ? 16 : n===3 ? 14 : n===4 ? 13 : n<=6 ? 11 : 9.5;
   const cols = `repeat(${left.length||1},1fr) 22px repeat(${right.length||1},1fr)`;
   const plainName = (p)=>{ const pl = state.players.find(x=>x.id===p.playerId); return pl ? pl.name : '???'; };
-  const nameCell = (p,idx)=>`<div class="cb-name" style="font-size:${nameFontSize}px; transform:rotate(${idx%2===0?-1.5:1.5}deg);">${plainName(p)}</div>`;
+  const anyNeed = cricketAnyCustomNeed(s);
+  const nameCell = (p,idx)=>`<div class="cb-name" style="font-size:${nameFontSize}px; transform:rotate(${idx%2===0?-1.5:1.5}deg);">${plainName(p)}${anyNeed?`<div class="cb-need">${cricketNeed(p)} to close</div>`:''}</div>`;
   const currentPid = s.participants[s.currentIdx].playerId;
   const canTap = !isBotPlayerId(currentPid);
   const markCell = (p,num)=>{
     const v = p.marks[num]||0;
-    const content = v>0 ? cricketMarkSVG(v, '#f2f2ee') : '';
+    const content = v>0 ? cricketMarkSVG(Math.min(3, v + (3-cricketNeed(p))), '#f2f2ee') : '';
     if(canTap && p.playerId===currentPid){
       const numArg = num==='B' ? "'B'" : num;
       const aim = v===0 ? '<div class="aim-dot"></div>' : '';
@@ -11530,7 +11550,7 @@ function renderCricketBoard(s){
       <div class="score-card ${i===s.currentIdx?'active':''}">
         <div class="pname">${i===s.currentIdx?'<span class="dartpip">&#9679;</span>':''} ${playerName(p.playerId)}</div>
         <div class="pscore">${p.points}</div>
-        <div class="pmarks">${closedCount}/7 closed</div>
+        <div class="pmarks">${closedCount}/7 closed${cricketNeed(p)!==3?` &middot; ${cricketNeed(p)} to close`:''}</div>
         ${miniDartChips(participantDisplayDarts(s,i), false, i===s.currentIdx)}
       </div>
     `;
